@@ -20,8 +20,15 @@
 %%%
 %%% Units:
 %%%   compile_ns/load_ns  a namespace source → one module (designs/03 §2)
-%%%   eval                expressions → a throwaway module, run once;
-%%%                       symbols resolve in namespace `ns' (default user)
+%%%   eval                REPL evaluation, form at a time, in namespace
+%%%                       `ns' (default: the current one, *ns*). An
+%%%                       expression → a throwaway module `clj2_eval_N',
+%%%                       run once; a def → the var's own module
+%%%                       `<ns>$v$<name>', reloaded on redefinition (BEAM
+%%%                       two-version semantics, designs/02 §5); `ns'
+%%%                       switches the current namespace.
+%%%
+%%% compile:forms runs in a process of its own (designs/02 §5).
 %%%-------------------------------------------------------------------
 -module(clj2_compiler).
 
@@ -31,6 +38,7 @@
         , forms/2, forms/3
         , eval/1, eval/2
         , macroexpand_1/2
+        , var_module/2
         ]).
 
 %% Opts `mode': dev (default) folds constants only; release also
@@ -78,6 +86,9 @@ compile_ns_modules(Src, Opts) ->
     %% segments are dropped however the compile ends, including a
     %% failing macro after some segments were loaded
     Key = {?MODULE, segments, make_ref()},
+    %% *ns* is the namespace being compiled while it compiles (expand_ns
+    %% sets it at the ns form), then restored
+    Saved = clj2_rt_eval:save_ns(),
     try
         {Tops, Ctx} = expand_ns(Src, Opts#{segment_key => Key}),
         #{ns := Ns} = Ctx,
@@ -88,11 +99,12 @@ compile_ns_modules(Src, Opts) ->
         Units = [impl_unit(X, Ns, NsVars, Ctx, Opts) || X <- Extends] ++ [{M, Forms}],
         beams(Ns, Units, [debug_info])
     after
-        drop_segments(erase(Key))
+        drop_segments(erase(Key)),
+        clj2_rt_eval:restore_ns(Saved)
     end.
 
 beams(Ns, Units, CompileOpts) ->
-    Results = [{Mod, compile:forms(Forms, [binary, return_errors | CompileOpts])} || {Mod, Forms} <- Units],
+    Results = [{Mod, compile_forms(Forms, CompileOpts)} || {Mod, Forms} <- Units],
     case [E || {_, {error, _, _} = E} <- Results] of
         [] -> {ok, Ns, [{Mod, Bin} || {Mod, {ok, Mod, Bin}} <- Results]};
         [E | _] -> E
@@ -202,25 +214,107 @@ eval_units(Src, M, Opts) ->
     {Forms, _} = compile_tops(Rest, Ns, M, Own, false, Ctx#{unit => eval}, Opts),
     {Impls, Forms}.
 
-%% @doc Compile, load and run; the value of the last top-level form.
+%% @doc Evaluate source (or `{forms, Forms}'), form at a time: a macro
+%% defined by one form expands the next. The value of the last form.
 eval(Src) -> eval(Src, #{}).
 
 eval(Src, Opts) ->
-    M = list_to_atom("clj2_eval_" ++ integer_to_list(erlang:unique_integer([positive]))),
-    {Impls, Forms} = eval_units(Src, M, Opts),
-    case beams(nil, Impls, []) of
+    {V, _} = lists:foldl(fun(F, {_, O}) -> eval_form(F, O) end, {nil, Opts}, read(Src)),
+    V.
+
+eval_form(F, Opts) ->
+    Ns = current(Opts),
+    {Tops, _} = clj2_np:run([clj2_p_parse], [F], pass_opts(Opts, parse_state(ns_ctx(Ns, Opts)))),
+    lists:foldl(fun(T, {_, O}) -> eval_top(T, current(O), O) end, {nil, Opts}, Tops).
+
+current(Opts) ->
+    case Opts of
+        #{ns := Ns} -> Ns;
+        _ -> clj2_rt_eval:current_ns()
+    end.
+
+%% → {Value, Opts}
+eval_top({ns_decl, _, Ns, Reqs, _}, _Cur, Opts) ->
+    clj2_ns:ensure(Ns),
+    _ = requires(Ns, Reqs, ns_ctx(Ns, Opts)),
+    clj2_ns:put_ctx(Ns, maps:from_list([{As, R} || #{ns := R, as := As} <- Reqs, As =/= nil]),
+                    maps:from_list([{S, R} || #{ns := R, refer := Ss} <- Reqs, S <- Ss])),
+    clj2_rt_eval:in_ns(Ns),
+    {nil, case Opts of #{ns := _} -> Opts#{ns := Ns}; _ -> Opts end};
+eval_top({def, _, _, _, _} = T, Ns, Opts) ->
+    {define_var(T, Ns, Opts), Opts};
+eval_top({extend, _, _, _, _} = T, Ns, Opts) ->
+    Ctx = ns_ctx(Ns, Opts),
+    case beams(Ns, [impl_unit(T, Ns, maps:get(own, Ctx), Ctx, Opts)], [debug_info]) of
         {ok, _, ImplBeams} -> ok = load_impls(ImplBeams);
         {error, IEs, _} -> erlang:error({clj2_lint, IEs})
     end,
-    case compile:forms(Forms, [binary, return_errors, debug_info]) of
+    {nil, Opts};
+eval_top(T, Ns, Opts) ->
+    M = list_to_atom("clj2_eval_" ++ integer_to_list(erlang:unique_integer([positive]))),
+    Ctx = ns_ctx(Ns, Opts),
+    {Forms, _} = compile_tops([T], Ns, M, maps:get(own, Ctx), false, Ctx#{unit => eval}, Opts),
+    case compile_forms(Forms, [debug_info]) of
         {ok, M, Bin} ->
             {module, M} = code:load_binary(M, file(Opts, M), Bin),
-            try M:run()
+            try {M:run(), Opts}
             after
                 retire_eval(M)
             end;
         {error, Es, _} ->
             erlang:error({clj2_lint, Es})
+    end.
+
+%% A def at the REPL: the var gets a module of its own, compiled like a
+%% namespace unit holding just that var, and is then added to the
+%% namespace's registry entry with that module. Redefinition reloads the
+%% same module: closures made by the old version keep running it, new
+%% calls go to the new one (designs/02 §5). → the var, #'ns/name.
+define_var({def, _, Name, _, _} = T, Ns, Opts) ->
+    Ctx = ns_ctx(Ns, Opts),
+    M = var_module(Ns, Name),
+    {Forms, St} = compile_tops([T], Ns, M, maps:get(own, Ctx), false, Ctx#{unit => ns}, Opts),
+    Bin = case compile_forms(Forms, [debug_info]) of
+              {ok, M, B} -> B;
+              {error, Es, _} -> erlang:error({clj2_lint, Es})
+          end,
+    %% one definition of a var at a time (two processes defining it at
+    %% once would race between purge and load)
+    Loaded = global:trans({{?MODULE, define, M}, self()},
+                          fun() ->
+                                  case code:soft_purge(M) of
+                                      false -> {error, old_code_in_use};
+                                      true -> code:load_binary(M, file(Opts, M), Bin)
+                                  end
+                          end),
+    case Loaded of
+        {module, M} -> ok;
+        {error, on_load_failure} ->
+            case clj2_ns:take_init_failure(M) of
+                {ok, {C, R, Stack}} -> erlang:raise(C, R, Stack);
+                _ -> erlang:error({clj2_def_failed, Ns, Name})
+            end;
+        {error, Why} -> erlang:error({clj2_redefine, {Why, Ns, Name}})
+    end,
+    clj2_ns:put_var(Ns, Name, (maps:get(Name, maps:get(vars, St)))#{module => M}),
+    clj2_rt:var(Ns, Name).
+
+%% @doc The module of a var defined at the REPL. Module names must be
+%% latin1 (function names need not): a code point above 255 is written
+%% `$uXXXX$'.
+var_module(Ns, Name) ->
+    Latin1 = fun(C) when C > 255 -> "$u" ++ integer_to_list(C, 16) ++ "$";
+                (C) -> [C]
+             end,
+    list_to_atom(lists:append([Latin1(C) || C <- atom_to_list(Ns) ++ "$v$" ++ atom_to_list(Name)])).
+
+%% compile:forms in a process of its own (designs/02 §5): the compiler's
+%% process state never mixes with the caller's (the REPL's).
+compile_forms(Forms, Opts) ->
+    {Pid, Ref} = spawn_monitor(fun() -> exit({compiled, compile:forms(Forms, [binary, return_errors | Opts])}) end),
+    receive
+        {'DOWN', Ref, process, Pid, {compiled, R}} -> R;
+        {'DOWN', Ref, process, Pid, Why} -> erlang:error({clj2_compile_crashed, Why})
     end.
 
 %% @doc Expand the macro call `Form' (a value) once, in namespace `Ns'.
@@ -257,7 +351,9 @@ expand_ns(Src, Opts) ->
                   _ = [erlang:error({clj2_compile, erl_anno:location(A), {syntax, ns_must_be_first_form}})
                        || {ns_decl, A, _, _, _} = T <- Tops, Acc =/= [] orelse T =/= hd(Tops)],
                   C0 = case Tops of
-                           [{ns_decl, _, Ns, Reqs, _} | _] -> requires(Ns, Reqs, C);
+                           [{ns_decl, _, Ns, Reqs, _} | _] ->
+                               clj2_rt_eval:set_current_ns(Ns),
+                               requires(Ns, Reqs, C);
                            _ -> C
                        end,
                   C1 = C0#{defined := maps:merge(maps:get(defined, C0),
@@ -283,7 +379,7 @@ segment(Tops, Ctx = #{ns := Ns, own := Own, segments := Segs}, Opts) ->
     {Forms, St} = compile_tops([T || T <- Tops, element(1, T) =/= ns_decl,
                                      element(1, T) =/= extend],
                                Ns, M, Own, false, Ctx, Opts),
-    case compile:forms(Forms, [binary, return_errors]) of
+    case compile_forms(Forms, []) of
         {ok, M, Bin} ->
             _ = code:purge(M),
             case code:load_binary(M, atom_to_list(M) ++ ".clj", Bin) of
@@ -330,20 +426,21 @@ drop_segments(Segs) ->
 %% Namespace context for parse and expansion. For an existing namespace
 %% (eval in it) its registered vars are runnable.
 ns_ctx(Ns, Opts) ->
-    Own = case clj2_ns:info(Ns) of
-              {ok, #{module := M, vars := Vars}} ->
-                  maps:map(fun(_, I) -> I#{module => M} end, Vars);
-              error -> #{}
-          end,
+    {Own, Repl} = case clj2_ns:info(Ns) of
+                      {ok, E = #{module := M, vars := Vars}} ->
+                          {maps:map(fun(_, I) -> maps:merge(#{module => M}, I) end, Vars), E};
+                      error -> {#{}, #{}}
+                  end,
     Refers = case maps:get(refer_clojure, Opts, true) of
                  true -> core_refers(Ns, []);
                  false -> #{}
              end,
-    #{ns => Ns, aliases => #{}, refers => Refers, own => Own,
+    #{ns => Ns, aliases => maps:get(aliases, Repl, #{}),
+      refers => maps:merge(Refers, maps:get(refers, Repl, #{})), own => Own,
       defined => maps:map(fun(_, _) -> true end, Own)}.
 
 requires(Ns, Reqs, Ctx) ->
-    _ = [info_or_fail(R) || #{ns := R} <- Reqs, R =/= Ns],
+    _ = [begin clj2_rt_eval:ensure_loaded(R), info_or_fail(R) end || #{ns := R} <- Reqs, R =/= Ns],
     Excluded = lists:append([Ex || #{refer_clojure := #{exclude := Ex}} <- Reqs]),
     Explicit = maps:from_list([{S, R} || #{ns := R, refer := Ss} <- Reqs, S <- Ss]),
     Core = case maps:get(refer_clojure, Ctx, true) of
@@ -427,7 +524,7 @@ own_macro(Name, Own) ->
 
 ext_macro(Ns, Name) ->
     case clj2_ns:info(Ns) of
-        {ok, #{module := M, vars := #{Name := #{macro := true} = I}}} -> {M, Name, I};
+        {ok, #{module := M, vars := #{Name := #{macro := true} = I}}} -> {maps:get(module, I, M), Name, I};
         _ -> none
     end.
 

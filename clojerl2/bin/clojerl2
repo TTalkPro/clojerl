@@ -1,0 +1,7 @@
+#!/bin/sh
+# clojerl2 — REPL and script runner (clojerl2-023); see src/erl/clj2_cli.erl.
+# Needs `make` first: ebin/ holds the compiler and a prebuilt clojure.core.
+here=$(cd "$(dirname "$0")/.." && pwd)
+exec erl -noshell -pa "$here/ebin" \
+     -kernel shell_history enabled \
+     -run clj2_cli main -extra "$@"

@@ -1,7 +1,9 @@
 # clojerl2 — build & test entry points.
 #
-#   make            compile the Erlang layer into ebin/
+#   make            compile the Erlang layer and clojure.core into ebin/
+#                   (bin/clojerl2 runs from there)
 #   make test       compile everything and run the eunit suites
+#   make smoke      REPL / CLI smoke test (test/repl-smoke.sh)
 #   make corpus     run the conformance corpus, write notes/corpus-baseline.md
 #   make certify    the corpus gate: fails on an unlisted failure or a stale
 #                   entry in test/corpus-known-failures.edn
@@ -37,9 +39,24 @@ empty      :=
 space      := $(empty) $(empty)
 TEST_MODS  := $(subst $(space),$(comma),$(strip $(basename $(notdir $(TESTS)))))
 
-.PHONY: all test corpus certify corpus-rebaseline corpus-regen clean
+.PHONY: all test smoke FORCE corpus certify corpus-rebaseline corpus-regen clean
 
-all: $(SRC_BEAMS)
+CORE_SRCS := $(wildcard src/clj2/core/*)
+
+all: $(SRC_BEAMS) $(EBIN)/clojure.core.beam $(EBIN)/clj2.build
+
+# clojure.core prebuilt, so the CLI starts without compiling it
+# (clj2_core:ensure/0 falls back to compiling when it is missing)
+$(EBIN)/clojure.core.beam: $(SRC_BEAMS) $(CORE_SRCS)
+	erl $(ERL_FLAGS) -eval '{ok, _, _} = clj2_core:build("$(EBIN)"), halt().'
+
+# the commit the CLI reports (designs/04 §4.3)
+$(EBIN)/clj2.build: FORCE
+	@mkdir -p $(EBIN)
+	@v=$$(git describe --always --dirty 2>/dev/null || echo dev); \
+	  [ "$$(cat $@ 2>/dev/null)" = "$$v" ] || echo "$$v" > $@
+
+FORCE:
 
 $(EBIN)/%.beam: $(SRC)/%.erl $(wildcard $(INCLUDE)/*.hrl)
 	@mkdir -p $(EBIN)
@@ -49,7 +66,7 @@ $(EBIN)/%_tests.beam: $(TEST)/%_tests.erl $(SRC_BEAMS)
 	@mkdir -p $(EBIN)
 	$(ERLC) $(ERLC_OPTS) -DTEST -o $(EBIN) $<
 
-test: $(SRC_BEAMS) $(TEST_BEAMS)
+test: all $(TEST_BEAMS)
 	erl $(ERL_FLAGS) -eval 'case eunit:test([$(TEST_MODS)], []) of ok -> halt(0); _ -> halt(1) end.'
 
 # The VM runs in its own cgroup with a hard memory cap (systemd-run, when a
@@ -71,6 +88,9 @@ corpus-rebaseline: $(SRC_BEAMS)
 CLOJURE_VERSION ?= 1.12.5
 corpus-regen:
 	clojure -Sdeps '{:deps {org.clojure/clojure {:mvn/version "$(CLOJURE_VERSION)"}}}' -M tools/regen-corpus.clj $(REGEN_FLAGS)
+
+smoke: all
+	sh test/repl-smoke.sh
 
 clean:
 	rm -rf $(EBIN)

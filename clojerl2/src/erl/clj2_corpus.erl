@@ -51,12 +51,22 @@ run(Opts) ->
     Tag = layer_tagger(),
     Entries = [E#{layer => Tag(A)} || E = #{actual := A} <- Entries1],
     Indexed = lists:zip(lists:seq(1, length(Entries)), Entries),
+    %% entries that change namespaces other than their own (ns, in-ns,
+    %% eval, require ...) run one at a time, and what they create is
+    %% removed after each: run in parallel they would redefine each
+    %% other's vars mid-run
+    {Global, Local} = lists:partition(fun({_, #{actual := A}}) -> global_effects(A) end, Indexed),
     MaxHeap = #{size => maps:get(max_heap, Opts, 256 bsl 20) div erlang:system_info(wordsize),
                 kill => true, error_logger => false, include_shared_binaries => true},
     Old = erlang:system_flag(max_heap_size, MaxHeap),
-    try pool(Indexed, maps:get(workers, Opts, 8), maps:get(timeout, Opts, 10000))
+    Timeout = maps:get(timeout, Opts, 10000),
+    try lists:keysort(1, pool(Local, maps:get(workers, Opts, 8), Timeout, false) ++ pool(Global, 1, Timeout, true))
     after erlang:system_flag(max_heap_size, Old)
     end.
+
+global_effects(Src) ->
+    re:run(Src, "\\((ns|in-ns|load-string|load-file|eval|require|create-ns|remove-ns|intern|use|refer) ",
+           [unicode]) =/= nomatch.
 
 default_file() -> test_file("corpus.edn").
 
@@ -127,10 +137,12 @@ symbols(_, Acc) -> Acc.
 %% Running
 %%====================================================================
 
-pool(Indexed, Workers, Timeout) ->
+%% Isolate: the pool runs alone (one worker, nothing else running), so
+%% the namespaces that appear during an entry are that entry's.
+pool(Indexed, Workers, Timeout, Isolate) ->
     Self = self(),
     Queue = spawn_link(fun() -> queue(Indexed) end),
-    Ws = [spawn_link(fun() -> worker(Queue, Self, Timeout) end) || _ <- lists:seq(1, Workers)],
+    Ws = [spawn_link(fun() -> worker(Queue, Self, Timeout, Isolate) end) || _ <- lists:seq(1, Workers)],
     Results = collect(length(Indexed), []),
     [unlink(W) || W <- Ws],
     unlink(Queue),
@@ -139,14 +151,27 @@ pool(Indexed, Workers, Timeout) ->
 queue([]) -> receive {next, W} -> W ! done, queue([]) end;
 queue([Job | Rest]) -> receive {next, W} -> W ! {job, Job}, queue(Rest) end.
 
-worker(Queue, Parent, Timeout) ->
+worker(Queue, Parent, Timeout, Isolate) ->
     Queue ! {next, self()},
     receive
         done -> ok;
         {job, {I, Entry}} ->
-            Parent ! {result, I, Entry, run_entry(I, Entry, Timeout)},
-            worker(Queue, Parent, Timeout)
+            Before = clj2_ns:all(),
+            R = run_entry(I, Entry, Timeout),
+            [drop_ns(N) || Isolate, N <- clj2_ns:all() -- Before],
+            Parent ! {result, I, Entry, R},
+            worker(Queue, Parent, Timeout, Isolate)
     end.
+
+drop_ns(Ns) ->
+    Mods = case clj2_ns:info(Ns) of
+               {ok, #{module := M, vars := Vars}} -> [M | [VM || #{module := VM} <- maps:values(Vars)]];
+               error -> []
+           end,
+    clj2_ns:remove(Ns),
+    [begin code:purge(M), code:delete(M), code:purge(M) end
+     || M <- lists:usort(Mods), M =/= 'clojure.core', code:is_loaded(M) =/= false,
+        not lists:prefix("clj2_", atom_to_list(M))].
 
 collect(0, Acc) -> Acc;
 collect(N, Acc) ->
@@ -333,10 +358,14 @@ rebaseline() -> rebaseline(#{}).
 
 %% @doc Rewrite test/corpus-known-failures.edn from a fresh run: every
 %% failing entry is listed; one listed before keeps its cause, a new one
-%% gets a pending cause by its failure kind (pending_cause/1).
+%% gets a first guess (cause/2). Opts `reclassify': causes whose entries
+%% are guessed afresh (after the work a pending cause stood for is done,
+%% its leftovers fail for other reasons).
 rebaseline(Opts) ->
     Results = run(Opts),
-    #{entries := Known} = known_failures(),
+    #{entries := Known0} = known_failures(),
+    Again = maps:get(reclassify, Opts, []),
+    Known = maps:filter(fun(_, C) -> not lists:member(C, Again) end, Known0),
     Rows = [{S, L, maps:get({S, L}, Known, cause(E, Why))}
             || {_, #{suite := S, label := L} = E, {fail, Why}} <- Results],
     ok = file:write_file(known_failures_file(), unicode:characters_to_binary(known_failures_text(Rows))),
@@ -348,7 +377,7 @@ pending_legend() ->
     [{':pending/multimethods', <<"defmulti/defmethod and hierarchies are not implemented yet.">>, <<"clojerl2-017">>},
      {':pending/ref-types', <<"atoms, volatiles, refs, agents, futures, promises and delays are not implemented yet.">>, <<"clojerl2-018">>},
      {':pending/strings-io', <<"regexes, format, string/char functions and reader/writer IO are not implemented yet.">>, <<"clojerl2-020">>},
-     {':pending/runtime-eval', <<"require/eval/read-string/macroexpand and namespace reflection at run time are not implemented yet.">>, <<"clojerl2-023">>},
+     {':pending/runtime-eval', <<"Namespace reflection is not implemented yet: ns-publics/ns-map/ns-aliases/ns-unmap/intern/resolve, var objects (var-get, var?), alias/refer as functions, an ns form inside a namespace file. (eval, read-string, require, in-ns came with clojerl2-023.)">>, <<"clojerl2-023 follow-up">>},
      {':pending/metadata', <<"meta/with-meta/vary-meta on values are not implemented yet.">>, <<"clojerl2-021 follow-up">>},
      {':pending/sorted-colls', <<"sorted maps and sets are not implemented yet.">>, <<"clojerl2-021 follow-up">>},
      {':pending/transients', <<"transient/persistent! and the bang ops are not implemented yet.">>, <<"clojerl2-021 follow-up">>},
@@ -356,7 +385,7 @@ pending_legend() ->
      {':pending/stdlib-namespaces', <<"clojure.string, clojure.set, clojure.walk, clojure.edn, clojure.math ... are not ported yet.">>, <<"clojerl2-021 follow-up">>},
      {':pending/missing-core-var', <<"A clojure.core var the corpus uses is not ported yet.">>, <<"clojerl2-021 follow-up">>},
      {':pending/special-forms', <<"A special form (var, set!, ., new, letfn* ...) is not compiled yet.">>, <<"clojerl2-021 follow-up">>},
-     {':pending/jvm-exception-classes', <<"catch names a JVM exception class (ClassCastException, IllegalArgumentException ...); only Erlang classes, Exception and Throwable are understood (designs/09 §3).">>, <<"clojerl2-021 follow-up">>},
+     {':pending/jvm-exception-classes', <<"catch names a JVM exception class (ClassCastException, IllegalArgumentException ...); only Erlang classes, Exception and Throwable are understood (designs/09 §3)."/utf8>>, <<"clojerl2-021 follow-up">>},
      {':pending/numbers', <<"BigDecimal (1.5M) literals and arithmetic are not implemented yet.">>, <<"clojerl2-021 follow-up">>},
      {':pending/reader', <<"The reader rejects the source (reader conditionals, number syntax, escapes ...).">>, <<"clojerl2-021 follow-up">>},
      {':pending/compiler', <<"The compiler rejects the entry (syntax, linking, recur, verify ...): a compiler gap or bug.">>, <<"clojerl2-021 follow-up">>},
@@ -374,6 +403,8 @@ cause(#{suite := Suite, expected := Exp, actual := Act}, Why) ->
                 {_, _, true} -> ':char/integer';
                 _ -> ':pending/triage'
             end;
+        {threw, <<"{error,{clj2_require,{not_found,'clojure.", _/binary>>} -> ':pending/stdlib-namespaces';
+        {threw, <<"{error,{clj2_form,{no_data_form,", _/binary>>} -> ':pending/compiler';
         {threw, B} ->
             case {binary:match(B, <<"undef">>), Has(Act, "clojure\\.lang\\.|java\\.")} of
                 {nomatch, _} -> ':pending/triage';

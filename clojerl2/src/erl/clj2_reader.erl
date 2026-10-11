@@ -587,7 +587,7 @@ read_item(St) ->
 read_map_item(St) ->
     case one_form(St) of
         eof ->
-            mk_err(St, <<"map literal must contain an even number of forms">>);
+            mk_err(St, <<"EOF while reading collection, expected }">>);
         {error, _, _} = Error -> Error;
         {ok, Key, St1} ->
             case skip_ws(St1) of
@@ -601,7 +601,7 @@ read_map_item(St) ->
 read_map_value(Key, St) ->
     case one_form(St) of
         eof ->
-            mk_err(St, <<"map literal must contain an even number of forms">>);
+            mk_err(St, <<"EOF while reading collection, expected }">>);
         {error, _, _} = Error -> Error;
         {ok, Val, St2} ->
             %% any form is a key, as in Clojure (`{[x y] :pt}' is how
@@ -613,13 +613,12 @@ collect(St0, Close, ItemFun) ->
     St = skip_ws(St0),
     case peek(St) of
         eof ->
-            mk_err(St, <<"EOF while reading collection, expected ",
-                        (integer_to_binary(Close))/binary>>);
+            mk_err(St, <<"EOF while reading collection, expected ", Close/utf8>>);
         {ok, Close} ->
             {ok, [], advance(St)};
         {ok, Other} when Other =:= $); Other =:= $]; Other =:= $} ->
             mk_err(St, <<"unmatched delimiter: ", Other/utf8,
-                          " (expected ", (integer_to_binary(Close))/binary, ")">>);
+                          " (expected ", Close/utf8, ")">>);
         _ ->
             case ItemFun(St) of
                 {error, _, _} = Error -> Error;
@@ -845,7 +844,7 @@ read_keyword(St0) ->
         {[], _} ->
             mk_err(St2, <<"invalid keyword: expected a name after ':'">>);
         {Chars, St3} ->
-            Name = iolist_to_binary([":", Marker, Chars]),
+            Name = unicode:characters_to_binary([":", Marker, Chars]),
             case atom_name(Name) of
                 {ok, Atom} -> {ok, Atom, St3};
                 error -> mk_err(St2, <<"invalid keyword: ", Name/binary>>)

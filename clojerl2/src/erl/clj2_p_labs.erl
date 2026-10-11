@@ -66,11 +66,31 @@ ns_unit(Tops, A0, St = #{module := M, ns := Ns, vars := Vars}) ->
     Funs = lists:append([with_doc(F, Vars) || {F, _} <- Parts]),
     Steps = lists:append([S || {_, S} <- Parts]),
     {Init, St2} = init_fun(Ns, M, Vars, Steps, A0, maps:get(register, St, true), St1),
+    {FnValues, St3} = fn_values(Funs, Vars, M, A0, St2),
     ModuleDoc = case maps:get(ns_doc, St, nil) of
                     nil -> [];
                     D -> [{eattr, A0, moduledoc, D}]
                 end,
-    {ModuleDoc ++ module_body(Funs, Init, A0), St2}.
+    {ModuleDoc ++ module_body(Funs ++ FnValues, Init, A0), St3}.
+
+%% `'__fn__'(Name)': the value of each fn var of this module, built here
+%% so it is a local fun, bound to this version of the module. Other
+%% modules take a fn var's value through it (see fn_var below): a value
+%% taken before a redefinition keeps running the old code (designs/02 §5).
+fn_values(Funs, Vars, M, A0, St) ->
+    Defined = [N || {efunction, _, N, _, _} <- Funs],
+    Fns = [{N, F, Min} || {N, #{kind := fn, arities := F, variadic := Min} = I} <- lists:sort(maps:to_list(Vars)),
+                          maps:get(module, I, M) =:= M, lists:member(N, Defined)],
+    case Fns of
+        [] -> {[], St};
+        _ ->
+            {Clauses, St1} = lists:mapfoldl(
+                               fun({N, F, Min}, S) ->
+                                       {V, S1} = expr({fn_var, A0, M, N, F, Min}, S),
+                                       {{eclause, A0, [{elit, A0, N}], [], [V]}, S1}
+                               end, St, Fns),
+            {[{eattr, A0, doc, false}, {efunction, A0, '__fn__', 1, Clauses}], St1}
+    end.
 
 %% Docstrings become EEP-48 docs (OTP 27+ `-doc', a wild attribute in
 %% absform): placed right before the var's first function, so
@@ -241,10 +261,10 @@ expr({call_var, A, M, Name, Args}, St = #{module := Unit}) ->
         true -> {{ecall, A, Name, As}, St1};
         false -> {{eremote, A, M, Name, As}, St1}
     end;
-expr({fn_var, A, M, Name, Fixed, Min}, St = #{module := Unit}) ->
-    Ref = fun(N) when M =:= Unit -> {efunref, A, Name, N};
-             (N) -> {eextref, A, M, Name, N}
-          end,
+expr({fn_var, A, M, Name, _Fixed, _Min}, St = #{module := Unit}) when M =/= Unit ->
+    {{eremote, A, M, '__fn__', [{elit, A, Name}]}, St};
+expr({fn_var, A, _M, Name, Fixed, Min}, St) ->
+    Ref = fun(N) -> {efunref, A, Name, N} end,
     case {Fixed, Min} of
         {[N], nil} -> {Ref(N), St};
         _ ->

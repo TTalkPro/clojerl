@@ -136,6 +136,11 @@ read → 管线([01]) → emit → compile:forms → code:load_binary(eval_mod_N
 - **REPL 延迟**:增量单位是单 form,absform 路径跳过了扫描/解析,单 form 编译在毫秒量级;与解释器启动开销相当,可接受。`compile:forms` 在专用编译进程执行,避免污染 REPL 进程的 code server 状态(沿用 clojerl 1.0 的隔离直觉,但原因从"状态弥漫"变为"干净工程")。
 - **热代码两版本语义**:重定义 var = 重新加载该 NS 模块;BEAM 保证**旧进程继续跑旧代码**,新调用走新代码。这是已知行为,文档化:REPL 里持有旧 fun 值的进程看到旧定义,与 Erlang 原生语义一致,不模拟 JVM 的"全局立即生效"。
 - **eval 的模块泄漏**:`__eval_N` 模块累计,定期 `code:purge`/`code:delete`(N 超阈值或值已被读取后)。(2026-10-11 落地:保留最近 100 个 eval 模块,超出删最旧的;返回后立即删除是错的——结果里的闭包/惰性序列还要运行该模块的代码。)
+- **REPL 里的 def**(2026-10-11 落地,clojerl2-023):命名空间模块是整体编译的,REPL 里不能往里追加函数。所以 REPL 里每个 `def` 编译进该 var 自己的模块 `<ns>$v$<name>`(模块名须为 latin1,超出的码点写成 `$uXXXX$`),做法与编译期 segment 相同。编译后把 var 写进命名空间的注册表项,`module` 字段指向这个模块。重定义就是重新加载同一个模块,正好落在两版本语义上。
+  - **fn var 的值在定义模块内取**:跨模块取 fn var 的值时,调用该模块隐藏的 `'__fn__'/1`,拿到的是本地 fun,绑定在当时的模块版本上。外部 fun `fun M:f/1` 总是调用最新版本,做不到"旧值跑旧代码"。所以 `(def g f)` 之后重定义 `f`,`g` 仍然跑旧代码,经 var 的调用走新代码。
+  - **代价**:第二次重定义会 purge 掉最旧的版本,仍持有它的 fun 值再调用会得到 `badfun`。这是 BEAM 的上限,登记在 `:namespaces/hot-code-two-versions`。
+  - 同一个 var 的定义用 `global:trans` 串行化,避免两个进程同时重定义时在 purge 和 load 之间竞争。
+  - `user` 命名空间始终存在,但没有自己的模块,因为 OTP kernel 已经有一个 `user` 模块。脚本文件(CLI、`load-file`)按 REPL 方式逐 form 求值,不编译成命名空间模块;`require` 编译整个命名空间。
 
 ## 6. 编译缓存与增量编译
 
@@ -153,7 +158,7 @@ read → 管线([01]) → emit → compile:forms → code:load_binary(eval_mod_N
 
 ## 8. 开放问题
 
-- eval 模块的 GC 策略(§5):固定滑动窗口 vs LRU,待 REPL 实测后定。
+- ~~eval 模块的 GC 策略(§5):固定滑动窗口 vs LRU,待 REPL 实测后定。~~ 已定(clojerl2-023):固定滑动窗口,保留最近 100 个。eval 模块只跑一次,没有"再次使用"可言,LRU 记录不到有意义的访问;要防的是结果里的闭包还在用它,而这类闭包几乎总在最近的求值里。长跑测试(250 次求值)断言模块数不超过 100。REPL 里定义的 var 不进窗口,各自有模块(见 §5)。
 - 告警翻译器(风险 2)是否纳入 v1,还是先发原始 erlc 措辞。
 - `debug_info` 是否默认开:工具链收益大、.beam 体积代价小,倾向默认开,待 04 号文 CI 体积预算确认。
 

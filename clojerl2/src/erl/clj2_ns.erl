@@ -14,6 +14,12 @@
 %%% VarInfo:
 %%%   #{kind := fn,  arities := [N], variadic := Min | nil, ...}
 %%%   #{kind := const | cell | indirect, dynamic := boolean(), ...}
+%%% plus `module' when the var lives in a module of its own rather than
+%%% the namespace's (a var defined at the REPL, designs/02 §5).
+%%%
+%%% An entry may also carry `aliases' and `refers' (#{Sym => Ns}): what
+%%% `require'/`ns' evaluated at the REPL added to the namespace. They
+%%% survive a reload of the namespace module.
 %%%-------------------------------------------------------------------
 -module(clj2_ns).
 
@@ -21,6 +27,10 @@
 
 -export([ ensure_started/0
         , register/3
+        , ensure/1
+        , find_ns/1
+        , put_var/3
+        , put_ctx/3
         , remove/1
         , info/1
         , module/1
@@ -57,6 +67,29 @@ ensure_started() ->
 register(Ns, Module, Vars) when is_atom(Ns), is_atom(Module), is_map(Vars) ->
     ensure_started(),
     gen_server:call(?MODULE, {register, Ns, #{module => Module, vars => Vars}}).
+
+%% @doc Make sure `Ns' has an entry (in-ns, ns at the REPL); a namespace
+%% that has none yet gets an empty one (no module of its own).
+ensure(Ns) when is_atom(Ns) ->
+    case info(Ns) of
+        {ok, _} -> ok;
+        error -> ensure_started(), gen_server:call(?MODULE, {ensure, Ns})
+    end.
+
+%% @doc Whether `Ns' is a known namespace (find-ns).
+find_ns(Ns) when is_atom(Ns) -> info(Ns) =/= error;
+find_ns(_) -> false.
+
+%% @doc Add or replace one var of `Ns' (a REPL definition, whose
+%% VarInfo names its own module).
+put_var(Ns, Name, Info) when is_atom(Ns), is_atom(Name), is_map(Info) ->
+    ensure(Ns),
+    gen_server:call(?MODULE, {put_var, Ns, Name, Info}).
+
+%% @doc Merge aliases and refers (#{Sym => Ns}) into `Ns''s REPL context.
+put_ctx(Ns, Aliases, Refers) ->
+    ensure(Ns),
+    gen_server:call(?MODULE, {put_ctx, Ns, Aliases, Refers}).
 
 %% @doc Forget a namespace and its var roots.
 remove(Ns) ->
@@ -136,15 +169,39 @@ init([]) ->
     clj2_proto:new_table(),
     clj2_lazy:new_table(),
     clj2_eval = ets:new(clj2_eval, [named_table, public, ordered_set]),
+    %% `user' always exists, as in Clojure: the REPL's first namespace. It
+    %% has no module of its own (OTP's kernel has a module `user'); its
+    %% vars, defined at the REPL, each have theirs.
+    true = ets:insert(?TAB, {user, #{module => user, vars => #{}}}),
     {ok, #{}}.
 
 handle_call({register, Ns, Entry}, _From, S) ->
-    true = ets:insert(?TAB, {Ns, Entry}),
+    Ctx = case lookup(Ns) of
+              {ok, Old} -> maps:with([aliases, refers], Old);
+              error -> #{}
+          end,
+    true = ets:insert(?TAB, {Ns, maps:merge(Entry, Ctx)}),
     true = ets:delete(?FAIL_TAB, Ns),
+    {reply, ok, S};
+handle_call({ensure, Ns}, _From, S) ->
+    case lookup(Ns) of
+        {ok, _} -> ok;
+        error -> true = ets:insert(?TAB, {Ns, #{module => module(Ns), vars => #{}}})
+    end,
+    {reply, ok, S};
+handle_call({put_var, Ns, Name, Info}, _From, S) ->
+    {ok, E = #{vars := Vars}} = lookup(Ns),
+    true = ets:insert(?TAB, {Ns, E#{vars := Vars#{Name => Info}}}),
+    {reply, ok, S};
+handle_call({put_ctx, Ns, Aliases, Refers}, _From, S) ->
+    {ok, E} = lookup(Ns),
+    true = ets:insert(?TAB, {Ns, E#{aliases => maps:merge(maps:get(aliases, E, #{}), Aliases),
+                                    refers => maps:merge(maps:get(refers, E, #{}), Refers)}}),
     {reply, ok, S};
 handle_call({remove, Ns}, _From, S) ->
     case ets:lookup(?TAB, Ns) of
-        [{Ns, #{module := M}}] -> clj2_var:delete_roots(M);
+        [{Ns, #{module := M, vars := Vars}}] ->
+            [clj2_var:delete_roots(VM) || VM <- lists:usort([M | [VM || #{module := VM} <- maps:values(Vars)]])];
         [] -> ok
     end,
     true = ets:delete(?TAB, Ns),

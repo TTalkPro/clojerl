@@ -19,6 +19,7 @@
         , deref/2
         , push_binding/3
         , pop_binding/2
+        , set_binding/3
         , delete_roots/1
         ]).
 
@@ -60,6 +61,13 @@ pop_binding(M, Name) ->
         [_ | Rest] -> put(K, Rest);
         _ -> erlang:error({clj2_no_binding, M, Name})
     end,
+    ok.
+
+%% @doc Replace this process's innermost binding (establish one if
+%% none): what the REPL does to *1, *2, *3 and *e.
+set_binding(M, Name, V) ->
+    K = {clj2_dyn, M, Name},
+    put(K, [V | case get(K) of [_ | Outer] -> Outer; _ -> [] end]),
     ok.
 
 delete_roots(M) ->

@@ -26,3 +26,5 @@ jobs:
       run: make -C clojerl2 test
     - name: Corpus gate (designs/04 §5.1; failures must match test/corpus-known-failures.edn)
       run: make -C clojerl2 certify
+    - name: REPL / CLI smoke (clojerl2-023)
+      run: make -C clojerl2 smoke

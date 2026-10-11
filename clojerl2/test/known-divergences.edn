@@ -44,8 +44,14 @@
   :design "designs/03 §4.1a, clojerl2-016"}
  {:id :namespaces/hot-code-two-versions
   :area :namespaces
-  :reason "Redefining a namespace reloads its module with BEAM semantics: closures made by the previous version keep running it; JVM-style immediate global rebinding is not emulated."
-  :design "designs/02 §5, designs/03 §2.2"} {:id :fn/structural-identity
+  :reason "Redefinition follows BEAM's two-version code loading: reloading a namespace, or redefining a var at the REPL (each REPL var has a module of its own), keeps the previous version alive; closures and fn values taken from it keep running the old code while new calls run the new one. A second redefinition purges the oldest version: fn values still holding it raise badfun when called, and a process still executing it makes the redefinition fail (old_code_in_use). JVM-style immediate global rebinding is not emulated."
+  :design "designs/02 §5, designs/03 §2.2, clojerl2-023"} {:id :fn/structural-identity
   :area :compiler
   :reason "Fns are Erlang funs, which compare by value: two closures of the same fn form over equal captured values are = and identical?, and collapse as set members or map keys (JVM: every evaluation of a fn form is a distinct object)."
-  :design "designs/03 §1 (D8)"}]
+  :design "designs/03 §1 (D8)"} {:id :number/beam-semantics
+  :area :numbers
+  :reason "Arithmetic follows BEAM, not the JVM (a project decision): integers are unbounded (no 64-bit long overflow, wrap-around, truncation or range checks: parse-long of a big number is that number, ^long/^double hints coerce nothing, bit ops take bignums, %x of a negative number is signed); float division by zero raises badarith (BEAM floats have no Inf/NaN); comparisons and numeric predicates do not type-check their arguments (Erlang term order)."
+  :design "designs/03 §1 (D8); user decision 2026-10-11 (clojerl2-023)"} {:id :namespaces/symbols
+  :area :namespaces
+  :reason "A namespace is its symbol: *ns*, in-ns, the-ns, find-ns and create-ns deal in symbols (there are no Namespace objects), and *ns* prints as the bare name. *ns* is bound per process, so each REPL process has its own current namespace."
+  :design "clojerl2-023 (clj2_rt_eval)"}]

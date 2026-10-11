@@ -44,6 +44,20 @@ clojure.core(00-kernel 至 04-repl 五层)由 `clj2_core:boot()` 按 `src/clj2/c
 erl -pa ebin -eval '{ok, _} = clj2_core:boot(), io:format("~p~n", [clj2_compiler:eval(<<"(->> (range 10) (filter even?) (map inc) (reduce +))">>)]), halt().'
 ```
 
+## REPL 与 CLI(clojerl2-023)
+
+`make` 会把编译器和预编译好的 clojure.core 放进 `ebin/`,之后:
+
+```sh
+bin/clojerl2                          # REPL(Ctrl-D 或 :repl/quit 退出)
+bin/clojerl2 -e '(+ 1 2)'             # 求值,打印非 nil 结果
+bin/clojerl2 script.clj a b           # 逐 form 求值脚本;*command-line-args* 为 ("a" "b")
+bin/clojerl2 -p src -m my.app x       # 从源码路径 require my.app,调用其 -main
+make smoke                            # REPL/CLI 冒烟测试(进 CI)
+```
+
+REPL 里可以 `def`/`defn`/`defmacro`、`ns`/`in-ns`、`require`、`eval`、`read-string`、`macroexpand`。每个 var 编译进自己的模块,重定义遵循 BEAM 的两版本语义:之前取到的 fn 值继续跑旧代码,新调用走新版(designs/02 §5)。中文等非 ASCII 文本直接可用:字符串是 UTF-8 binary,终端 I/O 走 unicode 模式。
+
 ## 一致性语料(designs/04 §5)
 
 `test/corpus.edn`(jolt corpus,`:expected` 来自 JVM Clojure)的 `:common` 条目逐条编译求值,用 `=` 与 `:expected` 比较:

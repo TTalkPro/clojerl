@@ -13,7 +13,15 @@
 
 -export([pr_str/1, print_str/1, float_str/1]).
 
-pr_str(X) -> iolist_to_binary(pr(X)).
+%% pr/1 mixes UTF-8 binaries with code-point lists (io_lib output):
+%% only unicode:characters_to_binary/1 joins those correctly. A string
+%% that is not valid UTF-8 (bytes from outside) is kept byte for byte.
+pr_str(X) ->
+    P = pr(X),
+    case unicode:characters_to_binary(P) of
+        B when is_binary(B) -> B;
+        _ -> iolist_to_binary(P)
+    end.
 
 print_str(B) when is_binary(B) -> B;
 print_str(X) -> pr_str(X).
@@ -33,14 +41,16 @@ pr({vector, _, T}) when is_tuple(T) -> [$[, join([pr(X) || X <- tuple_to_list(T)
 pr({map, _, M}) when is_map(M) -> map_str(M);
 pr({set, _, M}) when is_map(M) -> [<<"#{">>, join([pr(X) || X <- lists:sort(maps:keys(M))], " "), $}];
 pr({delay, _, _}) -> <<"#object[clojure.lang.Delay]">>;
+pr({var, _, {Ns, Name}}) when is_atom(Ns), is_atom(Name) ->
+    [<<"#'">>, atom_to_binary(Ns), $/, atom_to_binary(Name)];
 pr({clj2_fn, _, _}) -> <<"#object[clojure.lang.AFunction]">>;
-pr(F) when is_function(F) -> [<<"#object[">>, io_lib:format("~p", [F]), $]];
+pr(F) when is_function(F) -> [<<"#object[">>, io_lib:format("~tp", [F]), $]];
 pr({Tag, _, M}) when is_atom(Tag), is_map(M) ->              % record
     [$#, atom_to_binary(Tag), map_str(M)];
 pr({Tag, _, T}) when is_atom(Tag), is_tuple(T) ->            % deftype
     [<<"#object[">>, atom_to_binary(Tag), $]];
 pr(P) when is_pid(P) -> [<<"#object[pid ">>, pid_to_list(P), $]];
-pr(X) -> io_lib:format("~p", [X]).
+pr(X) -> io_lib:format("~tp", [X]).
 
 seq_str(L) -> [$(, join([pr(X) || X <- clj2_coll:to_list(L)], " "), $)].
 

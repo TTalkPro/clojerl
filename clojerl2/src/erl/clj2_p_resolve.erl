@@ -181,7 +181,7 @@ own_var(A, Name, #{scope := #{module := M, vars := Vars}}) ->
 ext_var(A, Ns, Name, Ext) ->
     #{module := M, vars := Vars} = maps:get(Ns, Ext),
     case Vars of
-        #{Name := Info} -> {varref, A, M, Name, Info};
+        #{Name := Info} -> {varref, A, maps:get(module, Info, M), Name, Info};
         _ -> fail(A, {no_such_var, Ns, Name})
     end.
 

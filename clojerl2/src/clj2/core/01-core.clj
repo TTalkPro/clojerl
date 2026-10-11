@@ -429,3 +429,30 @@
                        `(mapcat (fn [~b] ~(emit more)) ~coll))))
                  `(list ~body-expr)))]
     (emit (seq seq-exprs))))
+
+;;;; ------------------------------------------------------------------
+;;;; Evaluation and namespaces (clojerl2-023, clj2_rt_eval)
+;;;;
+;;;; A namespace is its symbol (no Namespace objects). *ns* is bound per
+;;;; process: in-ns changes this process's current namespace.
+
+(def ^:dynamic *ns* 'user)
+
+;; The CLI binds it to the arguments after the script or -m namespace.
+(def ^:dynamic *command-line-args* nil)
+
+(defn in-ns [name] (clj2_rt_eval/in_ns name))
+(defn eval [form] (clj2_rt_eval/eval form))
+(defn read-string [s] (clj2_rt_eval/read_string s))
+(defn load-string [s] (clj2_rt_eval/load_string s))
+(defn load-file [path] (clj2_rt_eval/load_file path))
+(defn macroexpand-1 [form] (clj2_rt_eval/macroexpand_1 form))
+(defn macroexpand [form] (clj2_rt_eval/macroexpand form))
+(defn require [& args] (clj2_rt_eval/require args))
+
+(defn all-ns [] (seq (clj2_ns/all)))
+(defn find-ns [name] (when (clj2_ns/find_ns name) name))
+(defn the-ns [x]
+  (if (find-ns x) x (throw (ex-info (str "No namespace: " x " found") {:ns x}))))
+(defn create-ns [name] (clj2_ns/ensure name) name)
+(defn ns-name [ns] (the-ns ns))

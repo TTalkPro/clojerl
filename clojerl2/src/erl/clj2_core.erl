@@ -13,7 +13,7 @@
 %%%-------------------------------------------------------------------
 -module(clj2_core).
 
--export([boot/0, boot/1, layers/0, layer_vars/0, source_dir/0]).
+-export([boot/0, boot/1, ensure/0, build/1, layers/0, layer_vars/0, source_dir/0]).
 
 %% @doc Compile and load clojure.core (all layers).
 boot() -> boot(#{}).
@@ -21,17 +21,42 @@ boot() -> boot(#{}).
 %% Opts: `upto' — the last layer to load (e.g. '00-kernel'); `dir' —
 %% where the sources are; plus compiler options (mode, check).
 boot(Opts) ->
+    {Src, CompileOpts} = source(Opts),
+    clj2_compiler:load_ns(Src, CompileOpts).
+
+%% @doc clojure.core, loaded: the prebuilt modules on the code path
+%% (`make' writes them to ebin/, build/1) when they are there, else
+%% compiled from source (boot/0). The CLI starts with this.
+ensure() ->
+    case code:ensure_loaded('clojure.core') of
+        {module, _} -> {ok, 'clojure.core'};          % its on_load registered it
+        {error, _} -> boot()
+    end.
+
+%% @doc Compile clojure.core (all layers) and write its modules — the
+%% namespace module and its protocol impl modules — as .beam files to
+%% `Dir'. Impl modules load on first dispatch (clj2_proto).
+build(Dir) ->
+    {Src, CompileOpts} = source(#{}),
+    case clj2_compiler:compile_ns_modules(Src, CompileOpts) of
+        {ok, Ns, Mods} ->
+            [ok = file:write_file(filename:join(Dir, atom_to_list(M) ++ ".beam"), Bin) || {M, Bin} <- Mods],
+            {ok, Ns, [M || {M, _} <- Mods]};
+        {error, Es, _} -> {error, Es}
+    end.
+
+source(Opts) ->
     Dir = maps:get(dir, Opts, source_dir()),
     #{ns := Ns, layers := Layers} = boot_order(Dir),
     Selected = select(Layers, maps:get(upto, Opts, all)),
     Forms = lists:append([layer_forms(Dir, L, I) || {I, L} <- enumerate(Selected)]),
     Allowed = lists:usort(lists:append([A || #{allowed_ns := A} <- Selected])),
-    clj2_compiler:load_ns({forms, Forms},
-                          (maps:without([dir, upto], Opts))#{allowed_ns => Allowed,
-                                                             %% core is below clojure.core
-                                                             refer_clojure => false,
-                                                             file => "clojure/core.clj",
-                                                             ns => Ns}).
+    {{forms, Forms},
+     (maps:without([dir, upto], Opts))#{allowed_ns => Allowed,
+                                        %% core is below clojure.core
+                                        refer_clojure => false,
+                                        file => "clojure/core.clj",
+                                        ns => Ns}}.
 
 %% @doc The declared layers, in load order.
 layers() ->

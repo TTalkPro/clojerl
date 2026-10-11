@@ -7,7 +7,7 @@
 %%%-------------------------------------------------------------------
 -module(clj2_rt).
 
--export([invoke/2, var_fn/3]).
+-export([invoke/2, var_fn/3, var/2]).
 
 %% layer-0 primitives for clojure.core (00-kernel)
 -export([str/1, keyword/1, keyword/2, symbol/1, symbol/2, name/1, namespace/1,
@@ -192,8 +192,10 @@ sort(Cmp, Coll) ->
     lists:sort(Le, L).
 
 %% @doc A subset of java.util.Formatter: %s %d %f %.Nf %x %X %o %e %b %c %n %%.
+%% Works on code points (the format string decoded, arguments as
+%% chardata) and encodes the result once: padding counts characters.
 format(Fmt, Args) when is_binary(Fmt) ->
-    iolist_to_binary(fmt(binary_to_list(Fmt), clj2_coll:to_list(Args))).
+    unicode:characters_to_binary(fmt(unicode:characters_to_list(Fmt), clj2_coll:to_list(Args))).
 
 fmt([], _) -> [];
 fmt("%%" ++ R, As) -> [$% | fmt(R, As)];
@@ -256,3 +258,6 @@ subs(S, Start, End) ->
     (Start >= 0 andalso Start =< End1 andalso End1 =< length(Cs))
         orelse erlang:error({clj2_string_index_out_of_bounds, Start, End1}),
     unicode:characters_to_binary(lists:sublist(Cs, Start + 1, End1 - Start)).
+
+%% @doc A var as a value (what def returns): #'ns/name.
+var(Ns, Name) -> {var, nil, {Ns, Name}}.

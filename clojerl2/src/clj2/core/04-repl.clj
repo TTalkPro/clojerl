@@ -29,3 +29,10 @@
     (when-let [d (get info :doc)]
       (when (or (clj2_rt/str_contains (str var-name) s) (clj2_rt/str_contains d s))
         (print-doc (symbol (str ns-name) (str var-name)))))))
+
+;; The REPL (clj2_repl) binds these in its process: the last three
+;; values and the last exception.
+(def ^:dynamic *1 nil)
+(def ^:dynamic *2 nil)
+(def ^:dynamic *3 nil)
+(def ^:dynamic *e nil)
