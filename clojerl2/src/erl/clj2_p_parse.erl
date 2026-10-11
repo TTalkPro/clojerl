@@ -263,6 +263,7 @@ form([Head | Args] = F, A, E) -> list_form(unwrap(Head), Head, Args, F, A, E);
 form({syntax_quote, [], T}, A, E) -> squote(T, A, E);
 form({fnstar, [], [{arity, [], [Ps, Body]}]}, A, E) -> fn([[Ps, Body]], A, E);
 form({deref, [], X}, A, E) -> form(['clojure.core/deref', X], A, E);
+form({var, [], X}, A, E) -> form([var, X], A, E);           % #'x
 form({Unq, [], _}, A, _E) when Unq =:= unquote; Unq =:= unquote_splicing ->
     syntax(A, unquote_outside_syntax_quote);
 form(X, A, E) ->
@@ -322,6 +323,11 @@ list_form(Special, _, Args, _F, A, _E) when Special =:= quote; Special =:= 'if';
     syntax(A, {bad_special_form, Special, length(Args)});
 list_form(Def, _, _Args, _F, A, _E) when Def =:= def; Def =:= ns ->
     syntax(A, {not_at_top_level, Def});
+list_form(var, _, [S0], _F, A, _E) ->
+    case clj2_form:to_data(S0) of
+        S when is_atom(S), S =/= nil, S =/= true, S =/= false -> {the_var, A, S};
+        _ -> syntax(A, {bad_special_form, var, 1})
+    end;
 list_form(Special, _, _Args, _F, A, _E) when Special =:= '.'; Special =:= new;
                                              Special =:= 'set!'; Special =:= var;
                                              Special =:= 'deftype*'; Special =:= 'reify*';

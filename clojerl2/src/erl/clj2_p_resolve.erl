@@ -64,6 +64,12 @@ expr({sym, A, S}, Env, _L, St) ->
                 unresolved -> fail(A, {unresolved_symbol, S})
             end
     end;
+%% (var x): the var itself, a constant #'ns/name (what def returns)
+expr({the_var, A, S}, _Env, _L, St) ->
+    case global(A, S, St) of
+        {var, {varref, _, _, Name, _}} -> {{const, A, {var, nil, {var_ns(S, St), Name}}}, St};
+        _ -> fail(A, {unresolved_var, S})
+    end;
 expr({invoke, A, {sym, _, S} = H, Args}, Env, L, St) when not is_map_key(S, Env) ->
     case global(A, S, St) of
         {erlang, M, F} ->
@@ -170,6 +176,14 @@ global(A, S, St = #{scope := Scope}) ->
                         _ -> unresolved
                     end
             end
+    end.
+
+%% The namespace a var symbol names (global/3 has found the var).
+var_ns(S, #{scope := #{ns := Ns, vars := Vars, aliases := Aliases, refers := Refers}}) ->
+    case qualified(S) of
+        {Q, _} -> maps:get(Q, Aliases, Q);
+        false when is_map_key(S, Vars) -> Ns;
+        false -> maps:get(S, Refers)
     end.
 
 %% A var's info may name its module (vars of earlier compile-time

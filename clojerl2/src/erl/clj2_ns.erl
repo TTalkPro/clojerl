@@ -167,6 +167,7 @@ init([]) ->
     ?FAIL_TAB = ets:new(?FAIL_TAB, [named_table, protected, set]),
     clj2_var:new_table(),
     clj2_proto:new_table(),
+    clj2_ref:new_tables(),
     clj2_lazy:new_table(),
     clj2_eval = ets:new(clj2_eval, [named_table, public, ordered_set]),
     %% `user' always exists, as in Clojure: the REPL's first namespace. It

@@ -6,7 +6,7 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **实测佐证**:`test/clj2_divergence_evidence_tests.erl` 为每一条准备一个测试。如果哪天行为变了,测试就会失败,登记表必须跟着更新。CI 还会检查本文是否覆盖了每一条。
 - **corpus 门控**:corpus 里因这些差异而与 JVM 结果不同的条目,都标注了对应的差异编号(`make certify`)。
 
-下面共 16 条。每条依次是:JVM 上的行为 → clojerl2 上的行为 → 替代写法。
+下面共 19 条。每条依次是:JVM 上的行为 → clojerl2 上的行为 → 替代写法。
 
 另外有很多功能是**还没做**,不属于有意的差异,例如 atom、多方法、正则。那些列在 [README](README.md#现状2026-10)。
 
@@ -68,7 +68,7 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 ### `:exceptions/erlang-classes` catch 按 Erlang 异常类
 
 - **JVM**:`catch` 写的是 Throwable 的类名,如 `ArithmeticException`。
-- **clojerl2**:`catch` 接受 `:error`/`:exit`/`:throw` 三类;`:default`、`Exception`、`Throwable` 捕获全部。写 JVM 类名会编译报错,因为 BEAM 没有异常类层级。`throw` 抛出的是 Erlang `error`。
+- **clojerl2**:`catch` 接受 `:error`/`:exit`/`:throw` 三类;`:default`、`Exception`、`Throwable` 捕获全部。写 JVM 类名会编译报错,因为 BEAM 没有异常类层级。`throw` 抛出的是 Erlang `error`。future 的主体抛出异常时,`deref` 重新抛出的就是那个异常本身;JVM 会把它包在 `ExecutionException` 里。
 - **替代写法**:写 `(catch Exception e ...)` 或 `(catch :error e ...)`,在处理代码里按原因或 `(ex-data e)` 分派。
 - 依据:designs/09 §3。
 
@@ -110,9 +110,9 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 
 ### `:dynamic/per-process-bindings` 动态绑定属于进程
 
-- **JVM**:`future`、agent 会带上发起线程的绑定(binding conveyance)。
-- **clojerl2**:动态绑定存在进程字典里,只属于设置它的进程。REPL 的当前命名空间,以及 `*1`/`*2`/`*3`/`*e`,也是如此。新进程看到的是根值。
-- **替代写法**:要交给其他进程的值,显式通过参数或消息传过去。
+- **JVM**:任何线程上都可以用 `bound-fn` 带上绑定;`future`、agent 自动带上。
+- **clojerl2**:动态绑定存在进程字典里。`future`、agent 的动作和 `bound-fn` 会把调用方的绑定带过去,与 JVM 一致;其他进程(`erlang/spawn` 启动的、Erlang 回调的)一开始没有任何绑定,看到的是根值。REPL 的当前命名空间,以及 `*1`/`*2`/`*3`/`*e`,也是绑定。
+- **替代写法**:交给 `erlang/spawn` 或 Erlang 代码的 fn,先用 `bound-fn` 包一层;或者把值显式作为参数、消息传过去。
 - 依据:designs/03 §3。
 
 ## 状态
@@ -121,8 +121,32 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 
 - **JVM**:`ref`、`dosync`、`alter` 提供多对象事务。
 - **clojerl2**:`ref`/`dosync`/`sync`/`alter`/`commute`/`ref-set`/`ensure` 都会抛出 ex-info 说明不支持。BEAM 没有多对象事务内存,假装支持就是在隔离性上说谎。
-- **替代写法**:把一起变化的状态放进同一个值,交给一个进程持有(gen_server 或 agent),通过消息更新。单个值的情况,atom 会在后续版本(clojerl2-018)提供。
+- **替代写法**:把一起变化的状态放进同一个值:用一个 atom 存一个 map(`swap!` 原子地更新它),或者交给一个 agent / gen_server 持有,通过消息更新。
 - 依据:designs/03 §5.2。
+
+### `:state/explicit-lifetime` 可变单元不会被回收
+
+- **JVM**:atom、promise、agent 不再被引用时由 GC 回收。
+- **clojerl2**:BEAM 没有终结器,也没有弱引用,无法得知一个值何时不再被引用。因此:
+  - 写过的 atom 会一直保留它的 ETS 行,直到虚拟机停止;只读过的 atom 不占任何空间;
+  - promise、future 的结果行,以及 agent 的进程,也一直保留;
+  - volatile 存在创建它的进程的进程字典里,进程退出时才释放,其他进程读不到。
+- **替代写法**:长期存在的 atom 和 agent 只创建一次(用 `def`),不要在长期运行的进程里每次调用都新建;每个请求的临时状态放在局部绑定、`loop`/`recur` 或进程自身的状态里;短期工作交给单独的进程,进程退出时它的 volatile 随之释放。
+- 依据:designs/03 §5.2。
+
+### `:agents/process-per-agent` 每个 agent 一个进程
+
+- **JVM**:`send` 和 `send-off` 用不同的线程池;动作执行期间发出的 send 会暂存,动作成功后才派发;`shutdown-agents` 之后再 send 会抛异常。
+- **clojerl2**:每个 agent 是一个进程,按到达顺序执行动作。`send` 和 `send-off` 共用这一个队列;动作执行期间发出的 send 立即派发;`shutdown-agents` 什么也不做。
+- **替代写法**:普通用法不用改。不要依赖"失败的动作里发出的 send 会被丢弃",也不要依赖 `shutdown-agents` 停止 agent。
+- 依据:designs/03 §5.2。
+
+### `:values/no-identity` 值没有对象身份
+
+- **JVM**:`identical?` 和 `compare-and-set!` 比较的是对象身份,两个内容相同的新向量不是同一个对象。
+- **clojerl2**:BEAM 的值没有身份,`identical?` 就是精确相等(`=:=`):`(identical? [1 2] (vector 1 2))` 为 true;`compare-and-set!` 在当前值等于期望值时就会交换。
+- **替代写法**:不要用 `identical?` 或 `compare-and-set!` 区分内容相同的值;确实需要时,在值里显式带上版本号或标识,例如 `{:version n ...}`。
+- 依据:designs/03 §1.1、§5.2。
 
 ## 惰性序列
 

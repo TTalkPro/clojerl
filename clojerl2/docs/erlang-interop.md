@@ -79,7 +79,7 @@ Clojure 字符串是 **UTF-8 binary**。Erlang 里还有字符列表(charlist),�
 
 `(throw x)` 抛出的是 Erlang 的 `error`。`ex-info` 的值就是异常原因本身,Erlang 侧 `catch error:R` 拿到的 `R` 是 `{'clojure.lang.ExceptionInfo', nil, #{':message' => ..., ':data' => ...}}`。
 
-注意:动态绑定(例如 `*ns*`)属于设置它的进程,新进程看不到(见 differences)。
+注意:动态绑定(例如 `*ns*`)属于设置它的进程。`future` 和 agent 会自动带上调用方的绑定,`erlang/spawn` 不会;交给 `spawn` 的 fn 用 `(bound-fn [] ...)` 包一层,就能带上(见 differences)。
 
 ## 从 Erlang 调用 Clojure
 

@@ -92,17 +92,28 @@ realize_chain({lazy_seq, _, {Key, Thunk}}, Pending, Conf) ->
             end
     end.
 
+%% A body that raises is memoized as raised: it runs once, the delay is
+%% realized, and every deref raises the same exception (as on the JVM; in
+%% the ets mode, waiters for the value get the exception too).
 force({delay, _, {Key, Thunk}}) ->
     Conf = conf(),
     case lookup(Key, Conf) of
-        {ok, V} -> V;
+        {ok, V} -> outcome(V);
         none ->
             case claim(Key, Conf) of
-                {done, V} -> V;
-                won -> V = Thunk(), store(Key, V, Conf), V
+                {done, V} -> outcome(V);
+                won ->
+                    try Thunk() of
+                        V -> store(Key, V, Conf), V
+                    catch
+                        C:R:S -> store(Key, {'$clj2_raised', C, R, S}, Conf), erlang:raise(C, R, S)
+                    end
             end
     end;
 force(X) -> X.
+
+outcome({'$clj2_raised', C, R, S}) -> erlang:raise(C, R, S);
+outcome(V) -> V.
 
 %% @doc deref of the reference types this layer knows (delay); atoms,
 %% agents, futures arrive with clojerl2-018.

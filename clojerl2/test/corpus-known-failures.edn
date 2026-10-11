@@ -11,7 +11,7 @@
 ;; :cause here (e.g. to a divergence id) and it sticks.
 {:pending
  {:pending/multimethods {:reason "defmulti/defmethod and hierarchies are not implemented yet." :task "clojerl2-017"}
-  :pending/ref-types {:reason "atoms, volatiles, refs, agents, futures, promises and delays are not implemented yet." :task "clojerl2-018"}
+  :pending/ref-types {:reason "Var-root operations are not implemented yet: alter-var-root, with-redefs, with-local-vars, var-get/var-set; also locking. (atoms, agents, futures, promises, volatiles and binding came with clojerl2-018.)" :task "clojerl2-018 follow-up"}
   :pending/strings-io {:reason "regexes, format, string/char functions and reader/writer IO are not implemented yet." :task "clojerl2-020"}
   :pending/runtime-eval {:reason "Namespace reflection is not implemented yet: ns-publics/ns-map/ns-aliases/ns-unmap/intern/resolve, var objects (var-get, var?), alias/refer as functions, an ns form inside a namespace file. (eval, read-string, require, in-ns came with clojerl2-023.)" :task "clojerl2-023 follow-up"}
   :pending/metadata {:reason "meta/with-meta/vary-meta on values are not implemented yet." :task "clojerl2-021 follow-up"}
@@ -95,28 +95,12 @@
   {:suite "chunking-model / realization granularity" :label "first over keep-indexed of a chunked vector realizes the whole 32-block" :cause :lazy-seq/no-chunking}
   {:suite "chunking-model / realization granularity" :label "first over map-indexed of a chunked vector realizes the whole 32-block" :cause :lazy-seq/no-chunking}
   {:suite "chunking-model / realization granularity" :label "nth 0 over a chunked vector realizes the whole 32-block" :cause :lazy-seq/no-chunking}
-  {:suite "chunking-model / unchunked realization granularity" :label "dedupe is fully lazy at construction" :cause :pending/ref-types}
-  {:suite "chunking-model / unchunked realization granularity" :label "mapcat is fully lazy at construction" :cause :pending/ref-types}
+  {:suite "chunking-model / unchunked realization granularity" :label "dedupe is fully lazy at construction" :cause :pending/triage}
+  {:suite "chunking-model / unchunked realization granularity" :label "mapcat is fully lazy at construction" :cause :pending/triage}
   {:suite "clojure 1.12 / arity" :label "more than twenty args" :cause :exceptions/erlang-classes}
   {:suite "clojure 1.12 / partitionv" :label "partitionv-all has a transducer arity" :cause :pending/missing-core-var}
   {:suite "clojure 1.12 / reader" :label "a bad arg literal" :cause :exceptions/erlang-classes}
   {:suite "clojure 1.12 / version" :label "*clojure-version* is 1.12" :cause :pending/missing-core-var}
-  {:suite "clojure.core / futures — deref" :label "@ reader macro derefs" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — deref" :label "body error re-raised on deref" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — deref" :label "deref is cached/idempotent" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — deref" :label "future + deref" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — deref" :label "future returns a map" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — deref" :label "future returns collection" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — deref" :label "timed deref of ready future" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — predicates" :label "cancel an already-completed future returns false" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — predicates" :label "future-cancelled? fresh is false" :cause :pending/missing-core-var}
-  {:suite "clojure.core / futures — predicates" :label "future-done? after cancel" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — predicates" :label "future-done? after deref" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — predicates" :label "future? false" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — predicates" :label "future? true" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — predicates" :label "realized? after deref" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — snapshot (copy) semantics" :label "captured atom is snapshotted, not shared" :cause :pending/ref-types}
-  {:suite "clojure.core / futures — snapshot (copy) semantics" :label "future sees its own mutation" :cause :pending/ref-types}
   {:suite "clojure.core / leaf batch (complement fnil munge etc.)" :label "bigdec" :cause :pending/missing-core-var}
   {:suite "clojure.core / leaf batch (complement fnil munge etc.)" :label "clojure-version" :cause :pending/missing-core-var}
   {:suite "clojure.core / leaf batch (complement fnil munge etc.)" :label "denominator throws" :cause :pending/missing-core-var}
@@ -128,8 +112,8 @@
   {:suite "clojure.core / leaf batch (complement fnil munge etc.)" :label "test no-test" :cause :pending/missing-core-var}
   {:suite "clojure.core / leaf batch 2" :label "conj nil onto map" :cause :pending/triage}
   {:suite "clojure.core / leaf batch 2" :label "max non-number throws" :cause :number/beam-semantics}
-  {:suite "clojure.core / leaf batch 2" :label "memoize" :cause :pending/ref-types}
-  {:suite "clojure.core / leaf batch 2" :label "memoize caches nil" :cause :pending/ref-types}
+  {:suite "clojure.core / leaf batch 2" :label "memoize" :cause :pending/missing-core-var}
+  {:suite "clojure.core / leaf batch 2" :label "memoize caches nil" :cause :pending/missing-core-var}
   {:suite "clojure.core / leaf batch 3" :label "empty sorted keeps cmp" :cause :pending/sorted-colls}
   {:suite "clojure.core / leaf batch 3" :label "interpose xform" :cause :pending/missing-core-var}
   {:suite "clojure.core / leaf batch 3" :label "take-nth into" :cause :pending/missing-core-var}
@@ -151,7 +135,7 @@
   {:suite "clojure.core / pmap family" :label "pmap semi-lazy — first of infinite does not hang" :cause :pending/missing-core-var}
   {:suite "clojure.core / pmap family" :label "pmap values in order" :cause :pending/missing-core-var}
   {:suite "clojure.core / pmap family" :label "pvalues" :cause :pending/missing-core-var}
-  {:suite "clojure.core / pmap family" :label "snapshot semantics" :cause :pending/ref-types}
+  {:suite "clojure.core / pmap family" :label "snapshot semantics" :cause :pending/missing-core-var}
   {:suite "clojure.core / select-keys" :label "select-keys preserves metadata" :cause :pending/metadata}
   {:suite "clojure.edn / closed dispatch table" :label "#< is unreadable in both readers" :cause :exceptions/erlang-classes}
   {:suite "clojure.edn / closed dispatch table" :label "a leading quote is part of the symbol, not a quote form" :cause :pending/stdlib-namespaces}
@@ -305,8 +289,8 @@
   {:suite "concurrency / ExecutorService.invokeAll" :label "invokeAll of no tasks, and with a timeout" :cause :pending/host-types}
   {:suite "concurrency / ExecutorService.invokeAll" :label "invokeAny returns a successful result, skipping failures" :cause :pending/host-types}
   {:suite "concurrency / ExecutorService.invokeAll" :label "invokeAny with every task failing, or none" :cause :exceptions/erlang-classes}
-  {:suite "concurrency-model / compare-and-set!" :label "identity mismatch on equal values fails" :cause :pending/ref-types}
-  {:suite "concurrency-model / compare-and-set!" :label "immediate fixnums have no distinct boxes" :cause :pending/ref-types}
+  {:suite "concurrency-model / compare-and-set!" :label "identity mismatch on equal values fails" :cause :values/no-identity}
+  {:suite "concurrency-model / compare-and-set!" :label "immediate fixnums have no distinct boxes" :cause :values/no-identity}
   {:suite "conformance / #inst + syntax-quote literal collapse (spec 2.4/2.3)" :label "inst partial = full" :cause :pending/reader}
   {:suite "conformance / #inst + syntax-quote literal collapse (spec 2.4/2.3)" :label "sq number collapse" :cause :pending/compiler}
   {:suite "conformance / 1.11 additions + ns fns (spec 35-var batch A)" :label "ns-publics lookup" :cause :pending/runtime-eval}
@@ -319,15 +303,6 @@
   {:suite "conformance / HIGH: aliased namespace calls" :label "require :as alias" :cause :pending/stdlib-namespaces}
   {:suite "conformance / HIGH: dispatch" :label "multimethod" :cause :pending/multimethods}
   {:suite "conformance / HIGH: dispatch" :label "multimethod default" :cause :pending/multimethods}
-  {:suite "conformance / atoms (full support)" :label "add-watch" :cause :pending/ref-types}
-  {:suite "conformance / atoms (full support)" :label "atom map swap" :cause :pending/ref-types}
-  {:suite "conformance / atoms (full support)" :label "atom validator" :cause :pending/ref-types}
-  {:suite "conformance / atoms (full support)" :label "compare-and-set!" :cause :pending/ref-types}
-  {:suite "conformance / atoms (full support)" :label "compare-and-set! no" :cause :pending/ref-types}
-  {:suite "conformance / atoms (full support)" :label "reset! ret" :cause :pending/ref-types}
-  {:suite "conformance / atoms (full support)" :label "reset-vals!" :cause :pending/ref-types}
-  {:suite "conformance / atoms (full support)" :label "swap! args" :cause :pending/ref-types}
-  {:suite "conformance / atoms (full support)" :label "swap-vals!" :cause :pending/ref-types}
   {:suite "conformance / characters" :label "apply str chars" :cause :pending/triage}
   {:suite "conformance / characters" :label "char newline" :cause :pending/missing-core-var}
   {:suite "conformance / characters" :label "char of int" :cause :pending/strings-io}
@@ -396,19 +371,15 @@
   {:suite "conformance / host interop dot form" :label "list-member 0-arg (. target (method)) equals bare form" :cause :pending/special-forms}
   {:suite "conformance / host interop dot form" :label "list-member desugars identically to the bare form" :cause :pending/special-forms}
   {:suite "conformance / host interop dot form" :label "list-member with args (. target (method args))" :cause :pending/special-forms}
-  {:suite "conformance / iterating maps yields entries" :label "doseq nested" :cause :pending/ref-types}
-  {:suite "conformance / iterating maps yields entries" :label "doseq side" :cause :pending/ref-types}
   {:suite "conformance / macros" :label "doto" :cause :pending/missing-core-var}
   {:suite "conformance / macros" :label "macroexpand-1" :cause :pending/triage}
   {:suite "conformance / metadata / vars" :label "a quoted vector keeps position keys the program wrote" :cause :pending/metadata}
-  {:suite "conformance / metadata / vars" :label "binding dynamic" :cause :pending/ref-types}
   {:suite "conformance / metadata / vars" :label "defonce no-redef" :cause :pending/compiler}
   {:suite "conformance / metadata / vars" :label "so does a quoted map" :cause :pending/metadata}
   {:suite "conformance / metadata / vars" :label "so does a quoted set" :cause :pending/metadata}
   {:suite "conformance / metadata / vars" :label "vary-meta" :cause :pending/metadata}
   {:suite "conformance / migratus enablement: def/defmacro/defmulti forms, assoc, try, ns" :label "cross-ns methods visible" :cause :pending/runtime-eval}
   {:suite "conformance / migratus enablement: def/defmacro/defmulti forms, assoc, try, ns" :label "defmulti docstring" :cause :pending/multimethods}
-  {:suite "conformance / migratus enablement: def/defmacro/defmulti forms, assoc, try, ns" :label "try finally on ok+catch" :cause :pending/ref-types}
   {:suite "conformance / multimethod preferences" :label "prefer-method breaks tie" :cause :pending/multimethods}
   {:suite "conformance / native-op parity (native ops at guarded arities)" :label "native unary div" :cause :number/no-ratio-arithmetic}
   {:suite "conformance / ns introspection fns as ordinary invokes (Stage 2 tier 6b)" :label "ns-resolve + call" :cause :pending/runtime-eval}
@@ -490,9 +461,6 @@
   {:suite "conformance / var fns as ordinary invokes (Stage 2 tier 6)" :label "var-get + call" :cause :pending/special-forms}
   {:suite "conformance / var fns as ordinary invokes (Stage 2 tier 6)" :label "var? false" :cause :pending/runtime-eval}
   {:suite "conformance / var fns as ordinary invokes (Stage 2 tier 6)" :label "var? true" :cause :pending/special-forms}
-  {:suite "conformance / volatiles / delays" :label "delay deref once" :cause :pending/ref-types}
-  {:suite "conformance / volatiles / delays" :label "volatile" :cause :pending/ref-types}
-  {:suite "conformance / volatiles / delays" :label "vswap!" :cause :pending/ref-types}
   {:suite "contracts / collection fns" :label "keys/vals of empties are nil; contains? on a string is index-only" :cause :exceptions/erlang-classes}
   {:suite "contracts / collection fns" :label "transient demands an editable collection; empty on a record throws" :cause :exceptions/erlang-classes}
   {:suite "contracts / misc" :label "nth of nil honors notFound; a nil index throws; the starred specials are special" :cause :exceptions/erlang-classes}
@@ -502,19 +470,10 @@
   {:suite "contracts / numbers" :label "numerator/denominator over real ratios; even?/odd? demand integers" :cause :exceptions/erlang-classes}
   {:suite "contracts / ordering" :label "keywords order namespace-first with nil first, like symbols" :cause :pending/triage}
   {:suite "contracts / stacks and pending" :label "peek/pop demand a stack; realized? demands IPending; pop nil is nil" :cause :exceptions/erlang-classes}
-  {:suite "control / conditional-binding scope" :label "if-let evals test once" :cause :pending/ref-types}
-  {:suite "control / conditionals" :label "a large case evaluates its expression once and an arm may recur" :cause :pending/ref-types}
   {:suite "control / conditionals" :label "a large case over integers past the long range" :cause :pending/compiler}
   {:suite "control / conditionals" :label "a large case with no default throws with the value" :cause :exceptions/erlang-classes}
   {:suite "control / conditionals" :label "a large integer case matches by = semantics, not by numeric value" :cause :pending/numbers}
   {:suite "control / conditionals" :label "a large mixed case keeps each constant's own equality" :cause :pending/metadata}
-  {:suite "control / iteration" :label "doseq :let" :cause :pending/ref-types}
-  {:suite "control / iteration" :label "doseq :when" :cause :pending/ref-types}
-  {:suite "control / iteration" :label "doseq :while" :cause :pending/ref-types}
-  {:suite "control / iteration" :label "doseq nested" :cause :pending/ref-types}
-  {:suite "control / iteration" :label "doseq side-effect" :cause :pending/ref-types}
-  {:suite "control / iteration" :label "dotimes side-effect" :cause :pending/ref-types}
-  {:suite "control / iteration" :label "while" :cause :pending/ref-types}
   {:suite "control / loop lowering" :label "loop sequential init" :cause :pending/compiler}
   {:suite "control / recur tail position" :label "tail recur in a case result" :cause :pending/missing-core-var}
   {:suite "control / threading" :label "doto returns subject" :cause :pending/missing-core-var}
@@ -528,10 +487,8 @@
   {:suite "core / Throwable->map" :label "data is the root ex-data" :cause :pending/missing-core-var}
   {:suite "core / Throwable->map" :label "nil ex-info data maps as {}" :cause :pending/missing-core-var}
   {:suite "core / Throwable->map" :label "via first type is the exception class symbol" :cause :pending/missing-core-var}
-  {:suite "core / dynamic-vars" :label "*agent* is nil outside an action" :cause :pending/missing-core-var}
-  {:suite "core / dynamic-vars" :label "*agent* is the agent inside its action" :cause :pending/ref-types}
   {:suite "core / dynamic-vars" :label "*allow-unresolved-vars* default" :cause :pending/missing-core-var}
-  {:suite "core / dynamic-vars" :label "*allow-unresolved-vars* does not affect resolve" :cause :pending/ref-types}
+  {:suite "core / dynamic-vars" :label "*allow-unresolved-vars* does not affect resolve" :cause :pending/compiler}
   {:suite "core / dynamic-vars" :label "*compile-path* default" :cause :pending/missing-core-var}
   {:suite "core / dynamic-vars" :label "*repl* is false outside a REPL" :cause :pending/missing-core-var}
   {:suite "core / dynamic-vars" :label "*suppress-read* default" :cause :pending/missing-core-var}
@@ -569,10 +526,10 @@
   {:suite "core / with-local-vars" :label "var-set" :cause :pending/missing-core-var}
   {:suite "core / with-local-vars" :label "vars are values" :cause :pending/missing-core-var}
   {:suite "core / with-open" :label "binding visible" :cause :pending/missing-core-var}
-  {:suite "core / with-open" :label "body result" :cause :pending/ref-types}
-  {:suite "core / with-open" :label "close on throw" :cause :pending/ref-types}
-  {:suite "core / with-open" :label "close runs" :cause :pending/ref-types}
-  {:suite "core / with-open" :label "nested close order" :cause :pending/ref-types}
+  {:suite "core / with-open" :label "body result" :cause :pending/missing-core-var}
+  {:suite "core / with-open" :label "close on throw" :cause :pending/missing-core-var}
+  {:suite "core / with-open" :label "close runs" :cause :pending/missing-core-var}
+  {:suite "core / with-open" :label "nested close order" :cause :pending/missing-core-var}
   {:suite "core / with-open" :label "zero bindings" :cause :pending/missing-core-var}
   {:suite "core / with-precision" :label "arithmetic" :cause :pending/missing-core-var}
   {:suite "core / with-precision" :label "body evaluates" :cause :pending/missing-core-var}
@@ -622,16 +579,14 @@
   {:suite "deftype / destructured method param" :label "a deftype method may destructure a param (clojure.core/maybe-destructured)" :cause :pending/compiler}
   {:suite "deftype / destructured method param" :label "a destructured param binding named like a field wins over the field" :cause :pending/compiler}
   {:suite "deftype / destructured method param" :label "map destructuring in a deftype method param" :cause :pending/compiler}
-  {:suite "deftype / identity semantics" :label "a declared hashCode is consulted on every hash, never cached" :cause :pending/ref-types}
+  {:suite "deftype / identity semantics" :label "a declared hashCode is consulted on every hash, never cached" :cause :pending/compiler}
   {:suite "deftype / identity semantics" :label "a declared hashCode still governs the hash" :cause :pending/compiler}
   {:suite "deftype / identity semantics" :label "a plain deftype compares and keys by identity, not structure" :cause :pending/triage}
-  {:suite "delay / exception memoization" :label "throwing body runs once, stays realized, re-throws" :cause :pending/ref-types}
   {:suite "destructure / associative extras" :label "keyword :keys" :cause :pending/compiler}
   {:suite "destructure / associative extras" :label "keyword :keys ns" :cause :pending/compiler}
   {:suite "destructure / associative extras" :label "namespaced :keys" :cause :pending/compiler}
   {:suite "destructure / associative extras" :label "namespaced :syms" :cause :pending/compiler}
   {:suite "destructure / fn params & loop" :label "loop init sees destr" :cause :pending/missing-core-var}
-  {:suite "destructure / in forms" :label "doseq destructure" :cause :pending/ref-types}
   {:suite "destructure / keyword args (& {:keys})" :label "a lone nil arg is a nil map, not an empty one" :cause :pending/triage}
   {:suite "destructure / keyword args (& {:keys})" :label "a lone trailing non-map arg IS the map, so its keys read as nil" :cause :pending/triage}
   {:suite "destructure / keyword args (& {:keys})" :label "a lone vector arg is the map itself, not a pair" :cause :pending/triage}
@@ -646,9 +601,9 @@
   {:suite "destructure / macro params" :label "macro fixed destructure" :cause :pending/compiler}
   {:suite "distinct / any seqable" :label "a default sorted set is unaffected" :cause :pending/sorted-colls}
   {:suite "distinct / any seqable" :label "a sorted set with an =-inconsistent comparator still dedups" :cause :pending/sorted-colls}
-  {:suite "dynamic vars / *print-meta*" :label "*print-meta* is a bindable dynamic var" :cause :pending/ref-types}
+  {:suite "dynamic vars / *print-meta*" :label "*print-meta* is a bindable dynamic var" :cause :pending/compiler}
   {:suite "dynamic vars / portable defaults" :label "*data-readers* map, *math-context* nil" :cause :pending/missing-core-var}
-  {:suite "dynamic vars / portable defaults" :label "binding *read-eval*" :cause :pending/ref-types}
+  {:suite "dynamic vars / portable defaults" :label "binding *read-eval*" :cause :pending/compiler}
   {:suite "dynamic vars / portable defaults" :label "default reads" :cause :pending/missing-core-var}
   {:suite "edn / deferred tags" :label "a :readers override wins over the built-in #inst (not eagerly built)" :cause :pending/stdlib-namespaces}
   {:suite "edn / deferred tags" :label "a normal #inst still constructs without an override" :cause :pending/reader}
@@ -661,7 +616,6 @@
   {:suite "edn / strictness" :label "invalid tokens throw; :/ and ns// are valid" :cause :pending/stdlib-namespaces}
   {:suite "equality / base scalars of different kinds" :label "char vs its code point" :cause :pending/triage}
   {:suite "equality / case by identity" :label "no match without a default throws" :cause :exceptions/erlang-classes}
-  {:suite "equality / identity" :label "= short-circuits on identity without realizing a lazy seq (Util.equiv k1 == k2)" :cause :pending/ref-types}
   {:suite "errors / host operations carry a JVM class" :label "a Math static rejects a non-number" :cause :exceptions/erlang-classes}
   {:suite "errors / host operations carry a JVM class" :label "a System static rejects a non-string" :cause :exceptions/erlang-classes}
   {:suite "errors / host operations carry a JVM class" :label "a ^double hint rejects a non-number" :cause :exceptions/erlang-classes}
@@ -704,12 +658,9 @@
   {:suite "exceptions / recur across try" :label "locking is still reentrant" :cause :pending/host-types}
   {:suite "exceptions / recur across try" :label "locking still returns its body" :cause :pending/host-types}
   {:suite "exceptions / recur across try" :label "loop inside locking recurs to itself" :cause :pending/host-types}
-  {:suite "exceptions / recur across try" :label "recur across binding" :cause :pending/ref-types}
   {:suite "exceptions / recur across try" :label "recur across locking" :cause :pending/host-types}
   {:suite "exceptions / runtime error classes" :label "ArityException is an IllegalArgumentException" :cause :pending/missing-core-var}
   {:suite "exceptions / runtime error classes" :label "non-seqable is IllegalArgumentException" :cause :pending/missing-core-var}
-  {:suite "exceptions / try-catch" :label "finally runs on ok" :cause :pending/ref-types}
-  {:suite "exceptions / try-catch" :label "finally runs on throw" :cause :pending/ref-types}
   {:suite "exceptions / wrong-class throws" :label "ArrayList get out of range" :cause :exceptions/erlang-classes}
   {:suite "exceptions / wrong-class throws" :label "conj of a non-pair vector onto a map" :cause :exceptions/erlang-classes}
   {:suite "exceptions / wrong-class throws" :label "deref and var-get of nil are NullPointerExceptions" :cause :exceptions/erlang-classes}
@@ -871,11 +822,10 @@
   {:suite "forms / if-do-def-call" :label "def no init keeps existing root" :cause :pending/compiler}
   {:suite "forms / if-do-def-call" :label "def redefine" :cause :pending/compiler}
   {:suite "forms / loop" :label "init sees prior" :cause :pending/compiler}
-  {:suite "forms / try" :label "finally runs" :cause :pending/ref-types}
-  {:suite "functions / combinators" :label "memoize" :cause :pending/ref-types}
+  {:suite "functions / combinators" :label "memoize" :cause :pending/missing-core-var}
   {:suite "hierarchy / derive asserts" :label "tag and parent must be namespaced Named (or a class)" :cause :exceptions/erlang-classes}
   {:suite "hierarchy / derive throws" :label "redundant ancestor and cyclic derivation throw" :cause :pending/multimethods}
-  {:suite "hierarchy / global + multimethod dispatch" :label "dispatch custom hierarchy" :cause :pending/ref-types}
+  {:suite "hierarchy / global + multimethod dispatch" :label "dispatch custom hierarchy" :cause :pending/multimethods}
   {:suite "hierarchy / global + multimethod dispatch" :label "dispatch exact beats isa" :cause :pending/multimethods}
   {:suite "hierarchy / global + multimethod dispatch" :label "dispatch via hierarchy" :cause :pending/multimethods}
   {:suite "hierarchy / global + multimethod dispatch" :label "global ancestors" :cause :pending/multimethods}
@@ -902,7 +852,7 @@
   {:suite "host-interop / Symbol and Keyword statics" :label "Symbol/intern splits at the first slash, like symbol" :cause :pending/host-types}
   {:suite "host-interop / Symbol and Keyword statics" :label "an interned keyword is identical to the literal" :cause :pending/host-types}
   {:suite "host-interop / Symbol and Keyword statics" :label "an interned symbol is = to the literal" :cause :pending/host-types}
-  {:suite "host-interop / Var surface" :label "Thread.start conveys no bindings" :cause :pending/ref-types}
+  {:suite "host-interop / Var surface" :label "Thread.start conveys no bindings" :cause :pending/host-types}
   {:suite "host-interop / Var surface" :label "Var.set from a non-binding thread is refused" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "Var/find" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "Var/find on a missing namespace / an unqualified symbol" :cause :exceptions/erlang-classes}
@@ -913,9 +863,9 @@
   {:suite "host-interop / Var surface" :label "a non-dynamic var never has a thread binding" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "a thread that pushes its own binding may set! it" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "an agent action sees the conveyed binding and cannot set! it" :cause :pending/special-forms}
-  {:suite "host-interop / Var surface" :label "an executor task runs with no thread bindings" :cause :pending/ref-types}
+  {:suite "host-interop / Var surface" :label "an executor task runs with no thread bindings" :cause :pending/host-types}
   {:suite "host-interop / Var surface" :label "bindRoot / alterRoot" :cause :pending/special-forms}
-  {:suite "host-interop / Var surface" :label "bound-fn carries the binding into a Thread" :cause :pending/ref-types}
+  {:suite "host-interop / Var surface" :label "bound-fn carries the binding into a Thread" :cause :pending/host-types}
   {:suite "host-interop / Var surface" :label "bound-fn pushes a frame of its own, so set! through it is the caller's" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "deref / get" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "fn answers any IFn" :cause :pending/special-forms}
@@ -933,7 +883,7 @@
   {:suite "host-interop / Var surface" :label "ns / sym read as fields and as no-arg members" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "one box per binding frame, inner frames get their own" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "only the Namespace overload of Var/intern takes a root" :cause :exceptions/erlang-classes}
-  {:suite "host-interop / Var surface" :label "pmap conveys the binding" :cause :pending/ref-types}
+  {:suite "host-interop / Var surface" :label "pmap conveys the binding" :cause :pending/missing-core-var}
   {:suite "host-interop / Var surface" :label "set with no thread binding refuses the root" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "set writes the thread binding" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "set! from a non-binding thread is refused, parent untouched" :cause :pending/special-forms}
@@ -958,11 +908,9 @@
   {:suite "host-interop / instance? Object" :label "nil is not an instance of Object" :cause :pending/missing-core-var}
   {:suite "host-interop / instance? hierarchy" :label "ExceptionInfo is a RuntimeException" :cause :pending/missing-core-var}
   {:suite "host-interop / java.nio.file.Files" :label "move REPLACE_EXISTING over an undeletable target is AccessDenied on the target" :cause :pending/host-types}
-  {:suite "host-interop / logging host shims" :label "pprint respects *print-length*" :cause :pending/ref-types}
+  {:suite "host-interop / logging host shims" :label "pprint respects *print-length*" :cause :pending/compiler}
   {:suite "host-interop / logging host shims" :label "pprint writes value" :cause :pending/stdlib-namespaces}
   {:suite "host-interop / logging host shims" :label "with-pprint-dispatch runs body" :cause :pending/compiler}
-  {:suite "host-interop / macro dispatch & short-circuit patterns" :label "conditional-eval fires" :cause :pending/ref-types}
-  {:suite "host-interop / macro dispatch & short-circuit patterns" :label "conditional-eval suppresses" :cause :pending/ref-types}
   {:suite "host-interop / proven StringBuilder target" :label "^StringBuilder param hint" :cause :pending/host-types}
   {:suite "host-interop / proven StringBuilder target" :label "append is fluent and renders numbers and chars" :cause :pending/host-types}
   {:suite "host-interop / proven StringBuilder target" :label "unhinted let-bound builder" :cause :pending/host-types}
@@ -988,7 +936,7 @@
   {:suite "host-interop / unhinted receiver guard" :label ".substring on an unhinted string" :cause :pending/host-types}
   {:suite "host-interop / unhinted receiver guard" :label ".toString on an unhinted keyword" :cause :pending/host-types}
   {:suite "host-interop / unhinted receiver guard" :label ".toUpperCase on an unhinted string" :cause :pending/host-types}
-  {:suite "host-interop / unhinted receiver guard" :label "receiver then args, each once" :cause :pending/ref-types}
+  {:suite "host-interop / unhinted receiver guard" :label "receiver then args, each once" :cause :pending/host-types}
   {:suite "inst / partial timestamps & offsets" :label "-00:00 offset" :cause :pending/reader}
   {:suite "inst / partial timestamps & offsets" :label "bad timestamp throws" :cause :pending/reader}
   {:suite "inst / partial timestamps & offsets" :label "date only" :cause :pending/reader}
@@ -1184,56 +1132,20 @@
   {:suite "io / write open failures" :label "io/output-stream on a directory refuses the way FileOutputStream does" :cause :exceptions/erlang-classes}
   {:suite "io / write open failures" :label "io/writer on a directory refuses at construction, not at close" :cause :exceptions/erlang-classes}
   {:suite "io / write open failures" :label "spit to a directory is a FileNotFoundException, not a rename error" :cause :exceptions/erlang-classes}
-  {:suite "iref / atom ctor options" :label ":meta attaches, :validator gates the initial value" :cause :pending/ref-types}
+  {:suite "iref / atom ctor options" :label ":meta attaches, :validator gates the initial value" :cause :pending/metadata}
   {:suite "iref / atom ctor options" :label "an invalid initial value never constructs" :cause :exceptions/erlang-classes}
   {:suite "iref / atom ctor options" :label "non-map :meta is a ClassCastException" :cause :exceptions/erlang-classes}
   {:suite "iref / atom ctor options" :label "validator still gates swap!/reset!" :cause :exceptions/erlang-classes}
-  {:suite "iref / meta" :label "alter-meta! works on atoms" :cause :pending/ref-types}
+  {:suite "iref / meta" :label "alter-meta! works on atoms" :cause :pending/metadata}
   {:suite "iref / watches" :label "add-watch returns the var; a validator gates the var root" :cause :pending/special-forms}
-  {:suite "iref / watches" :label "agent watches fire on state change" :cause :pending/ref-types}
-  {:suite "iref / watches" :label "an atom watch gets key, the ref, old and new" :cause :pending/ref-types}
   {:suite "iref / watches" :label "vars are watchable: root changes notify (alter-var-root, def)" :cause :pending/special-forms}
   {:suite "lazy / chunking" :label "(seq (range 1 50)) is a chunked-seq" :cause :lazy-seq/no-chunking}
-  {:suite "lazy / chunking" :label "a plain lazy seq (not chunked) realizes one element at a time" :cause :pending/ref-types}
   {:suite "lazy / chunking" :label "chained maps each batch by 32 (result is itself chunked)" :cause :lazy-seq/no-chunking}
   {:suite "lazy / chunking" :label "crossing a chunk boundary realizes the next 32-block" :cause :lazy-seq/no-chunking}
   {:suite "lazy / chunking" :label "filter over a chunked range applies pred to the whole first block" :cause :lazy-seq/no-chunking}
   {:suite "lazy / chunking" :label "map over a chunked range realizes a whole 32-block on first" :cause :lazy-seq/no-chunking}
-  {:suite "lazy / construction & laziness" :label "not eagerly evaluated" :cause :pending/ref-types}
-  {:suite "lazy / construction & laziness" :label "realized on demand" :cause :pending/ref-types}
-  {:suite "lazy / family is lazy at construction (no side effect)" :label "distinct" :cause :pending/ref-types}
-  {:suite "lazy / family is lazy at construction (no side effect)" :label "interleave" :cause :pending/ref-types}
-  {:suite "lazy / family is lazy at construction (no side effect)" :label "interpose" :cause :pending/ref-types}
-  {:suite "lazy / family is lazy at construction (no side effect)" :label "keep" :cause :pending/ref-types}
-  {:suite "lazy / family is lazy at construction (no side effect)" :label "keep-indexed" :cause :pending/ref-types}
-  {:suite "lazy / family is lazy at construction (no side effect)" :label "map-indexed" :cause :pending/ref-types}
-  {:suite "lazy / family is lazy at construction (no side effect)" :label "partition-all" :cause :pending/ref-types}
-  {:suite "lazy / family is lazy at construction (no side effect)" :label "partition-by" :cause :pending/ref-types}
-  {:suite "lazy / family is lazy at construction (no side effect)" :label "reductions" :cause :pending/ref-types}
-  {:suite "lazy / family is lazy at construction (no side effect)" :label "replace over a seq" :cause :pending/ref-types}
-  {:suite "lazy / family is lazy at construction (no side effect)" :label "take-nth" :cause :pending/ref-types}
-  {:suite "lazy / family is lazy at construction (no side effect)" :label "tree-seq" :cause :pending/ref-types}
-  {:suite "lazy / realization is memoized" :label "first twice realizes once" :cause :pending/ref-types}
-  {:suite "lazy / realization is memoized" :label "wider take extends, does not re-realize" :cause :pending/ref-types}
-  {:suite "lazy / realization order & count" :label "drop+first realizes through the index" :cause :pending/ref-types}
-  {:suite "lazy / realization order & count" :label "filter realizes left-to-right" :cause :pending/ref-types}
-  {:suite "lazy / realization order & count" :label "map realizes left-to-right" :cause :pending/ref-types}
-  {:suite "lazy / realization order & count" :label "nth realizes exactly index+1" :cause :pending/ref-types}
-  {:suite "lazy / realization order & count" :label "take realizes exactly n, no over-realization" :cause :pending/ref-types}
-  {:suite "lazy / realization timing" :label "next realizes head + one lookahead" :cause :pending/ref-types}
-  {:suite "lazy / realization timing" :label "rest realizes only the head" :cause :pending/ref-types}
-  {:suite "lazy / realization timing" :label "sequence realizes the first element" :cause :pending/ref-types}
-  {:suite "lazy / realized?" :label "body runs once" :cause :pending/ref-types}
-  {:suite "lazy / seq fns are lazy (no side effect at construction)" :label "concat over lazy sources" :cause :pending/ref-types}
-  {:suite "lazy / seq fns are lazy (no side effect at construction)" :label "drop over a lazy source" :cause :pending/ref-types}
-  {:suite "lazy / seq fns are lazy (no side effect at construction)" :label "filter" :cause :pending/ref-types}
-  {:suite "lazy / seq fns are lazy (no side effect at construction)" :label "map" :cause :pending/ref-types}
-  {:suite "lazy / seq fns are lazy (no side effect at construction)" :label "partition over a lazy source" :cause :pending/ref-types}
-  {:suite "lazy / seq fns are lazy (no side effect at construction)" :label "remove" :cause :pending/ref-types}
-  {:suite "lazy / seq fns are lazy (no side effect at construction)" :label "take over a lazy source" :cause :pending/ref-types}
-  {:suite "lazy / seq fns are lazy (no side effect at construction)" :label "take-while" :cause :pending/ref-types}
-  {:suite "lazy-seq / realization is shared across walks" :label "effects run once across three walks" :cause :pending/ref-types}
-  {:suite "lazy-seq / realization is shared across walks" :label "filter effects once" :cause :pending/ref-types}
+  {:suite "lazy / family is lazy at construction (no side effect)" :label "replace over a seq" :cause :pending/missing-core-var}
+  {:suite "lazy / realization timing" :label "sequence realizes the first element" :cause :pending/triage}
   {:suite "locking" :label "reentrant on the same object" :cause :pending/host-types}
   {:suite "locking" :label "returns the body value" :cause :pending/host-types}
   {:suite "locking / monitor-enter" :label "both forms evaluate to nil (the JVM emits NIL after the monitor op)" :cause :pending/host-types}
@@ -1245,20 +1157,12 @@
   {:suite "macros / JVM calling convention" :label "a seed-defined core macro takes it too" :cause :pending/special-forms}
   {:suite "macros / JVM calling convention" :label "an expander fn is applicable with (form env & args)" :cause :pending/special-forms}
   {:suite "macros / JVM calling convention" :label "and a multi-arity macro, per arity" :cause :pending/special-forms}
-  {:suite "macros / JVM calling convention" :label "applying only the declared params is the arity error it now is" :cause :pending/special-forms}
   {:suite "macros / JVM calling convention" :label "ordinary macro use and macroexpand-1 are unchanged" :cause :pending/triage}
   {:suite "macros / cond-> expands like the reference" :label "a list step keeps its extra args" :cause :pending/strings-io}
   {:suite "macros / cond-> expands like the reference" :label "no clauses is the value in a let" :cause :pending/strings-io}
   {:suite "macros / cond-> expands like the reference" :label "one let, a step per pair, threading through ->" :cause :pending/strings-io}
   {:suite "macros / core-overlay" :label "assert message" :cause :exceptions/erlang-classes}
-  {:suite "macros / core-overlay" :label "binding rebinds" :cause :pending/ref-types}
-  {:suite "macros / core-overlay" :label "binding restores" :cause :pending/ref-types}
-  {:suite "macros / core-overlay" :label "binding seen by fn" :cause :pending/ref-types}
-  {:suite "macros / core-overlay" :label "delay forces once" :cause :pending/ref-types}
-  {:suite "macros / core-overlay" :label "dotimes sum" :cause :pending/ref-types}
   {:suite "macros / core-overlay" :label "doto returns obj" :cause :pending/missing-core-var}
-  {:suite "macros / core-overlay" :label "future deref" :cause :pending/ref-types}
-  {:suite "macros / core-overlay" :label "while loop" :cause :pending/ref-types}
   {:suite "macros / defmacro" :label "#() inside syntax-quote" :cause :pending/compiler}
   {:suite "macros / defmacro" :label "macroexpand-1" :cause :pending/triage}
   {:suite "macros / defmacro expands like the JVM" :label "a nullary macro still declares the two implicit params" :cause :pending/triage}
@@ -1283,7 +1187,6 @@
   {:suite "macros / time, with-redefs, macroexpand" :label "with-redefs restores" :cause :pending/ref-types}
   {:suite "macros / time, with-redefs, macroexpand" :label "with-redefs restores on throw" :cause :pending/ref-types}
   {:suite "macros / time, with-redefs, macroexpand" :label "with-redefs-fn" :cause :pending/special-forms}
-  {:suite "macros / vswap!" :label "vswap! at each arity returns the new value" :cause :pending/ref-types}
   {:suite "macros / vswap!" :label "vswap! is a macro, as on the JVM" :cause :pending/metadata}
   {:suite "map / bulk build boundaries" :label "transient nil dissoc" :cause :pending/transients}
   {:suite "map / bulk build boundaries" :label "transient nil get" :cause :pending/transients}
@@ -1359,11 +1262,7 @@
   {:suite "maps / keys-vals-empty? as overlay fns" :label "keys sorted order" :cause :pending/sorted-colls}
   {:suite "maps / keys-vals-empty? as overlay fns" :label "keys/vals walk a seq of map entries" :cause :pending/triage}
   {:suite "maps / keys-vals-empty? as overlay fns" :label "vals sorted order" :cause :pending/sorted-colls}
-  {:suite "maps / keyword invoke" :label "evaluates map expr once" :cause :pending/ref-types}
   {:suite "maps / keyword invoke" :label "on a sorted map" :cause :pending/sorted-colls}
-  {:suite "maps / literal construction" :label "keys evaluate before their values, pairwise" :cause :pending/ref-types}
-  {:suite "maps / literal construction" :label "source order with a nil value (phm form)" :cause :pending/ref-types}
-  {:suite "maps / literal construction" :label "values evaluate in source order" :cause :pending/ref-types}
   {:suite "meta / with-meta identity" :label "a non-IObj still throws" :cause :exceptions/erlang-classes}
   {:suite "meta / with-meta identity" :label "equal but distinct metadata still allocates" :cause :pending/metadata}
   {:suite "meta / with-meta identity" :label "nil meta onto a value with none" :cause :pending/metadata}
@@ -1371,16 +1270,15 @@
   {:suite "meta / with-meta identity" :label "symbols, sets and lists too" :cause :pending/metadata}
   {:suite "meta / with-meta identity" :label "the same metadata object" :cause :pending/metadata}
   {:suite "metadata / *print-meta*" :label "off by default" :cause :pending/metadata}
-  {:suite "metadata / *print-meta*" :label "pr-str prefixes ^meta" :cause :pending/ref-types}
+  {:suite "metadata / *print-meta*" :label "pr-str prefixes ^meta" :cause :pending/compiler}
   {:suite "metadata / *print-meta*" :label "print then read round-trips" :cause :pending/metadata}
-  {:suite "metadata / *print-meta*" :label "symbol meta prefixed" :cause :pending/ref-types}
+  {:suite "metadata / *print-meta*" :label "symbol meta prefixed" :cause :pending/compiler}
   {:suite "metadata / clojure.edn preserves meta" :label "edn map meta" :cause :pending/metadata}
   {:suite "metadata / clojure.edn preserves meta" :label "edn set meta" :cause :pending/metadata}
   {:suite "metadata / clojure.edn preserves meta" :label "edn vector meta" :cause :pending/metadata}
   {:suite "metadata / clojure.walk preserves meta" :label "postwalk keeps map meta" :cause :pending/metadata}
   {:suite "metadata / clojure.walk preserves meta" :label "postwalk keeps vector meta" :cause :pending/metadata}
   {:suite "metadata / coll literal in code keeps meta" :label "map literal meta with expr" :cause :pending/metadata}
-  {:suite "metadata / coll literal in code keeps meta" :label "map literal value-eval order" :cause :pending/ref-types}
   {:suite "metadata / coll literal in code keeps meta" :label "vector literal meta" :cause :pending/metadata}
   {:suite "metadata / collection ops preserve meta" :label "a carry shares the meta map" :cause :pending/metadata}
   {:suite "metadata / collection ops preserve meta" :label "assoc on map" :cause :pending/metadata}
@@ -1409,10 +1307,9 @@
   {:suite "metadata / collection ops preserve meta" :label "vec of a map entry is a plain vector" :cause :pending/host-types}
   {:suite "metadata / collection ops preserve meta" :label "with-meta forces a lazy seq" :cause :pending/metadata}
   {:suite "metadata / collection ops preserve meta" :label "with-meta identity shortcut" :cause :pending/metadata}
-  {:suite "metadata / collection ops preserve meta" :label "with-meta on a cons shares its unforced tail (copy walked first)" :cause :pending/ref-types}
-  {:suite "metadata / collection ops preserve meta" :label "with-meta on a cons shares its unforced tail (original walked first)" :cause :pending/ref-types}
+  {:suite "metadata / collection ops preserve meta" :label "with-meta on a cons shares its unforced tail (copy walked first)" :cause :pending/metadata}
+  {:suite "metadata / collection ops preserve meta" :label "with-meta on a cons shares its unforced tail (original walked first)" :cause :pending/metadata}
   {:suite "metadata / def metadata" :label "(def name doc val) doc" :cause :pending/special-forms}
-  {:suite "metadata / def metadata" :label "^:dynamic var binds" :cause :pending/ref-types}
   {:suite "metadata / def metadata" :label "^:private on var" :cause :pending/special-forms}
   {:suite "metadata / def metadata" :label "^{:doc} on var" :cause :pending/special-forms}
   {:suite "metadata / immutability" :label "a meta-bearing list still equals the bare list" :cause :pending/metadata}
@@ -1452,7 +1349,7 @@
   {:suite "multimethods / dispatch" :label "remove-all-methods" :cause :pending/multimethods}
   {:suite "multimethods / dispatch" :label "remove-all-methods empties the table" :cause :pending/multimethods}
   {:suite "multimethods / dispatch" :label "remove-method" :cause :pending/multimethods}
-  {:suite "multimethods / dispatch cache" :label "custom :hierarchy derive invalidates" :cause :pending/ref-types}
+  {:suite "multimethods / dispatch cache" :label "custom :hierarchy derive invalidates" :cause :pending/multimethods}
   {:suite "multimethods / dispatch cache" :label "defmethod invalidates a cached resolution" :cause :pending/multimethods}
   {:suite "multimethods / dispatch cache" :label "derive after a cached miss re-resolves" :cause :pending/multimethods}
   {:suite "multimethods / dispatch cache" :label "prefer-method applies after methods were cached" :cause :pending/multimethods}
@@ -1487,9 +1384,7 @@
   {:suite "namespaces / alias, ns-unalias, ns-publics" :label "alias + use" :cause :pending/missing-core-var}
   {:suite "namespaces / alias, ns-unalias, ns-publics" :label "ns-publics has var" :cause :pending/runtime-eval}
   {:suite "namespaces / alias, ns-unalias, ns-publics" :label "ns-unalias removes" :cause :pending/missing-core-var}
-  {:suite "namespaces / def & vars" :label "binding restores" :cause :pending/ref-types}
   {:suite "namespaces / def & vars" :label "def returns var" :cause :pending/compiler}
-  {:suite "namespaces / def & vars" :label "dynamic var binding" :cause :pending/ref-types}
   {:suite "namespaces / def & vars" :label "var special form" :cause :pending/special-forms}
   {:suite "namespaces / def & vars" :label "var sugar #'" :cause :pending/compiler}
   {:suite "namespaces / def & vars" :label "var-get" :cause :pending/compiler}
@@ -1558,8 +1453,7 @@
   {:suite "ns / private var references" :label "a qualified call to another ns's private fn is refused" :cause :pending/triage}
   {:suite "ns / private var references" :label "resolve and ns-resolve answer nil for a private clojure.core name" :cause :pending/triage}
   {:suite "ns / private var references" :label "the var special form still reaches a private var" :cause :pending/compiler}
-  {:suite "ns / refer name checks" :label ":refer-clojure :exclude of a missing name is fine" :cause :pending/ref-types}
-  {:suite "ns / refer name checks" :label ":refer-clojure :only a missing name throws" :cause :pending/ref-types}
+  {:suite "ns / refer name checks" :label ":refer-clojure :only a missing name throws" :cause :pending/host-types}
   {:suite "ns / refer name checks" :label "refer :only a missing name throws IllegalAccessError" :cause :pending/runtime-eval}
   {:suite "ns / refer name checks" :label "refer :only a private name throws IllegalAccessError" :cause :pending/triage}
   {:suite "ns / refer name checks" :label "refer without :only skips private vars" :cause :pending/triage}
@@ -1842,15 +1736,12 @@
   {:suite "predicates / overlay-migrated" :label "rational? int" :cause :pending/missing-core-var}
   {:suite "predicates / overlay-migrated" :label "simple-ident?" :cause :pending/missing-core-var}
   {:suite "predicates / overlay-migrated" :label "undefined?" :cause :pending/missing-core-var}
-  {:suite "predicates / seqable, reduced & emptiness" :label "deref reduced" :cause :pending/triage}
   {:suite "predicates / tagged-value" :label "atom? no" :cause :pending/missing-core-var}
   {:suite "predicates / tagged-value" :label "atom? yes" :cause :pending/missing-core-var}
   {:suite "predicates / tagged-value" :label "chunked-seq? true for a vector seq" :cause :lazy-seq/no-chunking}
   {:suite "predicates / tagged-value" :label "reader-conditional? no" :cause :pending/missing-core-var}
   {:suite "predicates / tagged-value" :label "tagged-literal? no" :cause :pending/missing-core-var}
   {:suite "predicates / tagged-value" :label "tagged-literal? yes" :cause :pending/missing-core-var}
-  {:suite "predicates / tagged-value" :label "volatile? no" :cause :pending/ref-types}
-  {:suite "predicates / tagged-value" :label "volatile? yes" :cause :pending/ref-types}
   {:suite "predicates / types" :label "associative? list" :cause :pending/missing-core-var}
   {:suite "predicates / types" :label "associative? map" :cause :pending/missing-core-var}
   {:suite "predicates / types" :label "associative? set" :cause :pending/missing-core-var}
@@ -1863,28 +1754,28 @@
   {:suite "predicates / types" :label "reversible? list" :cause :pending/missing-core-var}
   {:suite "predicates / types" :label "reversible? smap" :cause :pending/missing-core-var}
   {:suite "predicates / types" :label "reversible? vec" :cause :pending/missing-core-var}
-  {:suite "print / *print-length* and *print-level*" :label "*print-length* truncates a record's fields" :cause :pending/ref-types}
-  {:suite "print / *print-length* and *print-level*" :label "*print-length* truncates a sorted-map and a sorted-set" :cause :pending/ref-types}
-  {:suite "print / *print-length* and *print-level*" :label "*print-level* 0 prints a record as its tag and #" :cause :pending/ref-types}
-  {:suite "print / *print-length* and *print-level*" :label "a sorted collection counts as a *print-level*" :cause :pending/ref-types}
-  {:suite "print / *print-length* and *print-level*" :label "pprint counts a map's entries against *print-length*" :cause :pending/ref-types}
-  {:suite "print / *print-length* and *print-level*" :label "pprint honors clojure.core/*print-length*" :cause :pending/ref-types}
-  {:suite "print / *print-length* and *print-level*" :label "pprint honors clojure.core/*print-level*" :cause :pending/ref-types}
-  {:suite "print / *print-length* and *print-level*" :label "pprint stops an infinite seq at *print-length*" :cause :pending/ref-types}
-  {:suite "print / namespace maps" :label "a map of one namespace's symbols prints lifted" :cause :pending/ref-types}
-  {:suite "print / namespace maps" :label "pprint lifts a namespace map" :cause :pending/ref-types}
+  {:suite "print / *print-length* and *print-level*" :label "*print-length* truncates a record's fields" :cause :pending/compiler}
+  {:suite "print / *print-length* and *print-level*" :label "*print-length* truncates a sorted-map and a sorted-set" :cause :pending/compiler}
+  {:suite "print / *print-length* and *print-level*" :label "*print-level* 0 prints a record as its tag and #" :cause :pending/compiler}
+  {:suite "print / *print-length* and *print-level*" :label "a sorted collection counts as a *print-level*" :cause :pending/compiler}
+  {:suite "print / *print-length* and *print-level*" :label "pprint counts a map's entries against *print-length*" :cause :pending/compiler}
+  {:suite "print / *print-length* and *print-level*" :label "pprint honors clojure.core/*print-length*" :cause :pending/compiler}
+  {:suite "print / *print-length* and *print-level*" :label "pprint honors clojure.core/*print-level*" :cause :pending/compiler}
+  {:suite "print / *print-length* and *print-level*" :label "pprint stops an infinite seq at *print-length*" :cause :pending/compiler}
+  {:suite "print / namespace maps" :label "a map of one namespace's symbols prints lifted" :cause :pending/compiler}
+  {:suite "print / namespace maps" :label "pprint lifts a namespace map" :cause :pending/compiler}
   {:suite "printer / numbers" :label "pr of a beyond-long integer carries the N suffix" :cause :pending/triage}
-  {:suite "printer / print-length" :label "exactly N elements prints no ellipsis" :cause :pending/ref-types}
-  {:suite "printer / print-length" :label "truncates a vector with ellipsis" :cause :pending/ref-types}
-  {:suite "printer / print-length" :label "truncates an infinite seq before realizing it" :cause :pending/ref-types}
-  {:suite "printer / print-level" :label "collapses a collection past the level to #" :cause :pending/ref-types}
-  {:suite "printer / print-level" :label "level 0 collapses the top collection" :cause :pending/ref-types}
-  {:suite "printer / print-level" :label "level 1 keeps the outermost collection" :cause :pending/ref-types}
-  {:suite "printer / print-level" :label "scalars print regardless of level" :cause :pending/ref-types}
+  {:suite "printer / print-length" :label "exactly N elements prints no ellipsis" :cause :pending/compiler}
+  {:suite "printer / print-length" :label "truncates a vector with ellipsis" :cause :pending/compiler}
+  {:suite "printer / print-length" :label "truncates an infinite seq before realizing it" :cause :pending/compiler}
+  {:suite "printer / print-level" :label "collapses a collection past the level to #" :cause :pending/compiler}
+  {:suite "printer / print-level" :label "level 0 collapses the top collection" :cause :pending/compiler}
+  {:suite "printer / print-level" :label "level 1 keeps the outermost collection" :cause :pending/compiler}
+  {:suite "printer / print-level" :label "scalars print regardless of level" :cause :pending/compiler}
   {:suite "printer / print-vars" :label "print-length / print-level / default-data-reader-fn default to nil" :cause :pending/missing-core-var}
   {:suite "printer / str vs print" :label "infinity inside a collection prints readably in str" :cause :pending/reader}
-  {:suite "printing / *print-readably*" :label "it applies at every nesting level" :cause :pending/ref-types}
-  {:suite "printing / *print-readably*" :label "nil makes pr print a string bare, like print" :cause :pending/ref-types}
+  {:suite "printing / *print-readably*" :label "it applies at every nesting level" :cause :pending/compiler}
+  {:suite "printing / *print-readably*" :label "nil makes pr print a string bare, like print" :cause :pending/compiler}
   {:suite "printing / doubles" :label "a 17-digit tie rounds its last digit to even" :cause :pending/triage}
   {:suite "printing / doubles" :label "a subnormal prints the two digits nearest its value" :cause :pending/triage}
   {:suite "printing / doubles" :label "format starts a subnormal from the same two digits" :cause :pending/triage}
@@ -1917,7 +1808,7 @@
   {:suite "protocols / satisfies?" :label "an extension after a memoized miss is seen" :cause :pending/compiler}
   {:suite "protocols / satisfies?" :label "satisfies? on a class or interface answers instance?" :cause :pending/host-types}
   {:suite "protocols / specificity" :label "a more specific class beats the Object default (Throwable)" :cause :pending/triage}
-  {:suite "protocols / specificity" :label "an atom dispatches on clojure.lang.IRef, not Object" :cause :pending/ref-types}
+  {:suite "protocols / specificity" :label "an atom dispatches on clojure.lang.IRef, not Object" :cause :protocols/type-designators}
   {:suite "quote / metadata" :label "a quoted form keeps user metadata, drops reader location" :cause :pending/metadata}
   {:suite "quoted-literal constants" :label "a literal with a LOCAL element still constructs per call" :cause :pending/triage}
   {:suite "quoted-literal constants" :label "reader meta on a quoted symbol survives hoisting" :cause :pending/metadata}
@@ -1938,7 +1829,7 @@
   {:suite "reader / auto-resolved keywords" :label "::kw is namespace-qualified" :cause :pending/triage}
   {:suite "reader / auto-resolved keywords" :label "::kw keeps its name" :cause :pending/triage}
   {:suite "reader / default data readers" :label "#inst is in default-data-readers" :cause :pending/missing-core-var}
-  {:suite "reader / default-data-reader-fn" :label "consulted for an unregistered tag" :cause :pending/ref-types}
+  {:suite "reader / default-data-reader-fn" :label "consulted for an unregistered tag" :cause :pending/compiler}
   {:suite "reader / delimiters" :label "a mismatched close reports, it does not hang" :cause :pending/host-types}
   {:suite "reader / delimiters" :label "mismatched bracket" :cause :pending/host-types}
   {:suite "reader / digit separators" :label "a bigint suffix follows a grouped literal" :cause :pending/reader}
@@ -1960,9 +1851,7 @@
   {:suite "reader / discard, symbolic values, conditionals (spec 2.3)" :label "##NaN is NaN?" :cause :pending/reader}
   {:suite "reader / discard, symbolic values, conditionals (spec 2.3)" :label "##NaN not self-equal" :cause :pending/reader}
   {:suite "reader / discard, symbolic values, conditionals (spec 2.3)" :label "conditional :default reachable" :cause :pending/reader}
-  {:suite "reader / discard, symbolic values, conditionals (spec 2.3)" :label "var-quote qualified" :cause :pending/compiler}
   {:suite "reader / dispatch & sugar" :label "anon fn %&" :cause :pending/triage}
-  {:suite "reader / dispatch & sugar" :label "deref sugar" :cause :pending/ref-types}
   {:suite "reader / dispatch & sugar" :label "inst literal reads" :cause :pending/reader}
   {:suite "reader / dispatch & sugar" :label "meta sugar" :cause :pending/metadata}
   {:suite "reader / dispatch & sugar" :label "reader cond :jolt" :cause :pending/reader}
@@ -2049,7 +1938,6 @@
   {:suite "reader / unquote" :label "~x reads as clojure.core/unquote" :cause :pending/compiler}
   {:suite "reader / var-quote #'" :label "deref var-quote" :cause :pending/compiler}
   {:suite "reader / var-quote #'" :label "is a var" :cause :pending/compiler}
-  {:suite "reader / var-quote #'" :label "var-quote = var" :cause :pending/compiler}
   {:suite "reader-model / nested fn literals" :label "nested #() reads" :cause :pending/compiler}
   {:suite "reader-model / read-eval" :label "#= evaluates under read-string" :cause :pending/triage}
   {:suite "record hasheq cache" :label "meta does not enter a record's hash or equality" :cause :pending/metadata}
@@ -2078,8 +1966,7 @@
   {:suite "reflect / AFunction supers" :label "a protocol extended to IMeta dispatches on a fn" :cause :pending/triage}
   {:suite "reflect / RT statics" :label "RT/classForName resolves like Class/forName" :cause :exceptions/erlang-classes}
   {:suite "reflection / supers" :label "supers of Object is nil" :cause :pending/host-types}
-  {:suite "refs / agent-send-commit" :label "agent action dispatched after commit" :cause :pending/ref-types}
-  {:suite "refs / agent-send-rollback" :label "agent action discarded on txn rollback" :cause :pending/ref-types}
+  {:suite "refs / agent-send-commit" :label "agent action dispatched after commit" :cause :refs/no-stm}
   {:suite "refs / alter" :label "alter inside dosync applies the fn" :cause :refs/no-stm}
   {:suite "refs / alter-throws" :label "alter outside dosync throws" :cause :pending/compiler}
   {:suite "refs / commute" :label "commute inside dosync applies the fn" :cause :refs/no-stm}
@@ -2088,7 +1975,6 @@
   {:suite "refs / ensure" :label "ensure inside dosync returns the ref value" :cause :refs/no-stm}
   {:suite "refs / ensure-read" :label "ensure inside dosync returns current in-txn value" :cause :refs/no-stm}
   {:suite "refs / ensure-throws" :label "ensure outside dosync throws" :cause :pending/compiler}
-  {:suite "refs / io!" :label "io! runs body outside a transaction" :cause :pending/ref-types}
   {:suite "refs / io!-in-future" :label "io! inside future inside dosync runs normally" :cause :refs/no-stm}
   {:suite "refs / io!-lazy" :label "io! body does not evaluate when it throws" :cause :exceptions/erlang-classes}
   {:suite "refs / io!-message" :label "a leading literal string is the io! exception message" :cause :exceptions/erlang-classes}
@@ -2116,8 +2002,8 @@
   {:suite "refs / rollback-alter" :label "alter rolls back on exception" :cause :refs/no-stm}
   {:suite "refs / sync" :label "sync has the (sync flags & body) shape" :cause :refs/no-stm}
   {:suite "refs / txn-leak" :label "future spawned in txn does not inherit *txn*" :cause :refs/no-stm}
-  {:suite "refs / watch-after-commit" :label "watch fires once after commit with (pre-txn, committed)" :cause :pending/ref-types}
-  {:suite "refs / watch-no-fire-on-rollback" :label "no watch notification on rolled-back txn" :cause :pending/ref-types}
+  {:suite "refs / watch-after-commit" :label "watch fires once after commit with (pre-txn, committed)" :cause :refs/no-stm}
+  {:suite "refs / watch-no-fire-on-rollback" :label "no watch notification on rolled-back txn" :cause :refs/no-stm}
   {:suite "regex / V2 sre-parser" :label "$ before final newline" :cause :pending/strings-io}
   {:suite "regex / V2 sre-parser" :label "\\Q..\\E literal quote" :cause :pending/strings-io}
   {:suite "regex / V2 sre-parser" :label "\\x{1F600} supplementary hex" :cause :pending/strings-io}
@@ -2302,8 +2188,8 @@
   {:suite "seq / apply variadic rest is lazy" :label "too few args still throws ArityException" :cause :exceptions/erlang-classes}
   {:suite "seq / eager argument checks" :label "mapcat of a non-fn throws at the call" :cause :exceptions/erlang-classes}
   {:suite "seq / eager argument checks" :label "mapcat over a non-seqable throws at the call" :cause :exceptions/erlang-classes}
-  {:suite "seq / eager argument checks" :label "mapcat realizes a short source whole" :cause :pending/ref-types}
-  {:suite "seq / eager argument checks" :label "mapcat realizes four of an unchunked source" :cause :pending/ref-types}
+  {:suite "seq / eager argument checks" :label "mapcat realizes a short source whole" :cause :pending/triage}
+  {:suite "seq / eager argument checks" :label "mapcat realizes four of an unchunked source" :cause :pending/triage}
   {:suite "seq / eager argument checks" :label "repeat truncates a fractional count" :cause :pending/triage}
   {:suite "seq / eager argument checks" :label "repeat with a nil count throws at the call" :cause :exceptions/erlang-classes}
   {:suite "seq / eager argument checks" :label "repeat with a non-number count throws at the call" :cause :exceptions/erlang-classes}
@@ -2338,7 +2224,6 @@
   {:suite "seq / overlay-migrated fns" :label "replace on a vector stays a vector" :cause :pending/missing-core-var}
   {:suite "seq / overlay-migrated fns" :label "replace preserves nil val" :cause :pending/missing-core-var}
   {:suite "seq / overlay-migrated fns" :label "replicate" :cause :pending/missing-core-var}
-  {:suite "seq / overlay-migrated fns" :label "run! side effects" :cause :pending/ref-types}
   {:suite "seq / partitionv & splitv-at (1.11)" :label "partitionv" :cause :pending/missing-core-var}
   {:suite "seq / partitionv & splitv-at (1.11)" :label "partitionv elems are vectors" :cause :pending/missing-core-var}
   {:suite "seq / partitionv & splitv-at (1.11)" :label "partitionv pad" :cause :pending/missing-core-var}
@@ -2408,8 +2293,8 @@
   {:suite "seq-type-model / specialized seq classes" :label "zero-step float range is Repeat" :cause :pending/host-types}
   {:suite "seq-type-model / specialized seq classes" :label "zero-step range is Repeat" :cause :pending/host-types}
   {:suite "seq-type-model / specialized seq classes" :label "zero-step range repeats start" :cause :pending/triage}
-  {:suite "seqs / laziness" :label "first of iterate does not call f" :cause :pending/ref-types}
-  {:suite "seqs / laziness" :label "rest of iterate does not realize the next element" :cause :pending/ref-types}
+  {:suite "seqs / laziness" :label "first of iterate does not call f" :cause :pending/triage}
+  {:suite "seqs / laziness" :label "rest of iterate does not realize the next element" :cause :pending/triage}
   {:suite "sequences / rest & next over set-like colls" :label "every? over map entries" :cause :pending/missing-core-var}
   {:suite "sequences / rest & next over set-like colls" :label "every? over sorted-set" :cause :pending/sorted-colls}
   {:suite "sequences / rest & next over set-like colls" :label "next of map" :cause :pending/missing-core-var}
@@ -2494,8 +2379,8 @@
   {:suite "sorted / map ops" :label "map as fn" :cause :pending/sorted-colls}
   {:suite "sorted / map ops" :label "map as fn miss" :cause :pending/sorted-colls}
   {:suite "sorted / map ops" :label "vals by key" :cause :pending/sorted-colls}
-  {:suite "sorted / one walk per insert" :label "1024 ascending keys into a sorted-map-by count comparator calls like the reference" :cause :pending/ref-types}
-  {:suite "sorted / one walk per insert" :label "replacing values in a sorted-map-by counts like the reference" :cause :pending/ref-types}
+  {:suite "sorted / one walk per insert" :label "1024 ascending keys into a sorted-map-by count comparator calls like the reference" :cause :pending/sorted-colls}
+  {:suite "sorted / one walk per insert" :label "replacing values in a sorted-map-by counts like the reference" :cause :pending/sorted-colls}
   {:suite "sorted / predicates" :label "coll? sorted-set" :cause :pending/sorted-colls}
   {:suite "sorted / predicates" :label "map? sorted-map" :cause :pending/sorted-colls}
   {:suite "sorted / predicates" :label "sorted-map? false" :cause :pending/missing-core-var}
@@ -2530,34 +2415,9 @@
   {:suite "sorted / subseq & rsubseq" :label "subseq on map" :cause :pending/sorted-colls}
   {:suite "sorted / subseq & rsubseq" :label "subseq range" :cause :pending/sorted-colls}
   {:suite "sorted / subseq seek" :label "boundary comparators map+set batch" :cause :pending/sorted-colls}
-  {:suite "state / agents (synchronous shim)" :label "agent deref" :cause :pending/ref-types}
-  {:suite "state / agents (synchronous shim)" :label "agent with opts" :cause :pending/ref-types}
-  {:suite "state / agents (synchronous shim)" :label "agent-error nil" :cause :pending/missing-core-var}
   {:suite "state / atoms" :label "atom? on non-atom" :cause :pending/missing-core-var}
   {:suite "state / atoms" :label "atom? predicate" :cause :pending/missing-core-var}
-  {:suite "state / atoms" :label "compare-and-set! no" :cause :pending/ref-types}
-  {:suite "state / atoms" :label "compare-and-set! ok" :cause :pending/ref-types}
-  {:suite "state / atoms" :label "deref @" :cause :pending/ref-types}
-  {:suite "state / atoms" :label "deref fn" :cause :pending/ref-types}
-  {:suite "state / atoms" :label "reset!" :cause :pending/ref-types}
-  {:suite "state / atoms" :label "reset! returns new" :cause :pending/ref-types}
-  {:suite "state / atoms" :label "reset-vals!" :cause :pending/ref-types}
-  {:suite "state / atoms" :label "swap!" :cause :pending/ref-types}
-  {:suite "state / atoms" :label "swap! returns new" :cause :pending/ref-types}
-  {:suite "state / atoms" :label "swap! with args" :cause :pending/ref-types}
-  {:suite "state / atoms" :label "swap-vals!" :cause :pending/ref-types}
-  {:suite "state / promises" :label "promise deliver" :cause :pending/ref-types}
-  {:suite "state / promises" :label "promise undelivered" :cause :pending/ref-types}
-  {:suite "state / volatiles & delays" :label "delay force once" :cause :pending/ref-types}
-  {:suite "state / volatiles & delays" :label "delay not forced" :cause :pending/ref-types}
-  {:suite "state / volatiles & delays" :label "volatile! deref" :cause :pending/ref-types}
-  {:suite "state / volatiles & delays" :label "vreset!" :cause :pending/ref-types}
-  {:suite "state / volatiles & delays" :label "vswap!" :cause :pending/ref-types}
-  {:suite "state / watches & validators" :label "add-watch fires" :cause :pending/ref-types}
-  {:suite "state / watches & validators" :label "get-validator" :cause :pending/ref-types}
-  {:suite "state / watches & validators" :label "remove-watch" :cause :pending/ref-types}
-  {:suite "state / watches & validators" :label "set-validator! ok" :cause :pending/ref-types}
-  {:suite "state / watches & validators" :label "set-validator! rejects" :cause :pending/ref-types}
+  {:suite "state / promises" :label "promise undelivered" :cause :pending/triage}
   {:suite "stdlib / clojure.walk" :label "macroexpand-all expands a form" :cause :pending/stdlib-namespaces}
   {:suite "stdlib / pprint cl-format" :label "~,2f rounds to two decimals" :cause :pending/stdlib-namespaces}
   {:suite "stdlib / pprint cl-format" :label "~5a pads to width" :cause :pending/stdlib-namespaces}
@@ -2622,15 +2482,12 @@
   {:suite "syntax-quote / in a deftype method body" :label "defrecord and reify method templates agree with deftype's" :cause :protocols/type-designators}
   {:suite "syntax-quote / in a deftype method body" :label "~@unquote-splicing in a deftype method's template splices its items" :cause :pending/triage}
   {:suite "syntax-quote / reify* bare" :label "`reify* stays bare (special form)" :cause :pending/compiler}
-  {:suite "syntax-quote / ~@ is lazy" :label "a set template is eager" :cause :pending/ref-types}
-  {:suite "syntax-quote / ~@ is lazy" :label "a splice in head position realizes its first chunk to produce the head, as seq does" :cause :lazy-seq/no-chunking}
-  {:suite "syntax-quote / ~@ is lazy" :label "a spliced lazy seq is not realized by building the template, only by walking to it" :cause :pending/ref-types}
+  {:suite "syntax-quote / ~@ is lazy" :label "a spliced lazy seq is not realized by building the template, only by walking to it" :cause :pending/triage}
   {:suite "syntax-quote / ~@ is lazy" :label "a template that splices only empties is nil, and an empty template is ()" :cause :pending/triage}
   {:suite "syntax-quote / ~@ is lazy" :label "a top-level do evaluates the forms ahead of a splice before the splice is realized" :cause :pending/runtime-eval}
-  {:suite "syntax-quote / ~@ is lazy" :label "a vector template is eager" :cause :pending/ref-types}
   {:suite "syntax-quote / ~@ is lazy" :label "taking from a long splice realizes one chunk, not the splice" :cause :lazy-seq/no-chunking}
-  {:suite "syntax-quote / ~@ is lazy" :label "two splices realize in walk order, each only when reached" :cause :pending/ref-types}
-  {:suite "syntax-quote / ~@ is lazy" :label "walking the whole form realizes everything, in order" :cause :pending/ref-types}
+  {:suite "syntax-quote / ~@ is lazy" :label "two splices realize in walk order, each only when reached" :cause :pending/triage}
+  {:suite "syntax-quote / ~@ is lazy" :label "walking the whole form realizes everything, in order" :cause :pending/triage}
   {:suite "tagged literals / value equality" :label "different tag is not =" :cause :pending/missing-core-var}
   {:suite "tagged literals / value equality" :label "duplicate literal keys throw at read (same form twice)" :cause :pending/missing-core-var}
   {:suite "tagged literals / value equality" :label "equal tag+form are =" :cause :pending/missing-core-var}
@@ -2749,7 +2606,6 @@
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "class number" :cause :pending/host-types}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "class string" :cause :pending/host-types}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "construct-proxy throws" :cause :pending/missing-core-var}
-  {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "future-call" :cause :pending/ref-types}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "get-proxy-class throws" :cause :pending/missing-core-var}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "init-proxy" :cause :pending/missing-core-var}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "iterator-seq" :cause :pending/missing-core-var}
@@ -2776,7 +2632,6 @@
   {:suite "untested / hash family" :label "hash-ordered-coll" :cause :pending/missing-core-var}
   {:suite "untested / hash family" :label "hash-unordered-coll" :cause :pending/missing-core-var}
   {:suite "untested / misc seqs + binding machinery" :label "->Eduction" :cause :pending/missing-core-var}
-  {:suite "untested / misc seqs + binding machinery" :label "bound-fn calls" :cause :pending/ref-types}
   {:suite "untested / misc seqs + binding machinery" :label "nfirst" :cause :pending/missing-core-var}
   {:suite "untested / misc seqs + binding machinery" :label "push/pop-thread-bindings" :cause :pending/missing-core-var}
   {:suite "untested / misc seqs + binding machinery" :label "random-sample all" :cause :pending/missing-core-var}
@@ -2878,8 +2733,6 @@
   {:suite "var-meta / image-baked macros" :label "an image-baked defmacro keeps its derived :arglists" :cause :pending/special-forms}
   {:suite "var-meta / image-baked macros" :label "core macro vars all carry :arglists" :cause :pending/special-forms}
   {:suite "var-meta / native primitives" :label "native-op core fns carry :arglists" :cause :pending/special-forms}
-  {:suite "vars / binding dynamic" :label "binding on non-dynamic var throws" :cause :pending/ref-types}
-  {:suite "vars / cached reference stays correct" :label "dynamic binding is seen through a cached ref" :cause :pending/ref-types}
   {:suite "vars / cached reference stays correct" :label "redefinition is seen through a cached ref" :cause :pending/compiler}
   {:suite "vars / cached reference stays correct" :label "undeclared forward reference in a closure inside a data literal throws" :cause :pending/triage}
   {:suite "vars / cached reference stays correct" :label "undeclared forward reference in a fn body throws" :cause :pending/triage}
@@ -2912,4 +2765,4 @@
   {:suite "vector / structural ops meta" :label "into empty to never takes from's meta" :cause :pending/metadata}
   {:suite "vector / structural ops meta" :label "subvec full range sheds meta" :cause :pending/metadata}
   {:suite "vector / structural ops meta" :label "subvec full range value" :cause :pending/metadata}
-  {:suite "walk / eager" :label "clojure.walk is eager over a lazy seq (side effects run now)" :cause :pending/ref-types}]}
+  {:suite "walk / eager" :label "clojure.walk is eager over a lazy seq (side effects run now)" :cause :pending/stdlib-namespaces}]}

@@ -131,6 +131,8 @@ where() -> "REPL".
 
 compile_msg(resolve, {unresolved_symbol, S}) ->
     io_lib:format("Unable to resolve symbol: ~ts in this context", [S]);
+compile_msg(resolve, {unresolved_var, S}) ->
+    io_lib:format("Unable to resolve var: ~ts in this context", [S]);
 compile_msg(resolve, {no_such_var, Ns, S}) ->
     io_lib:format("No such var: ~ts/~ts", [Ns, S]);
 compile_msg(link, {arity, M, Name, N}) ->

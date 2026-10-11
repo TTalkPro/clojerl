@@ -375,7 +375,7 @@ rebaseline(Opts) ->
 %% to the task that provides them; the rest by failure kind.
 pending_legend() ->
     [{':pending/multimethods', <<"defmulti/defmethod and hierarchies are not implemented yet.">>, <<"clojerl2-017">>},
-     {':pending/ref-types', <<"atoms, volatiles, refs, agents, futures, promises and delays are not implemented yet.">>, <<"clojerl2-018">>},
+     {':pending/ref-types', <<"Var-root operations are not implemented yet: alter-var-root, with-redefs, with-local-vars, var-get/var-set; also locking. (atoms, agents, futures, promises, volatiles and binding came with clojerl2-018.)">>, <<"clojerl2-018 follow-up">>},
      {':pending/strings-io', <<"regexes, format, string/char functions and reader/writer IO are not implemented yet.">>, <<"clojerl2-020">>},
      {':pending/runtime-eval', <<"Namespace reflection is not implemented yet: ns-publics/ns-map/ns-aliases/ns-unmap/intern/resolve, var objects (var-get, var?), alias/refer as functions, an ns form inside a namespace file. (eval, read-string, require, in-ns came with clojerl2-023.)">>, <<"clojerl2-023 follow-up">>},
      {':pending/metadata', <<"meta/with-meta/vary-meta on values are not implemented yet.">>, <<"clojerl2-021 follow-up">>},

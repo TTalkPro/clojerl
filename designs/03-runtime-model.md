@@ -141,6 +141,14 @@ REPL 是写密集场景(每次 `defn` 都写),persistent_term 的全表拷贝在
 | ref / STM(dosync) | **v1 不做,raise 信息明确的错误** | BEAM 无多对象事务内存;伪造 STM 违背诚实降级原则(jolt:raise 而非假装) |
 | promise / future | 进程 + 消息 | `deref` = `receive`,`deliver` = `send`;future 用 `bound-fn` 语义(§3) |
 
+> **2026-10-12 落地(clojerl2-018,`clj2_ref`)**,与上表的差别:
+> - **atom**:ETS 行在第一次写入时才建立(沿用 clojerl 1.0 的做法),只读的 atom 不占行。CAS 比较的是行里的版本号,用 `ets:select_replace`,不会把旧值拷进 match spec。
+> - **watch 同步调用**:watch 在完成修改的进程里同步调用,与 JVM 一致,而不是上表写的"异步通知";validator 在交换之前运行。
+> - **promise/future 不需要进程**:promise 的值写进 ETS 行,等待者登记后由消息唤醒。future 只有一个工作进程,用 `bound-fn` 语义带上调用方的绑定,结果用 promise 的机制交付;主体的异常原样重新抛出,不包装成 `ExecutionException`。
+> - **agent**:每个 agent 一个进程,状态放在 ETS 行里,所以 deref 不必等正在执行的动作。`send`/`send-off` 共用一个队列;失败后到达的动作会暂存,`restart-agent` 之后再执行。
+> - **binding**:`binding`/`bound-fn` 依赖新增的 `var` 特殊形式(`#'x` 解析成常量 `#'ns/name`),运行时查注册表得到动态 var 的模块,并拒绝非 dynamic 的 var。
+> - **回收**:写过的 atom 行、promise/future 的结果行、agent 进程都不会被回收,因为 BEAM 没有终结器;登记为 `:state/explicit-lifetime`。另登记了 `:agents/process-per-agent` 和 `:values/no-identity`(`compare-and-set!` 按值比较)。
+
 atom 的备选是"每 atom 一个小进程"——否决:Clojure 程序里 atom 数量大、读密集,每值一进程的内存与消息开销不值;CAS 重试在无争用时一轮成功,热点争用见 §10 风险 5。
 
 ### 5.3 不可变堆上的记忆化(delay 与 lazy-seq 共有问题)

@@ -56,19 +56,19 @@ clojerl2:基于 nanopass 的 Clojure on ERTS 全新实现。设计文档见 [des
 | [clojerl2-015](tasks/clojerl2-015-var-ns.md) | Var/NS 运行时(直接链接) | 010 | 已完成 |
 | [clojerl2-016](tasks/clojerl2-016-protocols.md) | 协议(impl 模块 + 存在性缓存) | 015, 002 | 已完成 |
 | [clojerl2-017](tasks/clojerl2-017-multimethods.md) | 多方法(分派模块 absform 化) | 015 | 未开始 |
-| [clojerl2-018](tasks/clojerl2-018-ref-types.md) | 引用类型(atom/agent/delay/future) | 015, 003 | 未开始 |
+| [clojerl2-018](tasks/clojerl2-018-ref-types.md) | 引用类型(atom/agent/delay/future) | 015, 003 | 已完成 |
 | [clojerl2-019](tasks/clojerl2-019-lazy-seq.md) | 惰性序列(thunk + 记忆单元) | 003 | 已完成(clojerl 1.0 对比待补) |
 | [clojerl2-020](tasks/clojerl2-020-strings-io.md) | 字符串与 IO 原语层 | 010 | 未开始 |
-| [clojerl2-021](tasks/clojerl2-021-core-tiers.md) | core 全层移植(01-04 层) | 014, 015, 016 | 未开始 |
-| [clojerl2-022](tasks/clojerl2-022-corpus-conformance.md) | corpus + known-divergences 门控 CI | 021 | 未开始 |
+| [clojerl2-021](tasks/clojerl2-021-core-tiers.md) | core 全层移植(01-04 层) | 014, 015, 016 | 已完成 |
+| [clojerl2-022](tasks/clojerl2-022-corpus-conformance.md) | corpus + known-divergences 门控 CI | 021 | 已完成(次级来源 clojure-test-suite 未接入) |
 
 ## M5 — 工具链与发布
 
 | 任务 | 标题 | 依赖 | 状态 |
 |---|---|---|---|
-| [clojerl2-023](tasks/clojerl2-023-repl-cli.md) | REPL 与 clojerl2 CLI(单轨求值) | 014, 021 | 未开始 |
-| [clojerl2-024](tasks/clojerl2-024-rebar3-cache.md) | rebar3 插件 + 编译缓存 | 023 | 未开始 |
-| [clojerl2-025](tasks/clojerl2-025-docs-divergences.md) | 用户文档 + known-divergences 定稿 | 022, 024 | 未开始 |
+| [clojerl2-023](tasks/clojerl2-023-repl-cli.md) | REPL 与 clojerl2 CLI(单轨求值) | 014, 021 | 已完成 |
+| [clojerl2-024](tasks/clojerl2-024-rebar3-cache.md) | rebar3 插件 + 编译缓存 | 023 | 已完成(整条 rebar3 命令的 20% 判据只部分达标) |
+| [clojerl2-025](tasks/clojerl2-025-docs-divergences.md) | 用户文档 + known-divergences 定稿 | 022, 024 | 已完成,真实用户试用待安排 |
 
 ## 关键路径
 

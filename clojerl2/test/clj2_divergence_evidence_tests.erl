@@ -111,7 +111,9 @@ exceptions__erlang_classes_test() ->
     ?assertEqual(':caught', ev("(try (erlang/exit :bye) (catch :exit e :caught))")),
     ?assertEqual(':any', ev("(try (/ 1 0) (catch Exception e :any))")),
     ?assertError({clj2_compile, _, {syntax, {bad_catch_class, 'ArithmeticException'}}},
-                 ev("(try (/ 1 0) (catch ArithmeticException e :x))")).
+                 ev("(try (/ 1 0) (catch ArithmeticException e :x))")),
+    %% a future's exception comes back as itself, not wrapped
+    ?assertEqual(<<"inner">>, ev("(try @(future (throw (ex-info \"inner\" {}))) (catch Exception e (ex-message e)))")).
 
 %% JVM: extend-type takes classes and interfaces; reify exists.
 protocols__type_designators_test() ->
@@ -161,3 +163,28 @@ refs__no_stm_test() ->
     ?assertError({'clojure.lang.ExceptionInfo', _, #{':message' := <<"dosync: ", _/binary>>}},
                  ev("(dosync 1)")),
     ?assertError({'clojure.lang.ExceptionInfo', _, _}, ev("(ref 1)")).
+
+%% JVM: an unreachable atom is garbage collected.
+state__explicit_lifetime_test() ->
+    setup_ns(),
+    Before = ets:info(clj2_atom, size),
+    Self = self(),
+    spawn(fun() -> ev("(swap! (atom 0) inc)"), Self ! done end),
+    receive done -> ok end,
+    erlang:garbage_collect(),
+    ?assertEqual(Before + 1, ets:info(clj2_atom, size)),       % the row outlives every reference
+    V = ev("(volatile! 1)"),
+    spawn(fun() -> Self ! {other, catch clj2_ref:deref(V)} end),
+    receive {other, R} -> ?assertMatch({'EXIT', {{clj2_volatile_of_another_process, _}, _}}, R) end.
+
+%% JVM: shutdown-agents makes later sends throw.
+agents__process_per_agent_test() ->
+    setup_ns(),
+    ?assertEqual(2, ev("(let [g (agent 1)] (shutdown-agents) (send g inc) (await g) @g)")).
+
+%% JVM: identical? and compare-and-set! compare object identity.
+values__no_identity_test() ->
+    setup_ns(),
+    ?assertEqual(true, ev("(identical? [1 2] (vector 1 2))")),
+    ?assertEqual(true, ev("(compare-and-set! (atom [1]) [1] [2])")).
+

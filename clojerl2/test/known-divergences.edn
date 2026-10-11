@@ -65,7 +65,7 @@
   :alternative "Do not use fn identity as an identity token; tag values explicitly (a map with an id) instead."}
  {:id :exceptions/erlang-classes
   :area :compiler
-  :reason "catch takes Erlang exception classes :error, :exit and :throw; :default, Exception and Throwable catch every class; JVM class names (ArithmeticException, IllegalArgumentException ...) are a compile error. throw raises an Erlang error."
+  :reason "catch takes Erlang exception classes :error, :exit and :throw; :default, Exception and Throwable catch every class; JVM class names (ArithmeticException, IllegalArgumentException ...) are a compile error. throw raises an Erlang error. Dereferencing a future whose body threw rethrows that exception itself (JVM: wrapped in an ExecutionException)."
   :design "designs/09 §3"
   :alternative "(catch Exception e ...) or (catch :error e ...), and dispatch on the reason or (ex-data e) inside the handler."}
  {:id :protocols/type-designators
@@ -85,11 +85,24 @@
   :alternative "Use (ns-name *ns*) or *ns* where a name is needed; code that called Namespace methods needs the clj2 fns instead."}
  {:id :dynamic/per-process-bindings
   :area :namespaces
-  :reason "Dynamic bindings live in the process dictionary: a binding (and the current namespace, *1/*2/*3/*e at the REPL) belongs to the process that made it and is not seen by other processes."
+  :reason "Dynamic bindings live in the process dictionary. future, agent actions and bound-fn carry the caller's bindings along, as on the JVM; any other process (erlang/spawn, an Erlang callback) starts with none and sees the roots. The current namespace and *1/*2/*3/*e at the REPL are bindings too."
   :design "designs/03 §3"
-  :alternative "Pass values to other processes explicitly (as arguments or in messages) rather than through dynamic vars."}
+  :alternative "Wrap a fn handed to erlang/spawn or to Erlang code in bound-fn, or pass the values explicitly as arguments or in messages."}
  {:id :refs/no-stm
   :area :state
   :reason "Refs and STM are not provided: ref, dosync, sync, alter, commute, ref-set and ensure raise an ex-info saying so. BEAM has no multi-object transactional memory, and a fake one would lie about isolation."
   :design "designs/03 §5.2"
-  :alternative "Keep state that changes together in one value owned by one process (a gen_server, or an agent) and update it by message; atoms (clojerl2-018, not yet available) will cover single values."}]
+  :alternative "Keep state that changes together in one value: one atom holding a map (swap! updates it atomically), or one agent / gen_server that owns it and is updated by message."} {:id :state/explicit-lifetime
+  :area :state
+  :reason "Mutable cells are not reclaimed when they become garbage (BEAM has no finalizers or weak references): an atom that has been written keeps its ETS row, a promise or future its result row, and an agent its process, until the VM stops. An atom that is only read costs nothing. A volatile lives in the process dictionary of the process that made it, until that process exits, and cannot be read from another process."
+  :design "designs/03 §5.2"
+  :alternative "Create long-lived atoms and agents once (def them) rather than per call in a long-running process; keep per-request scratch state in local bindings, loop/recur state or the process's own state, and give short-lived work its own process."}
+ {:id :agents/process-per-agent
+  :area :state
+  :reason "Each agent is a process that runs its actions in arrival order. send and send-off share that one queue (there are no thread pools); a send made inside an action is dispatched at once rather than held until the action succeeds; shutdown-agents does nothing."
+  :design "designs/03 §5.2"
+  :alternative "Nothing to change for ordinary use; do not rely on sends from a failing action being dropped, nor on shutdown-agents to stop agents."} {:id :values/no-identity
+  :area :state
+  :reason "BEAM values have no object identity: identical? is exact equality (=:=), so two equal vectors, maps or large numbers are identical?, and compare-and-set! swaps when the current value equals the expected one (JVM: when it is the same object)."
+  :design "designs/03 §1.1, §5.2"
+  :alternative "Do not use identical? or compare-and-set! to tell apart equal values; carry an explicit version or id in the value when you need to (e.g. {:version n ...})."}]

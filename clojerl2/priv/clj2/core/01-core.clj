@@ -465,8 +465,9 @@
 (defn stm-unsupported
   "Raises: refs and STM are not supported (designs/03 §5.2)."
   [what]
-  (throw (ex-info (str what ": refs and STM (dosync) are not supported on clojerl2;"
-                       " keep related state in one process and update it by message")
+  (throw (ex-info (str what ": refs and STM (dosync) are not supported on clojerl2"
+                       " (known divergence :refs/no-stm); keep related state in one atom,"
+                       " or in one process (an agent) and update it by message")
                   {:unsupported what})))
 
 (defn ref [& _] (stm-unsupported "ref"))
@@ -479,3 +480,69 @@
 
 ;; There are no chunked seqs (known divergence :lazy-seq/no-chunking).
 (defn chunked-seq? [s] false)
+
+;;;; ------------------------------------------------------------------
+;;;; Reference types (clojerl2-018, clj2_ref; designs/03 §5.2)
+;;;;
+;;;; atom: an ETS row with compare-and-swap; volatile: a cell in this
+;;;; process; promise/future: delivered once, waiters woken by message;
+;;;; agent: one process per agent, actions in send order. Dynamic
+;;;; bindings travel to futures and agent actions (bound-fn semantics).
+
+(defn atom
+  ([x] (clj2_ref/atom x))
+  ([x & options] (clj2_ref/atom x (apply hash-map options))))
+(defn swap! [a f & args] (clj2_ref/swap a f args))
+(defn swap-vals! [a f & args] (clj2_ref/swap_vals a f args))
+(defn reset! [a v] (clj2_ref/reset a v))
+(defn reset-vals! [a v] (clj2_ref/reset_vals a v))
+(defn compare-and-set! [a oldval newval] (clj2_ref/compare_and_set a oldval newval))
+(defn set-validator! [r f] (clj2_ref/set_validator r f))
+(defn get-validator [r] (clj2_ref/get_validator r))
+(defn add-watch [r k f] (clj2_ref/add_watch r k f))
+(defn remove-watch [r k] (clj2_ref/remove_watch r k))
+
+(defn volatile! [x] (clj2_ref/volatile x))
+(defn vreset! [vol v] (clj2_ref/vreset vol v))
+(defmacro vswap! [vol f & args]
+  `(let [v# ~vol] (vreset! v# (~f (deref v#) ~@args))))
+(defn volatile? [x] (= (clj2_ref/type_of x) 'volatile))
+
+(defn promise [] (clj2_ref/promise))
+(defn deliver [p v] (clj2_ref/deliver p v))
+
+(def ^:dynamic *agent* nil)
+
+(defn bound-fn* [f] (clj2_var/bound_fn f))
+(defmacro bound-fn [& fntail] `(bound-fn* (fn ~@fntail)))
+
+(defmacro binding [bindings & body]
+  (let [pairs (partition 2 bindings)]
+    `(clj2_var/with_bindings
+       [~@(mapcat (fn [[v e]] [(list 'var v) e]) pairs)]
+       (fn [] ~@body))))
+
+(defn future-call [f] (clj2_ref/future_call f))
+(defmacro future [& body] `(future-call (fn [] ~@body)))
+(defn future? [x] (= (clj2_ref/type_of x) 'future))
+(defn future-cancel [f] (clj2_ref/future_cancel f))
+(defn future-done? [f] (clj2_ref/is_future_done f))
+(defn future-cancelled? [f] (clj2_ref/is_future_cancelled f))
+
+(defn agent [state & options] (clj2_ref/agent state (apply hash-map options)))
+(defn send [a f & args] (clj2_ref/send a f args))
+(defn send-off [a f & args] (clj2_ref/send a f args))
+(defn send-via [executor a f & args] (clj2_ref/send a f args))
+(defn await [& agents] (clj2_ref/await agents 'infinity) nil)
+(defn await-for [timeout-ms & agents] (clj2_ref/await agents timeout-ms))
+(defn agent-error [a] (clj2_ref/agent_error a))
+(defn restart-agent [a new-state & options] (clj2_ref/restart_agent a new-state (apply hash-map options)))
+(defn set-error-handler! [a f] (clj2_ref/set_error_handler a f))
+(defn error-handler [a] (clj2_ref/error_handler a))
+(defn set-error-mode! [a mode] (clj2_ref/set_error_mode a mode))
+(defn error-mode [a] (clj2_ref/error_mode a))
+(defn shutdown-agents [] nil)
+
+;; BEAM has no shared mutable memory to guard: a body that only touches
+;; values needs no lock, and io! has no transaction to refuse.
+(defmacro io! [& body] `(do ~@body))

@@ -49,12 +49,42 @@ pr({var, _, {Ns, Name}}, _) when is_atom(Ns), is_atom(Name) ->
     [<<"#'">>, atom_to_binary(Ns), $/, atom_to_binary(Name)];
 pr({clj2_fn, _, _}, _) -> <<"#object[clojure.lang.AFunction]">>;
 pr(F, _) when is_function(F) -> [<<"#object[">>, io_lib:format("~tp", [F]), $]];
+pr({Tag, _, _} = X, R) when Tag =:= atom; Tag =:= volatile; Tag =:= agent;
+                             Tag =:= promise; Tag =:= future ->
+    [<<"#object[">>, ref_class(Tag), $\s, pr(ref_status(X), R), $]];
 pr({Tag, _, M}, R) when is_atom(Tag), is_map(M) ->           % record
     [$#, atom_to_binary(Tag), map_str(M, R)];
 pr({Tag, _, T}, _) when is_atom(Tag), is_tuple(T) ->         % deftype
     [<<"#object[">>, atom_to_binary(Tag), $]];
 pr(P, _) when is_pid(P) -> [<<"#object[pid ">>, pid_to_list(P), $]];
 pr(X, _) -> io_lib:format("~tp", [X]).
+
+%% reference types print as on the JVM, less the identity hash
+ref_class(atom) -> <<"clojure.lang.Atom">>;
+ref_class(volatile) -> <<"clojure.lang.Volatile">>;
+ref_class(agent) -> <<"clojure.lang.Agent">>;
+ref_class(promise) -> <<"clojure.core$promise$reify">>;
+ref_class(future) -> <<"clojure.core$future_call$reify">>.
+
+ref_status(X) ->
+    {Status, Val} =
+        try
+            case X of
+                {T, _, _} when T =:= promise; T =:= future ->
+                    case clj2_ref:is_realized(X) of
+                        true -> {':ready', clj2_ref:deref(X)};
+                        false -> {':pending', nil}
+                    end;
+                {agent, _, _} ->
+                    case clj2_ref:agent_error(X) of
+                        nil -> {':ready', clj2_ref:deref(X)};
+                        E -> {':failed', E}
+                    end;
+                _ -> {':ready', clj2_ref:deref(X)}
+            end
+        catch _:_ -> {':failed', nil}
+        end,
+    clj2_coll:hash_map_kv([':status', Status, ':val', Val]).
 
 seq_str(L, R) -> [$(, join([pr(X, R) || X <- clj2_coll:to_list(L)], " "), $)].
 

@@ -37,8 +37,8 @@
 (defmacro lazy-seq [& body] `(clj2_lazy/lazy_seq (fn* [] ~@body)))
 (defmacro delay [& body] `(clj2_lazy/delay (fn* [] ~@body)))
 (def force (fn* force [x] (clj2_lazy/force x)))
-(def deref (fn* deref [ref] (clj2_lazy/deref ref)))
-(def realized? (fn* realized? [x] (clj2_lazy/is_realized x)))
+(def deref (fn* deref ([ref] (clj2_ref/deref ref)) ([ref timeout-ms timeout-val] (clj2_ref/deref ref timeout-ms timeout-val))))
+(def realized? (fn* realized? [x] (clj2_ref/is_realized x)))
 (def delay? (fn* delay? [x] (clj2_lazy/is_delay x)))
 (def doall (fn* doall [coll] (clj2_lazy/doall coll)))
 (def dorun (fn* dorun [coll] (clj2_lazy/dorun coll)))
@@ -479,7 +479,30 @@
        (loop* [~i 0]
          (if (erlang/< ~i n#) (do ~@body (recur (erlang/+ ~i 1))) nil)))))
 
-(defmacro doseq [bindings & body]
-  (let* [form (first bindings) coll (second bindings)]
-    `(loop* [s# (clojure.core/seq ~coll)]
-       (if s# (do (let [~form (erlang/hd s#)] ~@body) (recur (clojure.core/next s#))) nil))))
+(declare doseq-step)
+
+;; doseq: one loop* per binding, nested; the modifiers after a binding
+;; (:let, :when, :while) apply in order inside its loop. `s' is that
+;; loop's seq symbol: :when skips to the next element, :while ends it.
+(def doseq-emit
+  (fn* doseq-emit [bs body]
+    (if (seq bs)
+      (let* [s (gensym "doseq_s")]
+        `(loop* [~s (clojure.core/seq ~(second bs))]
+           (if ~s
+             (let [~(first bs) (clojure.core/first ~s)] ~(doseq-step (nnext bs) s body))
+             nil)))
+      `(do ~@body nil))))
+
+(def doseq-step
+  (fn* doseq-step [more s body]
+    (let* [k (first more)]
+      (if (= k :let)
+        `(let ~(second more) ~(doseq-step (nnext more) s body))
+        (if (= k :when)
+          `(if ~(second more) ~(doseq-step (nnext more) s body) (recur (clojure.core/next ~s)))
+          (if (= k :while)
+            `(if ~(second more) ~(doseq-step (nnext more) s body) nil)
+            `(do ~(doseq-emit more body) (recur (clojure.core/next ~s)))))))))
+
+(defmacro doseq [bindings & body] (doseq-emit (seq bindings) body))

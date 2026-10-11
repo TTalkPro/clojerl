@@ -52,6 +52,7 @@ spec(l0) ->
             expr =>
                 #{const  => [value],
                   sym    => [sym],
+                  the_var => [sym],                      %% (var x), #'x: resolved to a constant
                   'if'   => [expr, expr, expr],
                   do     => [{list, expr}, expr],
                   'let'  => [{list, binding}, expr],
@@ -74,7 +75,7 @@ spec(l0) ->
 spec(l1) ->
     {extends, l0,
      #{terminals => #{uid => fun ?MODULE:is_uid/1, atom => fun is_atom/1},
-       remove => #{top => [ns_decl], expr => [sym]},
+       remove => #{top => [ns_decl], expr => [sym, the_var]},
        add =>
            #{expr =>
                  #{local    => [uid],
