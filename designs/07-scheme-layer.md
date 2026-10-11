@@ -77,6 +77,14 @@ skeg 现状佐证(已核实):
 | condition / 异常 | `{scheme_exception, Cond}` / `{erlang_exception, Class, Reason, Stack}` | §2.2 |
 | port / IO | 文件子集映射 `file:*`;字符串端口 = iodata accumulator | 展开器只需 `with-exception-handler`/格式化级 IO |
 
+**set! 的三档编译策略**(stage0 捕获分析分流,2026-10-11 补):
+
+1. **未被闭包捕获的词法 `set!`** → 编译成 BEAM 变量重绑定(Elixir rebind 方案:每次 `set!` 生成新变量 `x@1`/`x@2`…),零开销。BEAM SSA 原生支持,emitter 直接产出 abstract forms。
+2. **被闭包捕获的词法 `set!`** → 装箱:绑定替换为 cell 句柄,读写走原语;cell 落 pdict(金属层 v1 声明单进程,~30ns)。改名法在此**语义错误**——状态须跨激活存活,激活内任何新变量都做不到(Elixir 同因造出 Agent/:ets);gensym 计数器/缓存类代码全依赖此语义。
+3. **数据结构与全局槽**(vector/string/bytevector/hashtable/`set!` 全局名)→ ets 行 / pdict `{skglobal, Sym}`,见上表。
+
+捕获分析是 stage0 analyzer 作用域分析的副产品(027);装箱只发生在第 2 档,占少数。
+
 **可变单元的裁决**:全部走 ets(规则单一,eq? 别名语义靠稳定 Key 天然正确)。编译期工具对 50-100ns 的单元开销不敏感;热点实测后再把单进程场景降级到 pdict,**M0.5 不做优化**。ets 不 GC → REPL 长会话会积累垃圾单元,提供 `(sk-gc-legacy)` 复位钩子,文档化。
 
 ## 4. Lcore-Erlang(对 skeg Lcore 的裁剪与扩展)

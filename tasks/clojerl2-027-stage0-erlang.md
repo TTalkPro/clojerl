@@ -18,6 +18,7 @@ Erlang 写的 stage0:Lcore-Erlang 文本 → analyzer → Erlang abstract forms 
 
 - [ ] Lcore 文本 reader(quote/注释/字符串字面量/字符字面量/向量)
 - [ ] analyzer:词法作用域(层数,下标)、三分类(词法变量/原语表/全局槽)、letrec 初始化检查(R6RS 限制)
+- [ ] **捕获分析**(designs/07 §3 三档策略):标记每个 letrec/lambda 绑定是否被闭包捕获;未捕获 `set!` → BEAM 变量重绑定(x@N 改名,零开销);捕获 `set!` → 装箱 cell(pdict)
 - [ ] specials:`$throw`/`$try/catch`/`$try/finally`/`$and?`/`$or?`/`call-with-return`
 - [ ] erl-* 内部形式:`erl-call`/`erl-make-tuple`/`erl-tuple-ref`/`erl-tuple-size`
 - [ ] 发射:闭包 = fun/2,case-lambda 按 arity 分派,尾调用( BEAM 原生)、`library-letrec*` 的双名写槽
