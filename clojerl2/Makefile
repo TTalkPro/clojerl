@@ -3,6 +3,10 @@
 #   make            compile the Erlang layer into ebin/
 #   make test       compile everything and run the eunit suites
 #   make corpus     run the conformance corpus, write notes/corpus-baseline.md
+#   make certify    the corpus gate: fails on an unlisted failure or a stale
+#                   entry in test/corpus-known-failures.edn
+#   make corpus-rebaseline   rewrite test/corpus-known-failures.edn
+#   make corpus-regen        re-derive the corpus :expected from JVM Clojure
 #   make clean      remove build artefacts
 #
 # Requires Erlang/OTP 27+ (developed against OTP 28).
@@ -33,7 +37,7 @@ empty      :=
 space      := $(empty) $(empty)
 TEST_MODS  := $(subst $(space),$(comma),$(strip $(basename $(notdir $(TESTS)))))
 
-.PHONY: all test corpus clean
+.PHONY: all test corpus certify corpus-rebaseline corpus-regen clean
 
 all: $(SRC_BEAMS)
 
@@ -56,6 +60,17 @@ CORPUS_RUN := $(shell command -v systemd-run >/dev/null 2>&1 && systemd-run --us
 
 corpus: $(SRC_BEAMS)
 	$(CORPUS_RUN) erl $(ERL_FLAGS) -eval 'R = clj2_corpus:run(), io:format("~p~n", [clj2_corpus:report(R, "notes/corpus-baseline.md")]), halt().'
+
+certify: $(SRC_BEAMS)
+	$(CORPUS_RUN) erl $(ERL_FLAGS) -eval '{S, _} = clj2_corpus:certify(), halt(case S of ok -> 0; _ -> 1 end).'
+
+corpus-rebaseline: $(SRC_BEAMS)
+	$(CORPUS_RUN) erl $(ERL_FLAGS) -eval 'io:format("~p~n", [clj2_corpus:rebaseline()]), halt().'
+
+# The JVM oracle (designs/04 §5.1): only for regenerating; CI never needs a JVM.
+CLOJURE_VERSION ?= 1.12.5
+corpus-regen:
+	clojure -Sdeps '{:deps {org.clojure/clojure {:mvn/version "$(CLOJURE_VERSION)"}}}' -M tools/regen-corpus.clj $(REGEN_FLAGS)
 
 clean:
 	rm -rf $(EBIN)

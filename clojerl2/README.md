@@ -38,10 +38,24 @@ make test     # 编译 src/erl/ 并跑全部 eunit 套件
 erl -pa ebin -eval 'io:format("~p~n", [clj2_compiler:eval(<<"(let* [f (fn* [x] (erlang/* x x))] (f 7))">>)]), halt().'
 ```
 
-clojure.core(目前是 00-kernel 层)由 `clj2_core:boot()` 按 `src/clj2/core/boot-order.edn` 加载;之后的命名空间与 `eval` 自动 refer 它:
+clojure.core(00-kernel 至 04-repl 五层)由 `clj2_core:boot()` 按 `src/clj2/core/boot-order.edn` 加载;之后的命名空间与 `eval` 自动 refer 它:
 
 ```sh
 erl -pa ebin -eval '{ok, _} = clj2_core:boot(), io:format("~p~n", [clj2_compiler:eval(<<"(->> (range 10) (filter even?) (map inc) (reduce +))">>)]), halt().'
 ```
+
+## 一致性语料(designs/04 §5)
+
+`test/corpus.edn`(jolt corpus,`:expected` 来自 JVM Clojure)的 `:common` 条目逐条编译求值,用 `=` 与 `:expected` 比较:
+
+```sh
+make corpus             # 跑全量,写 notes/corpus-baseline.md(按 core 分层/suite/失败原因)
+make certify            # 门控:失败必须登记在 test/corpus-known-failures.edn,登记了却通过也算失败
+make corpus-rebaseline  # 修好或新增失败后重写登记表(已登记条目保留原 cause)
+make corpus-regen       # 用 JVM Clojure(需要 `clojure` CLI)重新生成 :expected;CI 不需要 JVM
+```
+
+登记表里每条失败的 `:cause` 要么是 `test/known-divergences.edn` 里登记的有意分歧,要么是文件头 `:pending` 表里的待办原因(写明由哪个任务消除)。
+这些目标在独立 cgroup 里跑,内存上限 4G(`CORPUS_MEM`);**不要裸跑 `clj2_corpus:run()`**:失控的条目曾把整个会话 OOM 掉。
 
 pass 链见 `clj2_compiler:pipeline/0`;加优化 = 往列表里加一个 pass 模块。`clj2_compiler:eval(Src, #{trace => [PassName]})` 打印该 pass 的输出。

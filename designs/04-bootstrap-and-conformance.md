@@ -108,7 +108,7 @@ corpus/*.edn ──► runner ──► clojerl2 编译并求值 ──► 实�
    (宿主无关:表达式 + 期望值)                                ├─ EDN 规范化后比较 ─► pass/fail
 JVM Clojure(oracle)求值同一表达式 ──► 期望值 ──────────────┘
    ▲
-known-divergences.edn:已登记分歧的豁免注册表(门控)。2026-10-11 已建立于 `clojerl2/test/known-divergences.edn`(格式校验测试 `clj2_divergences_tests`),门控随 022 接入
+known-divergences.edn:已登记分歧的豁免注册表(门控)。2026-10-11 已落地(clojerl2-022):`clojerl2/test/known-divergences.edn` 登记有意分歧,`clojerl2/test/corpus-known-failures.edn` 给每个失败条目一个 cause(分歧 id 或带任务号的 `:pending` 原因),`make certify` 门控、进 CI
 ```
 
 - **语料格式**(移植 jolt corpus.edn):每条目 `{:expr "…" :expected "…" :tags [:core :seq]}`;`expected` 由 JVM Clojure 求值生成(oracle 模式 `make corpus-regen`),入库后作为静态期望,日常 CI 不依赖 JVM。

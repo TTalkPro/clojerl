@@ -24,3 +24,5 @@ jobs:
       uses: actions/checkout@v4
     - name: Compile and test (reader, nanopass pipeline, namespaces, macros)
       run: make -C clojerl2 test
+    - name: Corpus gate (designs/04 §5.1; failures must match test/corpus-known-failures.edn)
+      run: make -C clojerl2 certify

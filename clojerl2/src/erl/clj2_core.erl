@@ -13,7 +13,7 @@
 %%%-------------------------------------------------------------------
 -module(clj2_core).
 
--export([boot/0, boot/1, layers/0, source_dir/0]).
+-export([boot/0, boot/1, layers/0, layer_vars/0, source_dir/0]).
 
 %% @doc Compile and load clojure.core (all layers).
 boot() -> boot(#{}).
@@ -37,6 +37,33 @@ boot(Opts) ->
 layers() ->
     #{layers := Ls} = boot_order(source_dir()),
     [N || #{name := N} <- Ls].
+
+%% @doc The layer that defines each clojure.core var (a top-level def*
+%% form), as #{Sym => Layer}; a later layer's redefinition wins. Used to
+%% tag corpus entries by layer (designs/04 §5.2).
+layer_vars() ->
+    Dir = source_dir(),
+    #{layers := Layers} = boot_order(Dir),
+    maps:from_list([{Name, N} || {I, #{name := N} = L} <- enumerate(Layers),
+                                 F <- layer_forms(Dir, L, I),
+                                 Name <- defined(F)]).
+
+defined(F) ->
+    case unloc(F) of
+        [H, Nm | _] ->
+            case {unloc(H), unloc(Nm)} of
+                {Def, Sym} when is_atom(Def), is_atom(Sym) ->
+                    case atom_to_list(Def) of
+                        "def" ++ _ -> [Sym];
+                        _ -> []
+                    end;
+                _ -> []
+            end;
+        _ -> []
+    end.
+
+unloc({clj2_loc, _, _, F, _}) -> F;
+unloc(F) -> F.
 
 source_dir() ->
     filename:join([filename:dirname(code:which(?MODULE)), "..", "src", "clj2", "core"]).

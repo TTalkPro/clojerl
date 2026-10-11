@@ -1,10 +1,11 @@
 ;; clojerl2 known divergences from JVM Clojure (designs/04 §5, D12).
 ;;
 ;; Every deliberate difference is registered here with its reason and
-;; the design that decided it. clojerl2-022 turns this into the corpus
-;; gate (an unregistered failure, or a registered entry that starts
-;; passing, fails CI); until then clj2_divergences_tests checks the
-;; registry's shape.
+;; the design that decided it. The corpus gate (`make certify',
+;; clojerl2-022) accepts a failing corpus entry only when
+;; test/corpus-known-failures.edn gives it a cause: one of these ids, or
+;; a :pending cause (work not done yet). clj2_divergences_tests checks
+;; both files' shape.
 [{:id :lazy-seq/per-process-realization
   :area :lazy
   :reason "Lazy seqs and delays memoize in the process dictionary (default): another process holding the same lazy seq realizes it again. Values agree for pure thunks; a side-effecting thunk runs once per process. The ets memo switch (clj2_lazy:set_memo/1) realizes once across processes."
@@ -44,4 +45,7 @@
  {:id :namespaces/hot-code-two-versions
   :area :namespaces
   :reason "Redefining a namespace reloads its module with BEAM semantics: closures made by the previous version keep running it; JVM-style immediate global rebinding is not emulated."
-  :design "designs/02 §5, designs/03 §2.2"}]
+  :design "designs/02 §5, designs/03 §2.2"} {:id :fn/structural-identity
+  :area :compiler
+  :reason "Fns are Erlang funs, which compare by value: two closures of the same fn form over equal captured values are = and identical?, and collapse as set members or map keys (JVM: every evaluation of a fn form is a distinct object)."
+  :design "designs/03 §1 (D8)"}]

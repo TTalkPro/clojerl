@@ -1,55 +1,88 @@
 %%%-------------------------------------------------------------------
-%%% @doc clj2_corpus — runs the conformance corpus (designs/04 §5, D12).
+%%% @doc clj2_corpus — the conformance corpus and its gate (designs/04 §5,
+%%% D12; clojerl2-021, clojerl2-022).
 %%%
-%%% test/corpus.edn is jolt's corpus (JVM Clojure as the oracle): entries
+%%% test/corpus.edn is jolt's corpus, its `:expected' sourced from JVM
+%%% Clojure (tools/regen-corpus.clj, `make corpus-regen'): entries
 %%% `{:suite :label :expected :actual :portability}'. Only `:common'
 %%% entries apply to clojerl2 (`:jvm' ones test host interop).
 %%%
-%%% Each entry is compiled as its own namespace (entries define vars):
-%%% `(ns corpus.eN) <forms...> (def __result__ <last form>)', loaded in
-%%% a fresh process with output discarded, a time limit and a heap cap
-%%% (binaries included). The cap is also the VM-wide default during the
-%%% run, so processes an entry spawns are capped too, and everything left
-%%% under the entry's group leader is killed afterwards: one runaway entry
-%%% (an infinite seq realized or printed) must not take the host down. It
-%%% passes when
-%%% `:expected' is ":threw" and evaluation raised, or when the result
-%%% prints as `:expected', or equals (`=') the value `:expected' reads as.
+%%% Judging, as jolt does it: `:actual' and `:expected' are both source.
+%%% The entry is compiled as its own namespace
+%%% `(ns corpus.eN) <forms...> (def __result__ <last form>)', `:expected'
+%%% as `corpus.eN.x', and the two values compared with clojure.core `='
+%%% (a vector :expected equals a seq :actual). `:expected :throws' means
+%%% evaluating `:actual' must raise.
 %%%
-%%% run/1 returns the per-entry results; report/2 writes the baseline
-%%% (clojerl2-021); clojerl2-022 gates CI on it with known-divergences.
+%%% Isolation: each entry runs in a fresh process with output discarded,
+%%% a time limit and a heap cap (binaries included). The cap is also the
+%%% VM-wide default during the run, so processes an entry spawns are
+%%% capped too, and everything left under the entry's group leader is
+%%% killed afterwards: one runaway entry (an infinite seq realized or
+%%% printed) must not take the host down. Run it through `make corpus' /
+%%% `make certify', which also cap the whole VM's memory.
+%%%
+%%% Gate (`certify/1', jolt's `make certify' model): every failing entry
+%%% must be listed in test/corpus-known-failures.edn with a cause — a
+%%% registered divergence id (test/known-divergences.edn) or a `:pending'
+%%% cause (work not done yet, with its task). An unlisted failure fails
+%%% the gate, and so does a listed entry that passes (the list must not
+%%% rot). `rebaseline/1' rewrites the list, keeping causes already given.
 %%%-------------------------------------------------------------------
 -module(clj2_corpus).
 
--export([run/0, run/1, entries/1, report/2]).
+-export([run/0, run/1, entries/1, report/2,
+         certify/0, certify/1, rebaseline/0, rebaseline/1,
+         known_failures/0, divergence_ids/0]).
 
 run() -> run(#{}).
 
-%% Opts: file, workers (8), timeout (ms, 3000), limit (entries),
+%% Opts: file, workers (8), timeout (ms, 10000), limit (entries),
 %% max_heap (bytes per process, 256 MiB)
+%% → [{I, Entry, pass | {fail, Why}}]; Entry has `layer' (its core tier)
 run(Opts) ->
     {ok, _} = clj2_core:boot(),
     File = maps:get(file, Opts, default_file()),
     Entries0 = [E || E = #{portability := common} <- entries(File)],
-    Entries = case maps:get(limit, Opts, all) of
-                  all -> Entries0;
-                  N -> lists:sublist(Entries0, N)
-              end,
+    Entries1 = case maps:get(limit, Opts, all) of
+                   all -> Entries0;
+                   N -> lists:sublist(Entries0, N)
+               end,
+    Tag = layer_tagger(),
+    Entries = [E#{layer => Tag(A)} || E = #{actual := A} <- Entries1],
     Indexed = lists:zip(lists:seq(1, length(Entries)), Entries),
     MaxHeap = #{size => maps:get(max_heap, Opts, 256 bsl 20) div erlang:system_info(wordsize),
                 kill => true, error_logger => false, include_shared_binaries => true},
     Old = erlang:system_flag(max_heap_size, MaxHeap),
-    try pool(Indexed, maps:get(workers, Opts, 8), maps:get(timeout, Opts, 3000))
+    try pool(Indexed, maps:get(workers, Opts, 8), maps:get(timeout, Opts, 10000))
     after erlang:system_flag(max_heap_size, Old)
     end.
 
-default_file() ->
-    filename:join([filename:dirname(code:which(?MODULE)), "..", "test", "corpus.edn"]).
+default_file() -> test_file("corpus.edn").
 
-%% @doc The corpus entries as Erlang maps.
-entries(File) ->
-    {ok, Bin} = file:read_file(File),
+test_file(Name) ->
+    filename:join([filename:dirname(code:which(?MODULE)), "..", "test", Name]).
+
+read_edn(Path) ->
+    {ok, Bin} = file:read_file(Path),
     {ok, [Form], _} = clj2_reader:read_all(Bin),
+    clj2_form:to_data(Form).
+
+%% @doc The corpus entries as Erlang maps. `{Suite, Label}' identifies an
+%% entry in the gate, so a repeated one gets its label suffixed " (2)" ...
+entries(File) ->
+    {Es, _} = lists:mapfoldl(
+                fun(#{suite := S, label := L} = E, Seen) ->
+                        N = maps:get({S, L}, Seen, 0) + 1,
+                        L1 = case N of
+                                 1 -> L;
+                                 _ -> iolist_to_binary([L, " (", integer_to_list(N), ")"])
+                             end,
+                        {E#{label := L1}, Seen#{{S, L} => N}}
+                end, #{}, raw_entries(File)),
+    Es.
+
+raw_entries(File) ->
     [#{suite => clj2_coll:get(E, ':suite'),
        label => clj2_coll:get(E, ':label'),
        expected => clj2_coll:get(E, ':expected'),
@@ -60,7 +93,35 @@ entries(File) ->
                           nil -> unspecified;
                           P -> P
                       end}
-     || E <- clj2_coll:to_list(clj2_form:to_data(Form))].
+     || E <- clj2_coll:to_list(read_edn(File))].
+
+%% An entry's tier (designs/04 §5.2): the latest core layer defining a
+%% symbol it mentions; the first layer when it mentions none.
+layer_tagger() ->
+    Vars = clj2_core:layer_vars(),
+    Order = maps:from_list(lists:zip(clj2_core:layers(), lists:seq(1, length(clj2_core:layers())))),
+    [First | _] = clj2_core:layers(),
+    fun(Src) ->
+            Syms = try {ok, Fs, _} = clj2_reader:read_all(Src), symbols(Fs, [])
+                   catch _:_ -> []
+                   end,
+            Ls = [maps:get(S, Vars) || S <- Syms, maps:is_key(S, Vars)],
+            lists:foldl(fun(L, Acc) ->
+                                case maps:get(L, Order) > maps:get(Acc, Order) of
+                                    true -> L;
+                                    false -> Acc
+                                end
+                        end, First, Ls)
+    end.
+
+symbols({clj2_loc, _, _, F, _}, Acc) -> symbols(F, Acc);
+symbols(L, Acc) when is_list(L) -> lists:foldl(fun symbols/2, Acc, L);
+symbols({Coll, [], Items}, Acc) when is_list(Items), (Coll =:= vector orelse Coll =:= set) ->
+    symbols(Items, Acc);
+symbols({map, [], Pairs}, Acc) when is_list(Pairs) ->
+    symbols([X || {K, V} <- Pairs, X <- [K, V]], Acc);
+symbols(A, Acc) when is_atom(A) -> [A | Acc];
+symbols(_, Acc) -> Acc.
 
 %%====================================================================
 %% Running
@@ -99,7 +160,7 @@ run_entry(I, #{actual := Actual, expected := Expected}, Timeout) ->
     Sink = sink(),
     {Pid, Ref} = spawn_monitor(fun() ->
                                        group_leader(Sink, self()),
-                                       Self ! {verdict, self(), judge(evaluate(Ns, Actual), Expected)}
+                                       Self ! {verdict, self(), judge(Ns, Actual, Expected)}
                                end),
     Verdict = receive
                   {verdict, Pid, V} -> erlang:demonitor(Ref, [flush]), V;
@@ -121,27 +182,76 @@ kill_group(Sink) ->
 
 brief(T) -> iolist_to_binary(io_lib:format("~P", [T, 12])).
 
-evaluate(Ns, Actual) ->
+judge(Ns, Actual, ':throws') ->
+    case evaluate(Ns, Actual) of
+        {threw, _} -> pass;
+        {value, _} -> {fail, no_throw};
+        %% the JVM raises these at compile time too (CompilerException);
+        %% a missing var or form is a gap, not the expected throw
+        {compile_error, Why} ->
+            case raises_on_jvm(Why) of
+                true -> pass;
+                false -> {fail, {compile_error, Why}}
+            end
+    end;
+judge(Ns, Actual, Expected) ->
+    case evaluate(Ns, Actual) of
+        {threw, R} -> {fail, {threw, R}};
+        {compile_error, Why} -> {fail, {compile_error, Why}};
+        {value, V} ->
+            case evaluate(list_to_atom(atom_to_list(Ns) ++ ".x"), Expected) of
+                {value, E} ->
+                    %% `=' realizes lazy seqs, which may raise
+                    try clj2_coll:equals(V, E) of
+                        true -> pass;
+                        false -> {fail, {mismatch, printed(V)}}
+                    catch C:R -> {fail, {threw, brief({C, R})}}
+                    end;
+                _ -> {fail, expected_error}
+            end
+    end.
+
+raises_on_jvm({resolve, _}) -> false;
+raises_on_jvm({unsupported, _}) -> false;
+raises_on_jvm(_) -> true.
+
+printed(V) ->
+    P = try clj2_print:pr_str(V) catch _:_ -> <<"#<unprintable>">> end,
+    binary:part(P, 0, min(byte_size(P), 300)).
+
+%% → {value, V} | {threw, Brief} | {compile_error, Why}
+evaluate(Ns, Src) ->
     try
-        {ok, Forms, _} = clj2_reader:read_all(Actual),
+        Forms = case clj2_reader:read_all(Src) of
+                    {ok, Fs, _} -> Fs;
+                    {error, _, Msg} -> throw({read, Msg})
+                end,
         Body = flatten_do(Forms),
         {Init, [Last]} = lists:split(length(Body) - 1, Body),
-        Src = {forms, [[ns, Ns] | Init] ++ [[def, '__result__', Last]]},
-        case clj2_compiler:load_ns(Src) of
+        Prog = {forms, [[ns, Ns] | Init] ++ [[def, '__result__', Last]]},
+        case clj2_compiler:load_ns(Prog) of
             {ok, Ns} ->
-                V = Ns:'__result__'(),
-                {value, V, clj2_print:pr_str(V)};
-            {error, {ns_init_failed, _, _}} -> threw;
+                try {value, Ns:'__result__'()}
+                catch C:R -> {threw, brief({C, R})}
+                end;
+            {error, {ns_init_failed, _, R2}} -> {threw, brief(R2)};
             {error, Why} -> {compile_error, Why}
         end
     catch
+        throw:{read, Msg2} -> {compile_error, {read, Msg2}};
         error:{clj2_compile, _, Why2} -> {compile_error, Why2};
-        C:R -> {compile_error, {C, brief(R)}}
+        %% a literal handed to a macro that has no data form yet
+        error:{clj2_form, {no_data_form, K}} -> {compile_error, {unsupported, {literal, K}}};
+        C3:R3 -> {compile_error, {C3, brief(R3)}}
     end.
 
+flatten_do([]) -> [nil];
 flatten_do([F]) ->
-    case clj2_form:to_data(F) of
-        ['do' | _] -> [_ | Rest] = unwrap(F), flatten_do_all(Rest);
+    case unwrap(F) of
+        [H | Rest] -> case unwrap(H) of
+                          'do' -> flatten_do_all(Rest);
+                          _ -> [F]
+                      end;
         _ -> [F]
     end;
 flatten_do(Fs) -> Fs.
@@ -152,31 +262,17 @@ flatten_do_all(Fs) -> Fs.
 unwrap({clj2_loc, _, _, F, _}) -> F;
 unwrap(F) -> F.
 
-judge(threw, <<":threw">>) -> pass;
-judge(threw, _) -> {fail, threw};
-judge({value, _, _}, <<":threw">>) -> {fail, no_throw};
-judge({value, V, Printed}, Expected) ->
-    case Printed =:= Expected orelse equal_to_read(V, Expected) of
-        true -> pass;
-        false -> {fail, {mismatch, binary:part(Printed, 0, min(byte_size(Printed), 300))}}
-    end;
-judge({compile_error, Why}, _) -> {fail, {compile_error, Why}}.
-
-equal_to_read(V, Expected) ->
-    try
-        {ok, [F], _} = clj2_reader:read_all(Expected),
-        clj2_coll:equals(clj2_form:to_data(F), clj2_form:from_value(V))
-    catch _:_ -> false
-    end.
-
+%% An entry's modules: `corpus.eN', `corpus.eN.x' and the like, `corpus.eN$ctK'
+%% (not `corpus.eN0': parallel workers own those).
 cleanup(Ns) ->
-    case clj2_ns:info(Ns) of
-        {ok, _} -> clj2_ns:remove(Ns);
-        error -> ok
-    end,
-    Prefix = atom_to_list(Ns),
+    Name = atom_to_list(Ns),
+    Mine = fun(M) ->
+                   S = atom_to_list(M),
+                   S =:= Name orelse lists:prefix(Name ++ ".", S) orelse lists:prefix(Name ++ "$", S)
+           end,
+    [clj2_ns:remove(N) || N <- clj2_ns:all(), Mine(N)],
     [begin code:purge(M), code:delete(M), code:purge(M) end
-     || {M, _} <- code:all_loaded(), lists:prefix(Prefix, atom_to_list(M))],
+     || {M, _} <- code:all_loaded(), Mine(M)],
     ok.
 
 sink() ->
@@ -188,6 +284,195 @@ sink() ->
           end).
 
 %%====================================================================
+%% Gate
+%%====================================================================
+
+known_failures_file() -> test_file("corpus-known-failures.edn").
+
+%% @doc The known-failures registry: #{pending => #{Cause => Info},
+%% entries => #{{Suite, Label} => Cause}}.
+known_failures() ->
+    case filelib:is_file(known_failures_file()) of
+        false -> #{pending => #{}, entries => #{}};
+        true ->
+            D = read_edn(known_failures_file()),
+            Pending = maps:from_list(clj2_form:map_pairs(clj2_coll:get(D, ':pending'))),
+            Entries = maps:from_list([{{clj2_coll:get(E, ':suite'), clj2_coll:get(E, ':label')},
+                                       clj2_coll:get(E, ':cause')}
+                                      || E <- clj2_coll:to_list(clj2_coll:get(D, ':entries'))]),
+            #{pending => Pending, entries => Entries}
+    end.
+
+%% @doc The ids registered in test/known-divergences.edn.
+divergence_ids() ->
+    [clj2_coll:get(E, ':id') || E <- clj2_coll:to_list(read_edn(test_file("known-divergences.edn")))].
+
+certify() -> certify(#{}).
+
+%% @doc Run the corpus and gate it. → {ok | fail, Summary}; prints a report.
+certify(Opts) ->
+    Results = run(Opts),
+    #{pending := Pending, entries := Known} = known_failures(),
+    Causes = divergence_ids() ++ maps:keys(Pending),
+    Key = fun(#{suite := S, label := L}) -> {S, L} end,
+    Failing = [{Key(E), Why} || {_, E, {fail, Why}} <- Results],
+    Passing = [Key(E) || {_, E, pass} <- Results],
+    New = [{K, Why} || {K, Why} <- Failing, not maps:is_key(K, Known)],
+    Stale = [K || K <- Passing, maps:is_key(K, Known)],
+    BadCause = lists:usort([C || C <- maps:values(Known), not lists:member(C, Causes)]),
+    io:format("corpus: ~b/~b pass, ~b known failures, ~b new, ~b stale, ~b unregistered causes~n",
+              [length(Passing), length(Results), length(Failing) - length(New),
+               length(New), length(Stale), length(BadCause)]),
+    [io:format("  NEW   ~ts / ~ts: ~ts~n", [S, L, brief(Why)]) || {{S, L}, Why} <- New],
+    [io:format("  STALE ~ts / ~ts (passes now: drop it from the list)~n", [S, L]) || {S, L} <- Stale],
+    [io:format("  CAUSE ~ts is neither a divergence id nor a :pending cause~n", [C]) || C <- BadCause],
+    Status = case New ++ Stale ++ BadCause of [] -> ok; _ -> fail end,
+    {Status, #{results => Results, new => New, stale => Stale, bad_cause => BadCause}}.
+
+rebaseline() -> rebaseline(#{}).
+
+%% @doc Rewrite test/corpus-known-failures.edn from a fresh run: every
+%% failing entry is listed; one listed before keeps its cause, a new one
+%% gets a pending cause by its failure kind (pending_cause/1).
+rebaseline(Opts) ->
+    Results = run(Opts),
+    #{entries := Known} = known_failures(),
+    Rows = [{S, L, maps:get({S, L}, Known, cause(E, Why))}
+            || {_, #{suite := S, label := L} = E, {fail, Why}} <- Results],
+    ok = file:write_file(known_failures_file(), unicode:characters_to_binary(known_failures_text(Rows))),
+    #{failures => length(Rows), total => length(Results)}.
+
+%% The pending causes and the work that removes them. Unresolved names map
+%% to the task that provides them; the rest by failure kind.
+pending_legend() ->
+    [{':pending/multimethods', <<"defmulti/defmethod and hierarchies are not implemented yet.">>, <<"clojerl2-017">>},
+     {':pending/ref-types', <<"atoms, volatiles, refs, agents, futures, promises and delays are not implemented yet.">>, <<"clojerl2-018">>},
+     {':pending/strings-io', <<"regexes, format, string/char functions and reader/writer IO are not implemented yet.">>, <<"clojerl2-020">>},
+     {':pending/runtime-eval', <<"require/eval/read-string/macroexpand and namespace reflection at run time are not implemented yet.">>, <<"clojerl2-023">>},
+     {':pending/metadata', <<"meta/with-meta/vary-meta on values are not implemented yet.">>, <<"clojerl2-021 follow-up">>},
+     {':pending/sorted-colls', <<"sorted maps and sets are not implemented yet.">>, <<"clojerl2-021 follow-up">>},
+     {':pending/transients', <<"transient/persistent! and the bang ops are not implemented yet.">>, <<"clojerl2-021 follow-up">>},
+     {':pending/host-types', <<"class/type/instance? and other host type queries are not implemented yet; JVM class names need a mapping onto clj2 type tags.">>, <<"clojerl2-021 follow-up">>},
+     {':pending/stdlib-namespaces', <<"clojure.string, clojure.set, clojure.walk, clojure.edn, clojure.math ... are not ported yet.">>, <<"clojerl2-021 follow-up">>},
+     {':pending/missing-core-var', <<"A clojure.core var the corpus uses is not ported yet.">>, <<"clojerl2-021 follow-up">>},
+     {':pending/special-forms', <<"A special form (var, set!, ., new, letfn* ...) is not compiled yet.">>, <<"clojerl2-021 follow-up">>},
+     {':pending/jvm-exception-classes', <<"catch names a JVM exception class (ClassCastException, IllegalArgumentException ...); only Erlang classes, Exception and Throwable are understood (designs/09 §3).">>, <<"clojerl2-021 follow-up">>},
+     {':pending/numbers', <<"BigDecimal (1.5M) literals and arithmetic are not implemented yet.">>, <<"clojerl2-021 follow-up">>},
+     {':pending/reader', <<"The reader rejects the source (reader conditionals, number syntax, escapes ...).">>, <<"clojerl2-021 follow-up">>},
+     {':pending/compiler', <<"The compiler rejects the entry (syntax, linking, recur, verify ...): a compiler gap or bug.">>, <<"clojerl2-021 follow-up">>},
+     {':pending/triage', <<"Runs but disagrees with the JVM (wrong value, unexpected or missing throw, timeout, crash). Each must be fixed or moved to a registered divergence.">>, <<"clojerl2-022 follow-up">>}].
+
+%% A first guess at a new failure's cause: a registered divergence when the
+%% entry plainly exercises one, else a pending cause by failure kind.
+cause(#{suite := Suite, expected := Exp, actual := Act}, Why) ->
+    Has = fun(Src, Re) -> is_binary(Src) andalso re:run(Src, Re, [unicode]) =/= nomatch end,
+    case Why of
+        {mismatch, _} ->
+            case {Has(Suite, "^fn identity"), Has(Exp, "(^|[^\\w\"])-?\\d+/\\d+"), Has(Exp, "\\\\[a-z]")} of
+                {true, _, _} -> ':fn/structural-identity';
+                {_, true, _} -> ':number/no-ratio-arithmetic';
+                {_, _, true} -> ':char/integer';
+                _ -> ':pending/triage'
+            end;
+        {threw, B} ->
+            case {binary:match(B, <<"undef">>), Has(Act, "clojure\\.lang\\.|java\\.")} of
+                {nomatch, _} -> ':pending/triage';
+                {_, true} -> ':pending/host-types';
+                {_, false} -> case Has(Act, "clojure\\.(string|set|walk|edn|math|pprint|repl|template|zip|data)/") of
+                                  true -> ':pending/stdlib-namespaces';
+                                  false -> ':pending/triage'
+                              end
+            end;
+        _ -> pending_cause(Why)
+    end.
+
+pending_cause({compile_error, {resolve, {unresolved_symbol, S}}}) -> symbol_cause(S);
+pending_cause({compile_error, {resolve, {no_such_var, _, S}}}) -> symbol_cause(S);
+pending_cause({compile_error, {unsupported, {special_form, _}}}) -> ':pending/special-forms';
+pending_cause({compile_error, {syntax, {bad_catch_class, _}}}) -> ':pending/jvm-exception-classes';
+pending_cause({compile_error, {syntax, ns_must_be_first_form}}) -> ':pending/runtime-eval';
+pending_cause({compile_error, {read, _}}) -> ':pending/reader';
+pending_cause({compile_error, {unsupported, {literal, regex}}}) -> ':pending/strings-io';
+pending_cause({compile_error, {unsupported, {literal, tagged}}}) -> ':pending/reader';
+pending_cause({compile_error, {unsupported, {literal, L}}}) when L =:= bigdec; L =:= bigint -> ':pending/numbers';
+pending_cause({compile_error, _}) -> ':pending/compiler';
+pending_cause(_) -> ':pending/triage'.
+
+symbol_cause(S) ->
+    N = atom_to_list(S),
+    Owners = [{':pending/multimethods',
+               [defmulti, defmethod, derive, underive, 'isa?', parents, ancestors, descendants,
+                'make-hierarchy', 'prefer-method', 'remove-method', 'remove-all-methods', methods,
+                'get-method', prefers]},
+              {':pending/ref-types',
+               [atom, 'swap!', 'reset!', 'swap-vals!', 'reset-vals!', 'compare-and-set!', 'add-watch',
+                'remove-watch', 'set-validator!', 'get-validator', 'volatile!', 'vswap!', 'vreset!',
+                'volatile?', ref, dosync, alter, commute, 'ref-set', agent, send, 'send-off', await,
+                future, 'future-call', 'future-cancel', 'future?', 'future-done?', promise, deliver,
+                delay, 'delay?', force, 'realized?', binding, 'with-redefs', 'alter-var-root',
+                'with-bindings', 'bound-fn', 'locking', 'io!']},
+              {':pending/strings-io',
+               ['re-find', 're-matches', 're-seq', 're-pattern', 're-groups', 're-matcher', format,
+                printf, 'with-in-str', 'read-line', slurp, spit, 'line-seq', char, 'char?',
+                'parse-long', 'parse-double', 'parse-uuid', 'parse-boolean', 'random-uuid', 'uuid?',
+                'char-escape-string', 'char-name-string', newline, flush, 'print-str', 'println-str',
+                'prn-str']},
+              {':pending/runtime-eval',
+               [require, use, import, refer, load, 'load-string', 'load-file', 'read-string', read, eval,
+                'macroexpand', 'macroexpand-1', resolve, 'ns-resolve', 'find-ns', 'the-ns',
+                'create-ns', 'remove-ns', 'all-ns', 'ns-name', 'ns-publics', 'ns-interns',
+                'ns-map', 'ns-aliases', 'ns-refers', 'ns-unmap', intern, 'find-var', 'var-get',
+                'var-set', 'var?', 'bound?', 'thread-bound?', '*ns*', 'requiring-resolve']},
+              {':pending/metadata', [meta, 'with-meta', 'vary-meta', 'alter-meta!', 'reset-meta!']},
+              {':pending/sorted-colls',
+               ['sorted-map', 'sorted-map-by', 'sorted-set', 'sorted-set-by', subseq, rsubseq, 'sorted?']},
+              {':pending/transients',
+               [transient, 'persistent!', 'conj!', 'assoc!', 'dissoc!', 'pop!', 'disj!']},
+              {':pending/host-types',
+               [class, type, 'instance?', cast, 'class?', bases, supers, 'satisfies?']}],
+    case [C || {C, Syms} <- Owners, lists:member(S, Syms)] of
+        [C | _] -> C;
+        [] when hd(N) =/= $. -> case string:prefix(N, "clojure.") of
+                                    nomatch -> host_or_missing(N);
+                                    "lang." ++ _ -> ':pending/host-types';
+                                    "core/" ++ _ -> ':pending/missing-core-var';
+                                    _ -> ':pending/stdlib-namespaces'
+                                end;
+        [] -> ':pending/host-types'
+    end.
+
+%% Class/method, .method, Class. and other host forms
+host_or_missing(N) ->
+    case lists:member($., N) orelse lists:member($/, N) of
+        true -> ':pending/host-types';
+        false -> ':pending/missing-core-var'
+    end.
+
+known_failures_text(Rows) ->
+    Sorted = lists:sort(Rows),
+    ["\
+;; clojerl2 corpus known failures (designs/04 §5.1 gate, clojerl2-022).
+;;
+;; Every :common corpus entry that fails is listed here with its cause:
+;; a divergence id from known-divergences.edn (a deliberate difference)
+;; or a :pending cause below (work not done yet). `make certify' fails on
+;; a failure that is not listed and on a listed entry that passes.
+;;
+;; Generated by `make corpus-rebaseline' (clj2_corpus:rebaseline/0), which
+;; keeps the cause of entries already listed: to triage an entry, edit its
+;; :cause here (e.g. to a divergence id) and it sticks.
+{:pending
+ {",
+     lists:join("\n  ", [io_lib:format("~ts {:reason ~ts :task ~ts}", [C, str(R), str(T)])
+                         || {C, R, T} <- pending_legend()]),
+     "}\n :entries\n [",
+     lists:join("\n  ", [io_lib:format("{:suite ~ts :label ~ts :cause ~ts}", [str(S), str(L), C])
+                         || {S, L, C} <- Sorted]),
+     "]}\n"].
+
+str(B) -> clj2_print:pr_str(B).
+
+%%====================================================================
 %% Report
 %%====================================================================
 
@@ -195,23 +480,41 @@ sink() ->
 report(Results, Path) ->
     Total = length(Results),
     Passed = length([ok || {_, _, pass} <- Results]),
-    BySuite = lists:foldl(
-                fun({_, #{suite := S}, R}, Acc) ->
-                        Key = suite_group(S),
-                        {P, T} = maps:get(Key, Acc, {0, 0}),
-                        maps:put(Key, {P + case R of pass -> 1; _ -> 0 end, T + 1}, Acc)
-                end, #{}, Results),
+    Tally = fun(KeyFun) ->
+                    lists:foldl(fun({_, E, R}, Acc) ->
+                                        K = KeyFun(E),
+                                        {P, T} = maps:get(K, Acc, {0, 0}),
+                                        maps:put(K, {P + case R of pass -> 1; _ -> 0 end, T + 1}, Acc)
+                                end, #{}, Results)
+            end,
+    ByLayer = Tally(fun(#{layer := L}) -> atom_to_binary(L) end),
+    BySuite = Tally(fun(#{suite := S}) -> suite_group(S) end),
+    #{entries := Known} = known_failures(),
+    Causes = count([maps:get({S, L}, Known, <<"(unlisted)">>)
+                    || {_, #{suite := S, label := L}, {fail, _}} <- Results]),
     Kinds = count([fail_kind(R) || {_, _, {fail, _} = R} <- Results]),
     Unresolved = count([S || {_, _, {fail, {compile_error, {resolve, {unresolved_symbol, S}}}}} <- Results]
                        ++ [S || {_, _, {fail, {compile_error, {resolve, {no_such_var, _, S}}}}} <- Results]),
+    Table = fun(M, Sort) ->
+                    Rows = case Sort of
+                               by_name -> lists:sort(maps:to_list(M));
+                               by_size -> [{K, V} || {_, K, V} <- lists:reverse(lists:sort([{T, K, {P, T}} || {K, {P, T}} <- maps:to_list(M)]))]
+                           end,
+                    [io_lib:format("| ~ts | ~b | ~b | ~b% |~n", [K, P, T, round(100 * P / T)])
+                     || {K, {P, T}} <- Rows]
+            end,
     Lines =
-        [io_lib:format("# corpus 基线(clojerl2-021)~n~n", []),
-         io_lib:format("语料:`test/corpus.edn`(jolt `test/chez/corpus.edn` @ 6c2685e,EPL-2.0),只计 `:portability :common` 条目。~n"
-                       "生成:`clj2_corpus:report(clj2_corpus:run(), Path)`。判定见 `src/erl/clj2_corpus.erl`。~n~n", []),
+        [io_lib:format("# corpus 基线(clojerl2-021/022)~n~n", []),
+         io_lib:format("语料:`test/corpus.edn`(jolt `test/chez/corpus.edn` @ 6c2685e,EPL-2.0;`:expected` 经 `make corpus-regen` 以 JVM Clojure 1.12.5 重新生成),只计 `:portability :common` 条目。~n"
+                       "生成:`make corpus`;门控:`make certify`(对照 `test/corpus-known-failures.edn`)。判定见 `src/erl/clj2_corpus.erl`。~n~n", []),
          io_lib:format("**通过 ~b / ~b(~.1f%)**~n~n", [Passed, Total, 100 * Passed / max(Total, 1)]),
-         "## 按 suite\n\n| suite | 通过 | 条目 | 通过率 |\n|---|---|---|---|\n",
-         [io_lib:format("| ~ts | ~b | ~b | ~b% |~n", [K, P, T, round(100 * P / T)])
-          || {_, K, {P, T}} <- lists:reverse(lists:sort([{T, K, {P, T}} || {K, {P, T}} <- maps:to_list(BySuite)]))],
+         "## 按 core 分层\n\n条目归入它引用到的最靠后的 core 层(`clj2_core:layer_vars/0`)。\n\n"
+         "| 层 | 通过 | 条目 | 通过率 |\n|---|---|---|---|\n",
+         Table(ByLayer, by_name),
+         "\n## 按 suite\n\n| suite | 通过 | 条目 | 通过率 |\n|---|---|---|---|\n",
+         Table(BySuite, by_size),
+         "\n## 失败原因(known-failures 登记)\n\n| cause | 条目 |\n|---|---|\n",
+         [io_lib:format("| `~ts` | ~b |~n", [K, N]) || {K, N} <- Causes],
          "\n## 失败类别\n\n| 类别 | 条目 |\n|---|---|\n",
          [io_lib:format("| ~ts | ~b |~n", [K, N]) || {K, N} <- Kinds],
          "\n## 最常见的未解析符号(缺失的 core 函数/宏的线索)\n\n| 符号 | 条目 |\n|---|---|\n",
@@ -225,8 +528,9 @@ suite_group(S) ->
         _ -> S
     end.
 
-fail_kind({fail, threw}) -> <<"threw (unexpected)">>;
+fail_kind({fail, {threw, _}}) -> <<"threw (unexpected)">>;
 fail_kind({fail, no_throw}) -> <<"expected a throw">>;
+fail_kind({fail, expected_error}) -> <<":expected does not evaluate">>;
 fail_kind({fail, timeout}) -> <<"timeout">>;
 fail_kind({fail, {mismatch, _}}) -> <<"wrong value">>;
 fail_kind({fail, {crashed, _}}) -> <<"crashed">>;
