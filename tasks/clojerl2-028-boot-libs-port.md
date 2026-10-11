@@ -1,6 +1,6 @@
 # clojerl2-028 boot 库移植(三项修正落地)
 
-状态:未开始
+状态:已废弃(2026-10-11)——不建 Scheme 金属层,见 [designs/09](../designs/09-erlang-hosted-compiler.md) §0。
 里程碑:M0.5(Scheme 金属层)
 依赖:026, 027
 

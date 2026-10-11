@@ -1,8 +1,10 @@
 # 01 nanopass 管线:语言链、pass 清单与框架实现(D3/D5/D6)
 
-状态:设计提案。细化 [00](00-overview.md) 的 D3(nanopass 框架 Clojure 重实现)、D5(编译器纯函数)、D6(尾调用/闭包红利):给出从 reader 输出(Lcore)到 absform 对齐 IR(Labs)的形式化语言链、完整 pass 清单及其输入输出语言对,以及在 Clojure 内实现 nanopass 框架的最小 API 形态。
+状态:设计提案。细化 [00](00-overview.md) 的 D3(nanopass 框架 Erlang 内自实现,2026-10-11 修订,见 [09](09-erlang-hosted-compiler.md))、D5(编译器纯函数)、D6(尾调用/闭包红利):给出从 reader 输出(Lcore)到 absform 对齐 IR(Labs)的形式化语言链、完整 pass 清单及其输入输出语言对,以及框架的对应关系(实现见 [09](09-erlang-hosted-compiler.md) §1)。
 
-> 结论先行:**走完整 nanopass,不走 jolt 的 "nanopass-lite"**。每条 pass 一对形式化语言(define-language + spec 校验),pass 边界即语法契约;样板成本由 `extends` 继承与自动生成的穿通子句吸收。BEAM 原生特性让管线比 Chez/cleat 短一截:无 closure conversion、无 convert-assignments、无 TCO 分析。宏展开是驱动层的效果边界,pass 本身全部纯函数(D5)。
+> 实现进度(2026-10-11):**§5 清单已全部落地**(Erlang,[09](09-erlang-hosted-compiler.md) §2)。实际语言链以 `clj2_lang` 为准:L0(parse)→ L1(resolve)→ L2(loop 已降低)→ L3(letfn 已降低)→ L4(var 已链接)→ L5(ANF)→ Labs。与本文的偏离:expand-destructuring 归 `clojure.core` 宏;normalize-arities、lower-case、emit-lower 合并进 lower-labs(Erlang 的 fun 与 `case` 原生承担了它们的工作);verify 查语法之外的作用域不变式(语法由框架在每个 pass 边界查)。对照表见 09 §2。
+
+> 结论先行:**走完整 nanopass,不走 jolt 的 "nanopass-lite"**。每条 pass 一对形式化语言(语言数据 + pass 边界整树校验),pass 边界即语法契约;样板成本由 `extends` 继承与自动生成的穿通子句吸收。BEAM 原生特性让管线比 Chez/cleat 短一截:无 closure conversion、无 convert-assignments、无 TCO 分析。宏展开是驱动层的效果边界,pass 本身全部纯函数(D5)。
 
 ## 1. 语言链总览
 
@@ -95,40 +97,20 @@ jolt 用单一 IR + 注解键(pass 间靠约定而非语法)。我们拒绝这�
 3. **代价我们认账**:jolt 的 `map-ir-children` 共享遍历器在完整 nanopass 下退化为每语言一套遍历骨架(由 define-language 宏生成)。代码量上升,换来的是上面第 1 条——这是明确接受的权衡,不是疏忽。
 4. **调试设施照搬 Scheme 框架**:`trace`/`echo`(pass 级 IR 打印)与 `diff-languages`(两语言产生式 diff)是排错主力,开发期默认挂在 pipeline 上。
 
-## 3. D3:Clojure 内的 nanopass 框架
+## 3. D3:Erlang 内的 nanopass 框架
 
-BEAM 上没有可 vendor 的宿主 Scheme(cleat 15 号文路线在此无对象),框架在 Clojure 内重实现。对应关系:
+> 2026-10-11 修订:框架宿主由 Clojure 改为 Erlang,已落地为 `clj2_np` + `clj2_lang`,设计详见 [09](09-erlang-hosted-compiler.md) §1。本节只保留对应关系;原 Clojure `define-pass` 宏设计作废。
 
-| nanopass-framework-scheme | clojerl2 (Clojure) |
+| nanopass-framework-scheme | clojerl2(Erlang) |
 |---|---|
-| `define-language` + `extends` | `define-language` 宏,产生式编译为 spec;`:extends` 做产生式集合并/差 |
-| terminals / nonterminals | 同上;terminal 即谓词(`symbol?`/`literal?`) |
-| IR 记录 | **map 节点**:`{:op :if, :test .., :then .., :else .., :meta ..}` |
-| `define-pass` + catamorphism | `define-pass` 宏:模式 → 模板,未匹配产生式自动生成穿通遍历 |
-| `with-output-language` 模板 | 模板即输出语言的构造器语法,编译期按 Lout spec 校验键集合 |
-| `trace` / `echo` / `diff-languages` | 同名函数,dev 模式可用 |
-
-示意:
-
-```clojure
-(define-pass expand-destructuring : (L1) -> (L2a)
-  (Binding : Binding -> [(uid ... ) (Expr ...)]     ;; 一对多:绑定消解为取件序列
-    [(vec ,p* ...) ,e
-     (let* ([,tmp ,e])                              ;; tmp 为框架生成的唯一 uid
-       ,(mapcat (fn [p i] (Binding [p (primop nth ,tmp ,i)])) p* (range)))]))
-```
-
-`define-pass` 展开时做两件静态检查:(a) 模式键属于 Lin 的 `:op` 集;(b) 模板产出的节点键属于 Lout。加上运行期 spec 对输出整树校验,形成"编译期查模式、运行期查全树"的双层防线。
-
-pass 组合器支持迭代组(jolt 的 fixpoint cluster 模式,用于内联/常量折叠互促):
-
-```clojure
-(defpipeline pipeline
-  [parse resolve-symbols expand-destructuring normalize-arities
-   validate-recur lower-loop lower-letfn normalize-anf lower-case
-   (fixpoint [const-fold inline] {:mode :release, :max-iter 8})
-   verify emit-lower])
-```
+| `define-language` + `extends` | `clj2_lang:spec/1` 返回语言数据;`{extends, Base, #{remove, add, terminals}}` 做产生式差分 |
+| terminals / nonterminals | 终结符 = 谓词 fun;非终结符 = `#{Op => [FieldKind]}` |
+| IR 记录 | **absform 形状的元组** `{Op, Anno, Field...}`,Anno 为 `erl_anno()` |
+| `define-pass` + catamorphism | pass 模块 = `pass/0` + `run/2`;子句用函数头模式匹配,未写的 op 交 `clj2_np:descend/4`、`mapfold/4` 自动穿通 |
+| ellipsis 模板 `,e* ...` | 列表推导 / `lists:mapfoldl`(承认的噪音) |
+| 编译期文法校验 | **运行期**:`clj2_np:run/3` 在每个 pass 之后按 `out` 语言 `check/2` 整树,dev/测试默认开 |
+| `trace` / `echo` | `clj2_np:run/3` 的 `trace => [PassName]` |
+| pass 组合 | `clj2_compiler:pipeline/0` 是模块列表;优化 = 插入 L→L pass |
 
 ## 4. D5:编译器是纯函数,宏展开是驱动层边界
 
@@ -136,9 +118,12 @@ pass 组合器支持迭代组(jolt 的 fixpoint cluster 模式,用于内联/常�
 
 对照 clojerl 1.0:分析器在 `analyze` 中途直接改写 ETS 里的 namespace,编译与运行时状态交织([00](00-overview.md) §2.5),导致编译必须跑在隔离子进程里。D5 下 pass 可任意并行、重放、缓存。
 
-**与宏展开的共处**:宏是编译期求值,必然有执行效果,不可能纯。划界方式——宏展开在**驱动层**做,form-at-a-time:驱动读入一个顶层 form,宏展开之(此时允许 effectful eval,走 [02](02-beam-backend.md) §5 的单轨编译执行),展开结果进入纯 pass 链;`def`/`ns` 产生的 env 增量由 pass 返回、驱动提交。即:**效果是驱动与运行时之间的事,pass 与 pass 之间只有数据**。
+**与宏展开的共处**(2026-10-11 已落地,机制见 [09](09-erlang-hosted-compiler.md) §4.1;与下文的差别是展开发生在 parse 内部,由驱动注入展开能力,而不是驱动先展开整棵树):宏是编译期求值,必然有执行效果,不可能纯。划界方式——宏展开在**驱动层**做,form-at-a-time:驱动读入一个顶层 form,宏展开之(此时允许 effectful eval,走 [02](02-beam-backend.md) §5 的单轨编译执行),展开结果进入纯 pass 链;`def`/`ns` 产生的 env 增量由 pass 返回、驱动提交。即:**效果是驱动与运行时之间的事,pass 与 pass 之间只有数据**。
 
 ## 5. pass 清单
+
+> 2026-10-11:下表为原始蓝图;落地形态与偏离见 [09](09-erlang-hosted-compiler.md) §2。
+
 
 | # | pass | Lin→Lout | 类别 | 一句话规格 |
 |---|---|---|---|---|
@@ -148,7 +133,7 @@ pass 组合器支持迭代组(jolt 的 fixpoint cluster 模式,用于内联/常�
 | 4 | normalize-arities | L2a→L2 | 变换 | 多 arity `fn*` → 每 arity 一个函数 + dispatcher;变参 → 定长参数 + 集list 前奏(无需 Chez 式 case-lambda 规范化,分派是显式节点) |
 | 5 | validate-recur | L2→L2 | **分析** | 尾位置标注遍历:`recur` 必须出现在所在 `loop*`/`fn*` 的尾位置,且参数个数匹配;违规即带源位置的编译错误 |
 | 6 | lower-loop | L2→L3 | 变换 | `loop*` → 命名局部递归 fun,`recur` → 自尾调用(§6) |
-| 7 | lower-letfn | L2→L3 | 变换 | `letfn*` 按绑定图 SCC 分类降低(§6.3) |
+| 7 | lower-letfn | L2→L3 | 变换 | `letfn*` → group named fun(§6.3,已落地) |
 | 8 | normalize-anf | L3→L4 | 变换 | ANF 化;重点服务 Erlang 约束:case/receive 子句模式与守卫中的复杂表达式提取到子句前的 `let*` |
 | 9 | lower-case | L4→L5 | 变换 | `case*` 常量分派 → 字面量模式匹配树(直接对应 Erlang case) |
 | 10 | const-fold / inline | L5→L5 | 变换 | 优化簇,fixpoint 迭代;**mode-gated**:dev 只跑 const-fold(jolt 模式),release 全开 |
@@ -167,12 +152,11 @@ Erlang fun 原生捕获词法环境,`fn*` 直接映射为 fun。**免 closure-co
 
 ### 6.3 letfn* 的诚实处置
 
-Erlang 没有 fun 间的 mutual letrec:named fun 只支持**自递归**。设计:
+Erlang 没有 fun 间的 mutual letrec:named fun 只支持**自递归**。
 
-- **自递归**(绑定图 SCC 为单点自环)→ named fun,零成本;
-- **互递归**(SCC 含环)→ 提升为**模块私有的生成函数**,自由变量作为显式前导参数传入,`letfn*` 体内引用编译为对生成函数的 `modcall`。
+> 2026-10-11 修订(已落地,`clj2_p_letfn`):整个 letfn* 组降低为**一个** named fun `G`,第 J 个子句返回第 J 个成员;成员体内对成员 J 的引用是 `G(J)`。成员保留原生闭包捕获,成员间尾调用仍是尾调用,不生成模块级函数(与 REPL 模块替换无交互)。自命名的多 arity / 变参 fn 也按单成员组处理。代价是每次成员引用分配一个闭包。
 
-注意这是针对 letfn 互递归这一个局点的定向降低,不是通用 closure conversion——自由变量显式传参的方案只在生成函数边界生效,普通 `fn*` 闭包仍走原生捕获。模块私有函数的全部权宜(命名、可见性、`on_load` 注册)属 [03](03-runtime-model.md) 模块模型范围。
+原设计(SCC 分类:自递归 → named fun;互递归 → 提升为模块私有函数,自由变量作前导参数)降格为**可选优化 pass**,在基准证明 group fun 是热点时加入。
 
 ### 6.4 与 Chez/cleat 管线的删减对照
 
@@ -187,9 +171,9 @@ Erlang 没有 fun 间的 mutual letrec:named fun 只支持**自递归**。设计
 
 ## 7. 风险
 
-1. **框架宏的工程量**:define-language/define-pass/自动穿通生成是元编程密集区,stage0 子集([04](04-bootstrap-and-conformance.md) §2)必须够大才能编译框架自身——这与 [00](00-overview.md) 风险 1 是同一冷启动问题的正面。缓解:M1 先写最小版(无 `extends`、手工穿通),框架自举后再补齐。
+1. ~~**框架宏的工程量**~~(2026-10-11 消除):框架是 Erlang 写的数据驱动遍历器(`clj2_np`,约 250 行),无宏、无自举。剩余风险是"无编译期 pass 校验",见 [09](09-erlang-hosted-compiler.md) §5。
 2. **ANF 与 Erlang 自身优化的重叠**:erlc 前半段也做子句提取,我们的 normalize-anf 可能与之重复劳动;保留它的理由是守卫约束必须在语义层保证,不能赌 erlc 内部顺序。若基准证明冗余,降级为只对 case/receive 语境做定向提取。
-3. **letfn* 提升的交互**:生成模块私有函数与增量编译/REPL 的模块替换语义([03](03-runtime-model.md) §2)有交互,需在 M4 实测。
+3. ~~**letfn* 提升的交互**~~(2026-10-11 消除):letfn* 改为 group fun 降低([09](09-erlang-hosted-compiler.md) §3),不生成模块级函数;lambda lifting 若作为优化 pass 加回,此风险随之回来。
 4. **开放问题**:(a) `erl-list*`/`erl-alias*` 是否保留(§1.2);(b) optimize 簇的 release 内联启发式直接搬 jolt 参数是否适配 BEAM 调用成本,待基准;(c) `set!` 仅限 thread-bound var,若 [03](03-runtime-model.md) 的动态绑定方案调整,本 pass 的校验规则跟随。
 
 ## 8. 与其他文档的关系
@@ -199,4 +183,5 @@ Erlang 没有 fun 间的 mutual letrec:named fun 只支持**自递归**。设计
 - [00](00-overview.md):本文细化 D3(§3)、D5(§4)、D6(§6);语言链是 §5 架构图"L0→…→Labs"段的展开。
 - [02](02-beam-backend.md):Labs 文法、absform 序列化、ANNO 源位置约定、单轨求值(D11)归其所有;本文只承诺 emit-lower 的输出契约。
 - [03](03-runtime-model.md):值表示(D8)、Var/NS 模型(D7,本文 env 参数的运行时对岸)、letfn* 生成函数的模块安置。
-- [04](04-bootstrap-and-conformance.md):框架自举对 stage0 子集大小的要求(§7 风险 1)、pass 级 corpus 门控([00](00-overview.md) D12)的挂接点是本文的 verify pass。
+- [04](04-bootstrap-and-conformance.md):pass 级 corpus 门控([00](00-overview.md) D12)的挂接点是本文的 verify pass。
+- [09](09-erlang-hosted-compiler.md):框架实现、已落地 pass、调用约定与平台取舍。

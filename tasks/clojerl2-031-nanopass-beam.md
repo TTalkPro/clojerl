@@ -1,6 +1,6 @@
 # clojerl2-031 nanopass 上线(标准框架跑在金属层)
 
-状态:未开始
+状态:已废弃(2026-10-11)——不建 Scheme 金属层,见 [designs/09](../designs/09-erlang-hosted-compiler.md) §0。
 里程碑:M0.5(Scheme 金属层)
 依赖:029
 

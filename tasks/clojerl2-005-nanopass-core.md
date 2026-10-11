@@ -1,6 +1,6 @@
 # clojerl2-005 nanopass 框架最小版
 
-状态:已废弃(2026-10-11)——按 cleat 路线改为自研 Scheme 金属层 + 复用 nanopass-framework-scheme,本任务由 [clojerl2-031](clojerl2-031-nanopass-beam.md) 取代。设计变更见 [designs/07](../designs/07-scheme-layer.md) §0。
+状态:已完成(2026-10-11,改为 Erlang 实现)——宿主由 Clojure 改为 Erlang,见 [designs/09](../designs/09-erlang-hosted-compiler.md) §1。下方工作内容中 Clojure 宏形态的条目作废,对应物见结论。
 里程碑:M1
 依赖:无
 
@@ -30,4 +30,10 @@ nanopass 框架最小版([01](../designs/01-nanopass-pipeline.md) §3 与 §7 �
 
 ## 结论
 
-(完成后填写)
+2026-10-11 以 Erlang 实现完成([designs/09](../designs/09-erlang-hosted-compiler.md) §1):
+
+- `clojerl2/src/erl/clj2_lang.erl`:语言即数据(终结符谓词 + 非终结符 `#{Op => [FieldKind]}`),已含 `extends`。
+- `clojerl2/src/erl/clj2_np.erl`:`descend/4`、`mapfold/4`(自动穿通)、`fold/4`、`children/2`、`check/2`(带路径的整树校验)、`run/3`(pipeline 驱动,每个 pass 边界校验 + trace)。
+- IR 为 absform 形状的元组 `{Op, Anno, ...}`(不是原设计的 map 节点),便于函数头模式匹配,Anno 直通 BEAM。
+- "展开期静态检查"不做(Erlang 无宏层),由运行期每个 pass 边界的整树校验替代。
+- 测试:`clj2_compiler_tests` 的 `lang_extends_test`、`check_accepts_and_rejects_test`、`descend_auto_passthrough_test`、`pipeline_checks_every_boundary_test`。

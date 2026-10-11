@@ -1,6 +1,6 @@
 # clojerl2-027 stage0 编译器(Lcore-Erlang → core Erlang → .beam)
 
-状态:未开始
+状态:已废弃(2026-10-11)——不建 Scheme 金属层,见 [designs/09](../designs/09-erlang-hosted-compiler.md) §0。 已写的 stage0(`sk_*`,后改名 `cljk_*`)已删除,其 absform 发射经验并入 `clj2_p_emit`,bug 教训改写为 `clj2_compiler_tests:probe_test_/0`。
 里程碑:M0.5(Scheme 金属层)
 依赖:026
 

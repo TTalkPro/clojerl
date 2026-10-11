@@ -1,6 +1,6 @@
 # clojerl2-013 字节级不动点门控
 
-状态:未开始
+状态:已废弃(2026-10-11)——编译器改用 Erlang 写,不再自寄宿,无种子/不动点/子集纪律可言。见 [designs/09](../designs/09-erlang-hosted-compiler.md) §4。
 里程碑:M3
 依赖:clojerl2-012
 

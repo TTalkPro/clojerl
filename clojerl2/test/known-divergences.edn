@@ -1,0 +1,47 @@
+;; clojerl2 known divergences from JVM Clojure (designs/04 §5, D12).
+;;
+;; Every deliberate difference is registered here with its reason and
+;; the design that decided it. clojerl2-022 turns this into the corpus
+;; gate (an unregistered failure, or a registered entry that starts
+;; passing, fails CI); until then clj2_divergences_tests checks the
+;; registry's shape.
+[{:id :lazy-seq/per-process-realization
+  :area :lazy
+  :reason "Lazy seqs and delays memoize in the process dictionary (default): another process holding the same lazy seq realizes it again. Values agree for pure thunks; a side-effecting thunk runs once per process. The ets memo switch (clj2_lazy:set_memo/1) realizes once across processes."
+  :design "designs/03 §5.3, clojerl2-003, clojerl2-019"}
+ {:id :lazy-seq/bounded-memo
+  :area :lazy
+  :reason "The memo store is bounded (clj2_lazy:memo_limit/0, default 100000 cells); past it the store is cleared, and a lazy seq walked again afterwards realizes again. Keeps long-lived processes from growing without bound."
+  :design "designs/03 §6, clojerl2-019"}
+ {:id :lazy-seq/no-chunking
+  :area :lazy
+  :reason "No chunked seqs: realization is one element at a time (map over a vector does not realize 32 at once). An optimisation, not semantics."
+  :design "designs/03 §6"}
+ {:id :symbol/no-metadata
+  :area :reader
+  :reason "Symbols are atoms and carry no metadata: metadata on a def/defn name (^:private, ^:dynamic via macros) is lost; defn- is defn. ^:dynamic written directly on a def name is kept."
+  :design "designs/03 §1 (D8), clojerl2-014"}
+ {:id :char/integer
+  :area :reader
+  :reason "A character is its integer code point; there is no separate char type."
+  :design "designs/03 §1 (D8)"}
+ {:id :number/no-ratio-arithmetic
+  :area :numbers
+  :reason "(/ 1 2) is 0.5: integer division that does not divide exactly gives a float (ratios read but are not computed with)."
+  :design "clojerl2-014"}
+ {:id :fn/arity-at-compile-time
+  :area :compiler
+  :reason "A direct call to a fn var with an arity it does not have is a compile error (JVM: ArityException at run time)."
+  :design "designs/03 §2.1a, clojerl2-015"}
+ {:id :exceptions/erlang-classes
+  :area :compiler
+  :reason "catch takes Erlang exception classes :error :exit :throw; :default, Exception and Throwable catch every class; throw raises an Erlang error."
+  :design "designs/09 §3"}
+ {:id :protocols/type-designators
+  :area :protocols
+  :reason "extend-type names clj2 type tags (nil boolean keyword symbol integer float string list lazy_seq vector map set fn ... default) or deftype/defrecord names, with a few JVM aliases (Object String Long Integer Double Boolean Keyword Symbol); no class hierarchy, no reify."
+  :design "designs/03 §4.1a, clojerl2-016"}
+ {:id :namespaces/hot-code-two-versions
+  :area :namespaces
+  :reason "Redefining a namespace reloads its module with BEAM semantics: closures made by the previous version keep running it; JVM-style immediate global rebinding is not emulated."
+  :design "designs/02 §5, designs/03 §2.2"}]

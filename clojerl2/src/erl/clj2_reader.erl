@@ -23,7 +23,8 @@
 %%%   map                      {map, [], [{K, V}, ...]}
 %%%   set                      {set, [], Items}
 %%%   regex                    {regex, [], Bin}
-%%%   var quote                {var, [], Form}
+%%%   quote 'x                 [quote, Form]  (the list (quote x))
+%%%   var quote #'x            {var, [], Form}
 %%%   deref                    {deref, [], Form}
 %%%   syntax quote             {syntax_quote, [], Form}
 %%%   unquote / unquote-spl.   {unquote, [], Form} / {unquote_splicing, [], Form}
@@ -361,10 +362,19 @@ one_form(St) ->
 %% ', `, ~, ~
 %%--------------------------------------------------------------------
 
+%% 'x → (quote x), as in Clojure; #'x → {var, [], x} (read_var_quote).
 read_quote(St0) ->
     St1 = advance(St0),
     case one_form(St1) of
         eof -> mk_err(St1, <<"EOF while reading form after '">>);
+        {error, _, _} = Error -> Error;
+        {ok, Form, St2} -> {ok, [quote, strip(Form)], St2}
+    end.
+
+read_var_quote(St0) ->
+    St1 = advance(St0),
+    case one_form(St1) of
+        eof -> mk_err(St1, <<"EOF while reading form after #'">>);
         {error, _, _} = Error -> Error;
         {ok, Form, St2} -> {ok, {var, [], strip(Form)}, St2}
     end.
@@ -594,29 +604,9 @@ read_map_value(Key, St) ->
             mk_err(St, <<"map literal must contain an even number of forms">>);
         {error, _, _} = Error -> Error;
         {ok, Val, St2} ->
-            case is_literal_key(Key) of
-                true -> {ok, {Key, Val}, St2};
-                false ->
-                    %% Point at the offending key, not the value.
-                    ErrLoc = case loc(Key) of
-                                 nil -> pos(St);
-                                 KeyLoc -> KeyLoc
-                             end,
-                    {error, ErrLoc,
-                     prefix(St, <<"map key must be a literal, got: ",
-                                  (iolist_to_binary(
-                                     io_lib:format("~p", [strip(Key)])))/binary>>)}
-            end
-    end.
-
-is_literal_key(Key) ->
-    case strip(Key) of
-        Form when is_atom(Form); is_binary(Form);
-                  is_integer(Form); is_float(Form) -> true;
-        {var, _, _} -> true;
-        {ratio, _, _} -> true;
-        {bigdec, _, _} -> true;
-        _ -> false
+            %% any form is a key, as in Clojure (`{[x y] :pt}' is how
+            %% map destructuring binds a nested pattern)
+            {ok, {Key, Val}, St2}
     end.
 
 collect(St0, Close, ItemFun) ->
@@ -1058,7 +1048,7 @@ read_dispatch(St0) ->
         {ok, $" } -> read_regex(St1);
         {ok, ${} -> read_set(St1);
         {ok, $(} -> read_fn(St1);
-        {ok, $'} -> read_quote(St1);
+        {ok, $'} -> read_var_quote(St1);
         {ok, $:} -> read_namespaced_map(St1);
         {ok, $#} -> read_symbolic_value(St1);
         {ok, $?} ->

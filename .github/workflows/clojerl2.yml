@@ -1,0 +1,26 @@
+name: clojerl2
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'clojerl2/**'
+      - '.github/workflows/clojerl2.yml'
+  pull_request:
+    paths:
+      - 'clojerl2/**'
+      - '.github/workflows/clojerl2.yml'
+jobs:
+  test:
+    strategy:
+      matrix:
+        # designs/02 §7 risk 4: OTP 27+
+        otp-version: [27, 28]
+    runs-on: ubuntu-latest
+    container:
+      image: erlang:${{ matrix.otp-version }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Compile and test (reader, nanopass pipeline, namespaces, macros)
+      run: make -C clojerl2 test

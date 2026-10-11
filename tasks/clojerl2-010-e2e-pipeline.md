@@ -1,6 +1,6 @@
 # clojerl2-010 端到端管线打通(M2 验收)
 
-状态:未开始
+状态:已完成(2026-10-11)
 里程碑:M2
 依赖:clojerl2-008, clojerl2-009
 
@@ -18,10 +18,10 @@
 
 ## 工作内容
 
-- [ ] e2e 测试驱动夹具:源文本 → 编译 → 加载 → 调用 → 断言返回值
-- [ ] 最小原语集:`erlang/+` 等算术 primop,建立 primitives 表雏形(03 §8)
-- [ ] 整条管线串联排错:reader → parse → … → emit-lower → emit → beam
-- [ ] CI 接入:固定 OTP 版本(02 §7 风险 4:OTP 27+),保证可复现
+- [x] e2e 测试驱动夹具:源文本 → 编译 → 加载 → 调用 → 断言返回值
+- [x] 最小原语集:`erlang/+` 等直接作 Erlang 调用;~~primitives 表~~ 不需要(见结论)
+- [x] 整条管线串联排错:reader → parse → … → emit-lower → emit → beam
+- [x] CI 接入:固定 OTP 版本(02 §7 风险 4:OTP 27+),保证可复现
 
 ## 验收标准
 
@@ -30,4 +30,8 @@
 
 ## 结论
 
-(完成后填写)
+2026-10-11 完成:
+
+- e2e:`clj2_compiler_tests:m2_acceptance_test/0` —— `(ns t.m2) (def f (fn* [x] (erlang/+ x 1)))` 经 reader → 全部 pass → absform → `compile:forms` → beam → ERTS,`(f 1)` 返回 2(直接调用与 eval 两条路径)。
+- 原语:编译器层不需要 primitives 表,`mod/fun` 就是 Erlang 调用;Clojure 的 `+` 等由 `clojure.core` 定义(021)。
+- CI:`.github/workflows/clojerl2.yml`,OTP 27 与 28 两个镜像跑 `make -C clojerl2 test`(仅 clojerl2 改动时触发)。

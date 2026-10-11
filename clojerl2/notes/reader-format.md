@@ -41,11 +41,12 @@ loc(Form)           -> {Line, Col} | nil
 | **keyword** | **带冒号前缀的 atom**:`:a` → `':a'`,`::a` → `'::a'`(auto-resolve,由展开器解析) |
 | 列表 | Erlang list(元素各自带包装) |
 | `[...]` | `{vector, [], Items}` |
-| `{...}` | `{map, [], [{K, V}]}`,键必须是字面量 |
+| `{...}` | `{map, [], [{K, V}]}`;键可以是任意形式(2026-10-11 放开,原先只许字面量;map 解构 `{[x y] :pt}` 需要)|
 | `#{...}` | `{set, [], Items}` |
 | `1/2` | `{ratio, N, D}`(读时约分交给编译器;`1/0` 读期报错) |
 | `1.5M` | `{bigdec, [], Bin}`(BEAM 无 BigDecimal,保留文本) |
-| `'f` | `{var, [], StrippedForm}`(quote 的内容不含包装器) |
+| `'f` | `[quote, StrippedForm]`,即列表 `(quote f)`(2026-10-11 修正:原先读成 `{var, [], ...}`,与 `#'f` 无法区分) |
+| `#'f` | `{var, [], StrippedForm}` |
 | `` `f `` | `{syntax_quote, [], StrippedForm}` |
 | `~f` / `~@f` | `{unquote, [], StrippedForm}` / `{unquote_splicing, [], StrippedForm}` |
 | `@f` | `{deref, [], StrippedForm}` |

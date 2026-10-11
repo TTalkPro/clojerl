@@ -1,6 +1,8 @@
 # 07 Scheme 金属层(cleat 路线,复用 skeg RNRS 代码)
 
-状态:**已采纳**(2026-10-11 用户裁决,推翻 [00](00-overview.md) 原 D2/D3 对 Scheme 层路线的否决)。
+状态:**已作废**(2026-10-11 同日第二次裁决:不建 Scheme 层,编译器用 Erlang 写,见 [09](09-erlang-hosted-compiler.md))。以下原文保留作历史记录;据此写的 stage0(`sk_*`,后改名 `cljk_*`)已删除,其 absform 发射经验与 bug 教训并入 `clj2_p_emit` 及回归测试。
+
+~~状态:已采纳(2026-10-11 用户裁决,推翻 [00](00-overview.md) 原 D2/D3 对 Scheme 层路线的否决)。~~
 前置阅读:[00](00-overview.md) 决策表、[skeg/Skeg/designs/03-compiler.md](../../../skeg/Skeg/designs/03-compiler.md)(Lcore 文法)。
 
 ## 0. 裁决记录

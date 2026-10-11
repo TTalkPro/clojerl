@@ -2,6 +2,7 @@
 #
 #   make            compile the Erlang layer into ebin/
 #   make test       compile everything and run the eunit suites
+#   make corpus     run the conformance corpus, write notes/corpus-baseline.md
 #   make clean      remove build artefacts
 #
 # Requires Erlang/OTP 27+ (developed against OTP 28).
@@ -23,23 +24,38 @@ ERLC_OPTS := -I $(INCLUDE) \
 
 ERL_FLAGS := -noshell -pa $(EBIN)
 
-SRC_BEAMS  := $(EBIN)/clj2_reader.beam
-TEST_BEAMS := $(EBIN)/clj2_reader_tests.beam
+SRCS       := $(wildcard $(SRC)/*.erl)
+TESTS      := $(wildcard $(TEST)/*_tests.erl)
+SRC_BEAMS  := $(patsubst $(SRC)/%.erl,$(EBIN)/%.beam,$(SRCS))
+TEST_BEAMS := $(patsubst $(TEST)/%.erl,$(EBIN)/%.beam,$(TESTS))
+comma      := ,
+empty      :=
+space      := $(empty) $(empty)
+TEST_MODS  := $(subst $(space),$(comma),$(strip $(basename $(notdir $(TESTS)))))
 
-.PHONY: all test clean
+.PHONY: all test corpus clean
 
 all: $(SRC_BEAMS)
 
-$(EBIN)/clj2_reader.beam: $(SRC)/clj2_reader.erl $(INCLUDE)/clojerl2.hrl
+$(EBIN)/%.beam: $(SRC)/%.erl $(wildcard $(INCLUDE)/*.hrl)
 	@mkdir -p $(EBIN)
-	$(ERLC) $(ERLC_OPTS) -o $(EBIN) $(SRC)/clj2_reader.erl
+	$(ERLC) $(ERLC_OPTS) -o $(EBIN) $<
 
-$(EBIN)/clj2_reader_tests.beam: $(TEST)/clj2_reader_tests.erl $(EBIN)/clj2_reader.beam
+$(EBIN)/%_tests.beam: $(TEST)/%_tests.erl $(SRC_BEAMS)
 	@mkdir -p $(EBIN)
-	$(ERLC) $(ERLC_OPTS) -DTEST -o $(EBIN) $(TEST)/clj2_reader_tests.erl
+	$(ERLC) $(ERLC_OPTS) -DTEST -o $(EBIN) $<
 
 test: $(SRC_BEAMS) $(TEST_BEAMS)
-	erl $(ERL_FLAGS) -eval 'case eunit:test([clj2_reader_tests], []) of ok -> halt(0); _ -> halt(1) end.'
+	erl $(ERL_FLAGS) -eval 'case eunit:test([$(TEST_MODS)], []) of ok -> halt(0); _ -> halt(1) end.'
+
+# The VM runs in its own cgroup with a hard memory cap (systemd-run, when a
+# user manager is available) so a runaway entry kills this VM, not the session.
+CORPUS_MEM ?= 4G
+CORPUS_RUN := $(shell command -v systemd-run >/dev/null 2>&1 && systemd-run --user --scope -q true 2>/dev/null && \
+                echo systemd-run --user --scope -q -p MemoryMax=$(CORPUS_MEM) -p MemorySwapMax=0)
+
+corpus: $(SRC_BEAMS)
+	$(CORPUS_RUN) erl $(ERL_FLAGS) -eval 'R = clj2_corpus:run(), io:format("~p~n", [clj2_corpus:report(R, "notes/corpus-baseline.md")]), halt().'
 
 clean:
 	rm -rf $(EBIN)

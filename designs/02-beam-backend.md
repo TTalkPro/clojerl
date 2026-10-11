@@ -31,6 +31,8 @@ loader 把 generic 重写为 specific,做类型推断、指令打包与融合(�
 
 ## 2. 发射器架构:Labs → absform → compile:forms/2
 
+> 2026-10-11 已落地:Labs 是 `clj2_lang:get(labs)`(entry `etop`;`efunction`/`eattr` 顶层,`eclause`,表达式 `e`,原子 `eatom`,**guard 子语言 `eguard`**:只有变量、字面量、运算符与 guard BIF——§7 风险 1 的对策,非 guard 调用在 Labs 文法层就被拒)。lower-labs(`clj2_p_labs`)做全部决策,emit(`clj2_p_emit`)每个 Labs 节点一条子句。
+
 ```
 Labs([01] 末端 IR,与 absform 一一对应)
   │  emit/1:纯序列化,无语法分析、无优化决策
@@ -50,9 +52,17 @@ compile:forms(Forms, [return_errors, debug_info, ...])
 - **模块粒度**:一个 Clojure 命名空间 → 一个 BEAM 模块;另加 [03](03-runtime-model.md) 的每对 `Protocol__Type` impl 模块与每个 multimethod 的分派模块。
 - **优化边界**:所有目标级优化交给 erlc(beam_ssa:内联、死代码、move 融合、类型特化)。我们自己的优化只在 [01](01-nanopass-pipeline.md) 的源级 pass 做(mode-gated,dev 模式只跑常量折叠)。
 
+### 2.1 OTP 28 absform 对照(2026-10-11)
+
+按 [OTP 28 absform 文档](https://www.erlang.org/docs/28/apps/erts/absform.html#module-declarations-and-forms) 核对 emit 的模块级输出:`{attribute,A,file,{File,Line}}`、`{attribute,A,module,Mod}`、`{attribute,A,export,[{F,N}]}`、`{function,A,Name,Arity,Clauses}` 是文档列出的形式;`on_load`、`compile`(`no_auto_import`)、`moduledoc`、`doc` 走通用的 wild attribute `{attribute,A,Attr,T}`。文档不规定形式顺序,也不要求 `{eof,...}`(那是解析流的结束标记),`compile:forms/2` 接受我们的形式列表。
+
+**文档属性**:ns 文档串 → `-moduledoc`,var 文档串(`defn`/`def` 的 doc)→ 该 var 第一个函数前的 `-doc`,`__ns_init__` 前 `-doc false`。OTP 27+ 编译器默认据此生成 EEP-48 `Docs` chunk(`compile` 的 `beam_docs` pass),Erlang 工具链(`code:get_doc/1`、shell 的 `h/2`)可读;文档串同时存在注册表的 var 信息里(`doc`)。
+
 ## 3. 名称改编、字面量与模块布局
 
 ### 3.1 名称改编(name mangling)
+
+> **2026-10-11 修订(clojerl2-015 已落地):不做名称改编,arity 不进函数名。** absform 的函数名就是 atom,任意字符都合法,所以 var `nil?` 直接编译为函数 `'nil?'/1`,Clojure 的 arity 就是 Erlang 的 arity;变参 clause(必需参数 Min 个)是 `'f'/(Min+1)`,末参为剩余参数列表或 `nil`。因为 Clojure 要求固定 arity ≤ Min,它不会和固定 arity 的函数撞名。理由:栈回溯与 Erlang 互操作直接见原名(`'clojure.string':join(Sep, Coll)`),少一层翻译。保留名只有 `module_info` 与 `__ns_init__`,用作 var 名时编译报错。下表与本节规则保留作历史记录。
 
 Clojure 标识符字符集超出 Erlang atom 安全集,统一编码(小写十六进制转义,可读性优先):
 
@@ -91,6 +101,8 @@ absform 的原子/数字/字符串有直接构造子,但**没有任意项的字�
 
 ### 3.4 模块初始化(on_load)
 
+> **2026-10-11 实测修订(clojerl2-015)**:`on_load` 函数在一个单独的进程里运行;其间**对本模块的远程调用会 `undef`**(导出表尚未就绪),本地调用与本地 fun 引用(`fun f/1`)正常,对其他已加载模块的远程调用也正常。因此同一 NS 内的 var 引用一律编译为本地调用 / 本地 fun 引用。`__ns_init__/0` 先 `clj2_ns:register/3`(经 gen_server),再按源码顺序跑值 var 的初始化与顶层表达式;任何异常都会经 `clj2_ns:init_failed/2` 记下并令 on_load 失败,`clj2_compiler:load_ns` 再把原因取回。下文"禁止远程调用"的说法据此修正。
+
 jank 的 `jank_load_foo` + 模块注册表模式映射为:每 NS 模块生成 `__ns_init__/0`,经 `-on_load` 在 `code:load_binary` 完成时自动执行,完成 var 注册与 NS 注册([03](03-runtime-model.md) §2-3 的注册语义)。`on_load` 内禁止远程调用的限制由设计规避:注册只写本模块的 persistent_term/ETS 表项,不调用未加载模块。
 
 ## 4. ANNO 纪律:源位置从 reader 到栈回溯
@@ -123,7 +135,7 @@ read → 管线([01]) → emit → compile:forms → code:load_binary(eval_mod_N
 - **与 clojerl 1.0 的对照**:1.0 是双轨——编译走 `compile:noenv_forms(from_core)`,顶层走 core_eval(839 行 erl_eval fork),整套子系统要与 Core Erlang 语义保持同步,是持续维护负担。D11 用"每 form 一次编译"换"删掉整个解释器"。
 - **REPL 延迟**:增量单位是单 form,absform 路径跳过了扫描/解析,单 form 编译在毫秒量级;与解释器启动开销相当,可接受。`compile:forms` 在专用编译进程执行,避免污染 REPL 进程的 code server 状态(沿用 clojerl 1.0 的隔离直觉,但原因从"状态弥漫"变为"干净工程")。
 - **热代码两版本语义**:重定义 var = 重新加载该 NS 模块;BEAM 保证**旧进程继续跑旧代码**,新调用走新代码。这是已知行为,文档化:REPL 里持有旧 fun 值的进程看到旧定义,与 Erlang 原生语义一致,不模拟 JVM 的"全局立即生效"。
-- **eval 的模块泄漏**:`__eval_N` 模块累计,定期 `code:purge`/`code:delete`(N 超阈值或值已被读取后)。
+- **eval 的模块泄漏**:`__eval_N` 模块累计,定期 `code:purge`/`code:delete`(N 超阈值或值已被读取后)。(2026-10-11 落地:保留最近 100 个 eval 模块,超出删最旧的;返回后立即删除是错的——结果里的闭包/惰性序列还要运行该模块的代码。)
 
 ## 6. 编译缓存与增量编译
 
@@ -133,11 +145,11 @@ read → 管线([01]) → emit → compile:forms → code:load_binary(eval_mod_N
 
 ## 7. 风险清单(按优先级)
 
-1. **映射 bug,而非格式风险**:absform 表达力已验证——guard 上下文、带守卫的 fun 子句、`receive ... after`、`try/of/catch/after` 组合全部文档化可表示([00](00-overview.md) §6 风险 5 复核)。残余风险是**我们的 Labs→absform 映射写错**(如 guard 里混入非 guard-safe 调用)。对策:Labs 文法把 guard-safe 子语言做成独立非终结符,spec 校验在发射前拒绝。
+1. (2026-10-11:guard-safe 子语言已在 Labs 落地为 `eguard` 非终结符。)**映射 bug,而非格式风险**:absform 表达力已验证——guard 上下文、带守卫的 fun 子句、`receive ... after`、`try/of/catch/after` 组合全部文档化可表示([00](00-overview.md) §6 风险 5 复核)。残余风险是**我们的 Labs→absform 映射写错**(如 guard 里混入非 guard-safe 调用)。对策:Labs 文法把 guard-safe 子语言做成独立非终结符,spec 校验在发射前拒绝。
 2. **双层 IR 的诊断质量**:错误要穿过 absform→Labs→源 两层回溯。ANNO 纪律(§4)覆盖行号,但 erlc 告警措辞是 Erlang 词汇("function foo_2 undefined"),用户体验需一层告警翻译器。接受为打磨项,不阻塞。
 3. **eval-compile 延迟**:单 form 毫秒级预期基于 Gleam 提速证据外推;若 REPL 体感不足,先 profile 编译进程启动与 `code:load_binary` 路径,再考虑复用编译进程池——不提前优化。
 4. **OTP 版本地板**:**要求 OTP 27+**。理由:(a) `erl_anno` 列信息与 `compile:forms` 行为在新版本稳定;(b) beam_ssa 近年重写收益只在 26+ 完整;(c) Gleam/Elixir 工具链现状以 27 为基线,对齐可复用其排错经验;(d) 新方言无存量用户,无兼容包袱。
-5. **on_load 限制**:on_load 阶段不可远程调用、不可阻塞;NS 初始化若将来需要触发其他 NS 加载(循环依赖),需把注册拆成"on_load 登记 + 首次访问惰性完成"两段。当前设计单 NS 自足,标记为已知边界。
+5. **on_load 限制**:on_load 阶段不可远程调用**本模块**(实测 `undef`,见 §3.4)、不应阻塞;NS 初始化若将来需要触发其他 NS 加载(循环依赖),需把注册拆成"on_load 登记 + 首次访问惰性完成"两段。当前设计单 NS 自足,标记为已知边界。
 
 ## 8. 开放问题
 

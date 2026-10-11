@@ -1,6 +1,6 @@
 # clojerl2-021 core 全层移植
 
-状态:未开始
+状态:已完成(2026-10-11;四层加载 + corpus 基线 1714/4842)
 里程碑:M4
 依赖:clojerl2-014, clojerl2-015, clojerl2-016
 
@@ -18,12 +18,12 @@
 
 ## 工作内容
 
-- [ ] 从 clojerl 1.0 `src/clj/clojure/` 移植改造各层;参考其 core.clje 分层与 `clje_exclude` 的经验(哪些 form 在 BEAM 上需改写或剔除)
-- [ ] 每层按 `core/boot-order.edn` 的文件列表与依赖层加载,驱动器严格 form-at-a-time
-- [ ] `01-core`:高阶函数、transducer、字符串函数,基于 00-kernel 与第 0 层原语
-- [ ] `02-protocols`:核心协议对内建类型的 extend(Seq/ISeq 等到 vector/map/set/keyword 等);与协议运行时的加载顺序协调——extend 只编译 impl 模块,不阻塞后续层
-- [ ] `03-print`:`pr`/`print-method`/`prn` 的 Clojure 侧,基于 020 的第 0 层 IO 原语
-- [ ] `04-repl`:REPL 支持函数(doc、source、dir 等的库侧)
+- [x] 从 clojerl 1.0 `src/clj/clojure/` 移植改造各层;参考其 core.clje 分层与 `clje_exclude` 的经验(哪些 form 在 BEAM 上需改写或剔除)
+- [x] 每层按 `core/boot-order.edn` 的文件列表与依赖层加载,驱动器严格 form-at-a-time
+- [x] `01-core`:高阶函数、transducer、字符串函数,基于 00-kernel 与第 0 层原语
+- [x] `02-protocols`:核心协议对内建类型的 extend(Seq/ISeq 等到 vector/map/set/keyword 等);与协议运行时的加载顺序协调——extend 只编译 impl 模块,不阻塞后续层
+- [x] `03-print`:`pr`/`print-method`/`prn` 的 Clojure 侧,基于 020 的第 0 层 IO 原语
+- [x] `04-repl`:REPL 支持函数(doc、source、dir 等的库侧)
 
 ## 验收标准
 
@@ -32,4 +32,8 @@
 
 ## 结论
 
-(完成后填写)
+- `src/clj2/core/` 下 00-kernel..04-repl 五个文件按 `boot-order.edn` 编进同一个 `clojure.core` 模块;`clj2_core:boot/1` 校验每层 `:deps` 只引用已加载的层。`make test` 510 条全过。
+- corpus 基线见 `clojerl2/notes/corpus-baseline.md`:**1714 / 4842(35.4%)**,`:common` 条目。`make corpus` 可重新生成。
+- 缺口大头是未解析符号(1536 条)。头部的 `require`/`meta`/`with-meta`/`read-string`/`eval` 属于 ns/元数据/reader 接入;`atom`/`binding` 归 018,`defmulti`/`derive` 归 017,`with-in-str`/`re-find`/format 归 020,`sorted-map`/`sorted-set`/`transient` 是缺失的集合类型。这些留给相应任务,022 在此基线上建门控。
+- 6 条 timeout 里有 4 条是「对无限源保持惰性」的条目(#2424–2429),说明 core 里仍有某处把无限序列急切实化了,需要在 019/022 中追查。
+- **内存事故**:第一次跑全量 corpus 时,那几条无限序列条目在 3s 超时内吃到 14G 内存 + 12G swap,OOM killer 杀掉了整个 tmux scope(Claude 会话也在里面)。现在 `clj2_corpus` 给每个进程设 256 MiB 堆上限(含 off-heap binary),运行期间这个上限也是 VM 默认值,条目结束后按 group leader 杀掉它派生的残留进程,结果只回传截断后的判定。`make corpus` 再用 `systemd-run --scope -p MemoryMax=4G -p MemorySwapMax=0` 隔离整个 VM。**不要裸跑 `clj2_corpus:run()`。**

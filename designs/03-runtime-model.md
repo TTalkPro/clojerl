@@ -24,6 +24,8 @@
 | record/deftype | `{Tag, Meta, Fields}` + 生成的访问器模块 | Tag = 类型名 atom;访问器模块沿用 clojerl 1.0 的"真 BEAM 模块 + `__new__` 构造器"模式 |
 | lazy-seq / delay / atom / agent | 见 §5、§6 | 引用类型不进入本表的纯值部分 |
 
+> 2026-10-11:`clj2_coll` 已按本表形状提供 vector/map/set 的构造(宏与集合字面量需要)。vector 的 Data 暂为 tuple,32 路 trie 落地时在模块内替换,形状 `{vector, Meta, Data}` 不变;Meta 无元数据时为 `nil`。
+
 ### 1.2 atom 表耗尽:keyword/symbol 的运行时创建
 
 symbol/keyword 用 atom 表示,模式匹配与比较都是 O(1),但 **BEAM 的 atom 表有上限(默认 1M)且不 GC**。运行时用户输入可经 `keyword`/`symbol` 函数无限制造新 atom——这是真实的拒绝服务向量(clojerl 1.0 同样有此问题,未文档化)。
@@ -46,8 +48,22 @@ clojerl 1.0 把所有值装进 `#{?TYPE => 'user.Foo', ...}` map。否决理由:
 
 - **直接链接为默认**:编译期解析到的非动态、非 `^:redef` var,调用点直接生成 `NsMod:fn/N` 远程调用。BEAM 的远程调用经导出表跳转,无中间层——**废除 clojerl 1.0 的 `Module:Name__val()` 每次解引用一次远程调用**。
 - **前向引用在 NS 编译粒度解决,废除 fake_fun**:D5 的显式环境([01](01-nanopass-pipeline.md) §4)让编译器在编译一个 NS 前拥有全 NS 的 var 声明清单(先跑 declare/resolve pass 收集全部 `def` 的符号与元数据),`defn` 体里引用后文的 var 照常编译为远程调用,加载时目标已存在。clojerl 1.0 需要 fake_fun + replace_calls 的原因(编译与求值双轨、逐 form 求值)在"一律编译执行、以 NS 为编译单元"([00](00-overview.md) D11)下不存在。
-- **`^:dynamic` 与 `^:redef` var 走间接表**:值存中央间接表(§2.3),调用点编译为 `clj_rt_var:deref(NsMod, Name)` 或等价查表。REPL 重定义 = 重新编译 NS 模块(热代码两版本语义:旧代码继续跑旧版,新解析的调用点链到新版——文档化,与 Erlang 原生语义一致,不模拟 JVM 的"所有现存引用即刻见新值")。
+- **`^:dynamic` 与 `^:redef` var 走间接表**:值存中央间接表(§2.3),调用点编译为访问器 `NsMod:Name()`,访问器内 `clj2_var:deref(NsMod, Name)`(已落地,见 §2.1a)。REPL 重定义 = 重新编译 NS 模块(热代码两版本语义:旧代码继续跑旧版,新解析的调用点链到新版——文档化,与 Erlang 原生语义一致,不模拟 JVM 的"所有现存引用即刻见新值")。
 - **NS 注册表**:一张 ETS 表(`named + read_concurrency`),key = NS 名 atom,value = 模块名 + var 清单;由一个 gen_server 持有,负责建/删 NS 与加载完成回调。保留 gen_server 只为串行化写,读不经它——对比 clojerl 1.0 每模块 7 张 ETS 表 + gen_server 代理所有访问,收敛为**一张表、写才过进程**。
+
+### 2.1a 落地形态(2026-10-11,clojerl2-015)
+
+| var 种类 | 判定(declare pass) | 模块里的形态 | 调用点 |
+|---|---|---|---|
+| fn | init 是 `fn*` 字面量,且无 `^:dynamic`/`^:redef` | 每个 clause 一个函数 `f/N`(变参 `f/(Min+1)`);fn 的自名与 `recur` 都编译为对这些函数的本地调用 | `(f a)` → `M:f(A)`(同 NS 为本地调用);作为值时为 `fun M:f/N`,多 arity 时为 `{clj2_fn, ...}` |
+| const | init 是常量 | 访问器 `x/0` 直接返回常量(进 literal pool) | `M:x()` |
+| cell | 其余 init(或无 init) | 访问器 `x/0` = `clj2_var:root(M, x)`;`__ns_init__` 里 `set_root` | `M:x()`;无 init 时读取即报 unbound |
+| indirect | `^:dynamic` 或 `^:redef` | 访问器 = `clj2_var:deref/2`(dynamic,先查进程绑定栈)或 `root/2` | `M:x()` |
+
+- 前向引用:declare pass 在 resolve 之前收集整个 NS 的 def 清单,`defn` 体里引用后文的 var 照常编译为直接调用。
+- 其他 NS:由驱动在 resolve 之前经 `clj2_ns:info/1` 查一次,作为显式 scope 交给 pass(D5);未加载但在 code path 上的 NS 模块由 `code:ensure_loaded` 加载,其 on_load 自行注册。
+- 已知局限:调用方按编译时看到的 var 种类/arity 直接链接;被调 NS 之后把 fn 改成值或改了 arity,旧调用方需重编译(与 AOT Clojure 同类问题)。arity 不匹配的直接调用是**编译错误**(JVM 在运行期抛 ArityException,登记分歧)。
+- 表:NS 注册表 `clj2_ns`(protected,写经 gen_server)、var 根值表 `clj2_var`(public,`{Module, Name}` 为键)。gen_server 不链接调用者启动,因为首个注册者往往是短命的 on_load 进程。
 
 ### 2.2 REPL 重定义与 on_load
 
@@ -87,6 +103,15 @@ REPL 是写密集场景(每次 `defn` 都写),persistent_term 的全表拷贝在
 - `defprotocol` 生成**协议模块**(方法元数据、默认实现引用)与 `Protocol__Default` impl 模块;`extend-type`/`extend-protocol`/`deftype`/`defrecord` 只编译**新的** `Protocol__Type` impl 模块并 `code:load_binary`,**协议模块与其他 impl 模块一律不动**。
 - 存在性缓存:`clj_rt_protocol:impl/2` 查 ETS(key = `{Protocol, TypeTag}`),未命中走 `code:ensure_loaded(ImplMod)` 探测并回填(含负缓存)。BEAM 的 `apply/3` 本身有模块/函数缓存,热路径 = 一次 ETS 读 + 一次 apply。
 - `satisfies?` = 存在性探测,同走缓存。
+
+### 4.1a 落地形态(2026-10-11,clojerl2-016)
+
+- **运行时** `clj2_proto`:`dispatch(P, Method, This, Args)` = `impl(P, type_tag(This))`(否则 `impl(P, default)`)+ `apply`;缓存表 `clj2_proto`(ETS,`{{P, Tag}, {ok, Mod} | none}`),未命中经 `code:ensure_loaded` 探测 code path 上的 impl 模块,失败写负项(`insert_new`,不覆盖并发加载刚写入的正项)。
+- **协议即 var**:`(defprotocol P ...)` 定义 var `P`(值是描述 `{:name ns.P :methods [...]}`)与每个方法的分派函数 var(普通 var 函数,内部调 `clj2_proto:dispatch`)。原设计的"协议模块"不需要:元数据在 var 里,协议所在命名空间模块在 extend 时同样不重编译。
+- **impl 模块** `<ns.P>__<Tag>`:由 `extend-type`/`extend-protocol`/`deftype`/`defrecord` 的方法编译而来,每个方法 clause 一个导出函数;其 on_load 调 `clj2_proto:loaded/3` 写正项,**负缓存随之失效**(§9 未决问题 3 已关闭,有测试)。
+- **类型 tag**(`clj2_proto:type_tag/1`):`nil boolean keyword symbol integer float string list vector map set fn ratio tuple pid reference port`,`default` 作兜底;deftype/defrecord 值 `{Tag, Meta, Fields}` 的 Tag 是带命名空间的类型名 `ns.T`。`extend-type` 的类型位置写这些 tag、`ns.T`/本 NS 的 `T`,或 JVM 风格别名 `Object String Long Integer Double Boolean Keyword Symbol`。
+- **deftype**:Fields 为 tuple,构造函数 `->T`;**defrecord**:Fields 为 map(`clj2_coll` 的 get/assoc/count/keys/vals/= 视其为 map),构造函数 `->R` 与 `map->R`。方法体里字段名是局部量,同名参数遮蔽字段。var `T` 的值是类型 tag(供 `instance?`)。
+- **已知限制**:没有 `reify`;协议方法不能变参(与 Clojure 一致);symbol 无元数据,`^:private` 之类丢失;命名空间加载期(on_load)内若经协议调到本 NS 的 impl 方法、而该方法又远程调用本 NS 的 var,会遇到 on_load 自调用限制;编译期段不含 `extend-type`(宏在展开期不能分派到同文件定义的 impl)。
 
 ### 4.2 对比与取舍
 
@@ -132,6 +157,15 @@ v1 选 pdict + 文档化分歧,ETS 开关留位。**Spike(M0)**:量化 pdict 版
 
 ## 6. 惰性序列
 
+> 2026-10-11 落地(clojerl2-019,`clj2_lazy`,基线见 `clojerl2/notes/lazy-seq.md`):
+> - 值:`{lazy_seq, Meta, {Key, Thunk}}`(Key 是 `make_ref()`,记忆单元按它存取,不改写值本身——BEAM 项不可变);`delay` 同形 `{delay, Meta, {Key, Thunk}}`,`deref`/`@` 先支持 delay(atom 等随 018)。
+> - **实现结果是 nil 或 cons 单元 `[First | Rest]`,Rest 可仍是惰性的**(Erlang 非正规列表),所以 `first`/`rest` 仍是 `hd`/`tl`,`map`/`filter` 链逐元素实现;`clj2_coll:seq/1` 只实现第一个元素,`to_list/1` 全部实现。
+> - thunk 返回另一个 lazy-seq 时**迭代**实现(常量栈,对应 JVM `LazySeq.sval` 的循环),`(first (filter #(> % 1000000) (range)))` 不长栈。
+> - ETS 开关版:claim 用 `ets:update_counter/4`(恰好一次),**抢占失败者等待赢家的值**(不再自己算),所以 ETS 版是"恰好一次";下文"最多算两次"的退化不再适用。
+> - **记忆单元有上限**(`clj2_lazy:set_memo_limit/1`,默认 100000):超限清空,之后再走同一个 lazy-seq 会重新实现——长寿进程不会无限增长;登记为分歧 `:lazy-seq/bounded-memo`。
+> - 宏返回值里的惰性部分在宏边界整棵实现成普通形式(`clj2_form:from_value/1`)。
+> - eval 模块不再在返回后立即删除(其结果可能持有该模块的闭包/惰性序列),保留最近 100 个(02 §5)。
+
 - `lazy-seq` = `{lazy_seq, Meta, ThunkOrCell}`:未实现时槽位是 fun,实现后按 §5.3 的机制改写为缓存的 seq。
 - chunking:v1 不做 JVM 的 chunked-seq(buffered 32),逐元素实现——分歧登记;chunked-seq 是优化而非语义,后续可作为纯性能工作补回。
 - 与进程调度交互:惰性链在 pdict 版下不跨进程,无"谁持有锁"问题(JVM 的 realizing 锁在 BEAM 无对应物);ETS 开关版用 `ets:update_counter/4` 占位计数做 realize-once(clojerl2-003 实测:同为恰好一次,比 `ets:select_replace` 便宜约 8 倍;OTP 28 的 select_replace 拒绝预编译 match spec 且 replacement 不能直接放元组值);并发重复实现退化为"最多算两次",对纯 thunk 无害。
@@ -157,17 +191,19 @@ v1 选 pdict + 文档化分歧,ETS 开关留位。**Spike(M0)**:量化 pdict 版
          所有可在第 0/1 层之上定义的部分(seq 库、高阶函数、宏)
 ```
 
+> 2026-10-11(clojerl2-014):第 0 层落地为 `clj2_coll`(集合形状的唯一知情者,含集合原语)与 `clj2_rt`(符号/关键字/字符串/apply/invoke)、`clj2_var`、`clj2_ns`。第 1 层 primitives 表暂不需要:kernel 函数直接以 `erlang/+` 等调用 Erlang,用户代码对 core 函数的调用经直接链接成为 `call_ext`;把 `(+ a b)` 内联为 BIF 是后续优化(拟用 Clojure 的 `:inline` 元数据,而不是另建表)。
+
 划分判据:**只有"必须接触 BEAM 机制"的进第 0 层**(ETS、pdict、apply、进程、binary);凡是能用第 0 层原语表达的,一律上移到 Clojure——Erlang 代码量最小化就是自举风险最小化([00](00-overview.md) §6 风险 1)。分层打破"编译器依赖它编译的库"循环的细节归 [04](04-bootstrap-and-conformance.md)。
 
 ## 9. 未决问题(open,不阻塞 v1 路线)
 
 1. `kw_dyn` 形态与 atom 形态并存时,`name`/`namespace`/`pr-str` 之外的谓词面是否完全收敛——待 primitives 表定稿时复核。
 2. 间接表冻结进 persistent_term 的生产优化(§2.3)的触发条件与构建管线位置。
-3. `satisfies?` 负缓存的失效:impl 模块在负缓存写入**之后**才加载的场景(REPL 交错),v1 采取加载时主动清负缓存,正确性待 spike 验证。
+3. ~~`satisfies?` 负缓存的失效~~(2026-10-11 关闭):impl 模块的 on_load 写正项覆盖负项,`clj2_proto_tests` 的 "negative cache then extend" 用例验证(§4.1a)。
 
 ## 10. 风险(按优先级)
 
-1. **协议分派性能**(spike,M0):ETS 读 + apply 对直接调用的相对开销未量化;不达标则退回 ETS 方法表并接受闭包拷贝与热升级损失(§4.2)。
+1. **协议分派性能**(spike,M0,2026-10-11 已量化:0.61× 直接调用,采纳,见 spike-002):ETS 读 + apply 对直接调用的相对开销;不达标则退回 ETS 方法表并接受闭包拷贝与热升级损失(§4.2)。
 2. **lazy-seq/delay 的 pdict 记忆化**:跨进程重实现的语义分歧是否被语料库接受,ETS 开关的性能代价未知([00](00-overview.md) §6 风险 4)。
 3. **atom 表耗尽**:运行时 `keyword`/`symbol` 在默认 `binary_to_existing_atom` 下安全,但 `*allow-dynamic-atoms*` 开关打开了滥用面;另外 clojerl2 自身每 NS/var 一个模块函数,大型应用的模块数 + 函数量同样吃 atom 表与模块表,需容量测算。
 4. **REPL 写密集下间接表的选择**:ETS 已按写密集选定,但若 REPL 会话持有海量动态 var 重定义,注册表 gen_server 的串行化写是否成为瓶颈,未基准。

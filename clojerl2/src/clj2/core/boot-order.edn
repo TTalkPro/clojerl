@@ -1,0 +1,28 @@
+;; clojure.core load order (designs/04 §6.1, clojerl2-014).
+;;
+;; One namespace, several layer files compiled into it in this order.
+;; A layer may only depend on layers listed before it; the first file
+;; starts with (ns clojure.core), later files with (in-ns 'clojure.core).
+;; :allowed-ns is the lint for the layer's code: the namespaces it may
+;; refer to besides clojure.core itself ([] = Erlang modules only).
+{:ns clojure.core
+ :layers [{:name :00-kernel
+           :files ["00-kernel.clj"]
+           :deps []
+           :allowed-ns []}
+          {:name :01-core
+           :files ["01-core.clj"]
+           :deps [:00-kernel]
+           :allowed-ns []}
+          {:name :02-protocols
+           :files ["02-protocols.clj"]
+           :deps [:00-kernel]
+           :allowed-ns []}
+          {:name :03-print
+           :files ["03-print.clj"]
+           :deps [:00-kernel :01-core]
+           :allowed-ns []}
+          {:name :04-repl
+           :files ["04-repl.clj"]
+           :deps [:00-kernel :01-core :03-print]
+           :allowed-ns []}]}

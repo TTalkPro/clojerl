@@ -1,6 +1,6 @@
 # clojerl2-012 首枚种子生成与入库
 
-状态:未开始(2026-10-11 修订:stage0 宿主由 clojerl 1.0 改为自研 Scheme 金属层——Clojure 层自举梯子见 [designs/07](../designs/07-scheme-layer.md) §6:Scheme 写最小 Clojure 展开器 → clojure.core 用 Clojure 写、金属层编译 → 展开器自举;clojerl 1.0 降级为行为参考)
+状态:已废弃(2026-10-11)——编译器改用 Erlang 写,不需要种子。core 的冷启动并入 [clojerl2-014](clojerl2-014-kernel-tier.md)。见 [designs/09](../designs/09-erlang-hosted-compiler.md) §4。
 里程碑:M3
 依赖:clojerl2-011, clojerl2-014
 

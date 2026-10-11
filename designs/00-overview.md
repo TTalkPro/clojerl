@@ -1,14 +1,14 @@
 # 00 Clojerl 2.0:基于 nanopass 的 Clojure on ERTS(总体设计)
 
-状态:设计提案。方向:不修补 clojerl 1.0 的分析器/发射器双巨石,而是另起炉灶——以 nanopass 为编译器骨架、以 Erlang abstract forms 为唯一目标格式、以 Clojure 自寄宿编译器为终态的全新实现。工作代号:**clojerl2**。
+状态:设计提案。方向:不修补 clojerl 1.0 的分析器/发射器双巨石,而是另起炉灶——以 nanopass 为编译器骨架、以 Erlang abstract forms 为唯一目标格式的全新实现;编译器(nanopass 框架与 pass 链)用 Erlang 写(2026-10-11 修订,见 [09](09-erlang-hosted-compiler.md))。工作代号:**clojerl2**。
 
-> 结论先行:**可行,且条件比 clojerl 1.0 立项时更好**。三个外部事实改变了权衡:(1) Gleam v1.19 与 Elixir 证明 Erlang abstract forms 是文档化、跨版本稳定的编译目标,直接喂 `compile:forms/2`,跳过 erlc 前半段;(2) 05 号文判定的最大风险(可变对与 `eq?` 身份模拟)**对 Clojure 不成立**——Clojure 值语义全不可变,天然契合 BEAM 的不可变堆;(3) jolt 与 cleat 已经把"自寄宿 Clojure 编译器 + nanopass 管线 + 分层 core + 语料库一致性测试"这条路完整走过一遍,本项目是把它们的方法论搬到 ERTS。
+> 结论先行:**可行,且条件比 clojerl 1.0 立项时更好**。三个外部事实改变了权衡:(1) Gleam v1.19 与 Elixir 证明 Erlang abstract forms 是文档化、跨版本稳定的编译目标,直接喂 `compile:forms/2`,跳过 erlc 前半段;(2) 05 号文判定的最大风险(可变对与 `eq?` 身份模拟)**对 Clojure 不成立**——Clojure 值语义全不可变,天然契合 BEAM 的不可变堆;(3) jolt 与 cleat 已经把"nanopass 管线 + 分层 core + 语料库一致性测试"这条路完整走过一遍,本项目是把它们的方法论搬到 ERTS(编译器宿主取 Erlang 而非自寄宿,见 D2)。
 
 ## 1. 定位:第三代,不是补丁
 
 | | clojerl 1.0 | 本项目(clojerl2) |
 |---|---|---|
-| 编译器语言 | Erlang | Clojure(自寄宿,宿主 = 自研 Scheme 金属层,见 [07](07-scheme-layer.md)) |
+| 编译器语言 | Erlang | Erlang(2026-10-11 定,见 [09](09-erlang-hosted-compiler.md));区别不在宿主,而在管线形态 |
 | 管线形态 | reader → 3080 行分析器巨石 → 2262 行发射器巨石 | nanopass:形式化语言链 + 小 pass 组合([01](01-nanopass-pipeline.md)) |
 | 目标格式 | Core Erlang(cerl 树) | **Erlang abstract forms**([02](02-beam-backend.md)) |
 | 顶层求值 | core_eval(839 行 erl_eval fork)+ 编译双轨 | 一律编译执行,废除解释器 |
@@ -43,7 +43,7 @@ Gleam 从生成 Erlang 源码改为生成 **abstract forms**,经 external term f
 
 ### 3.3 cleat(设计词汇与决策框架来源)
 
-cleat 是"Clojure on CLR",已完成自举不动点。可沿用:D 编号决策体例、L0-L3 宿主无关 IR + 目标分裂、**targets.edn 机器描述表**(我们加 `:beam` 表项)、primitives 表即数据、编译器纯函数化(D5)、core 分层加载、语料库门控。注意(2026-10-11 修订):下文"BEAM 上无可 vendor 的 Scheme"的否决**已被推翻**——否决的前提是 R6RS 全量 call/cc;改用逃逸续延(call-with-return)后障碍消除。现按 cleat 路线自研 Scheme 金属层并复用 skeg 的 RNRS 代码,见 [07](07-scheme-layer.md)。nanopass 不再在 Clojure 内重实现,而是标准框架跑在金属层上(见 D3)。
+cleat 是"Clojure on CLR",已完成自举不动点。可沿用:D 编号决策体例、L0-L3 宿主无关 IR + 目标分裂、**targets.edn 机器描述表**(我们加 `:beam` 表项)、primitives 表即数据、编译器纯函数化(D5)、core 分层加载、语料库门控。注意(2026-10-11 两次修订):上午一度改走 cleat 路线(自研 Scheme 金属层 + 复用 skeg RNRS 代码,[07](07-scheme-layer.md));同日再次裁决**不建 Scheme 层**,nanopass 框架与 pass 链用 Erlang 写([09](09-erlang-hosted-compiler.md))。cleat 的"stage0 保持朴素、语义决策归 pass"这一分工仍然沿用。
 
 ### 3.4 jolt(最接近的姊妹项目:Clojure → Scheme → Chez)
 
@@ -62,8 +62,8 @@ cleat 是"Clojure on CLR",已完成自举不动点。可沿用:D 编号决策体
 | 编号 | 决策 | 要点 | 详述 |
 |---|---|---|---|
 | D1 | 方言定位 | 新方言,非 clojerl 1.0 升级、非 Clojure JVM 克隆;分歧诚实登记 | §1 |
-| D2 | 编译器语言 | **Clojure 自寄宿,宿主 = 自研 Scheme 金属层**(2026-10-11 修订,原 clojerl 1.0 种子模型废除):Clojure 前端/宏展开跑在自研 Scheme-on-BEAM 上,自举梯子见 [07](07-scheme-layer.md) §5/§6;clojerl 1.0 降级为 core.clj 移植参考 | [07](07-scheme-layer.md) §0/§5/§6 |
-| D3 | nanopass 实现 | **复用 nanopass-framework-scheme**(skeg 子模块,MIT),跑在自研 Scheme 金属层上;[01](01-nanopass-pipeline.md) 的语言定义与 pass 链不变(2026-10-11 修订,原"Clojure 内自实现"废弃) | [07](07-scheme-layer.md) §0/§7 |
+| D2 | 编译器语言 | **Erlang**(2026-10-11 第二次修订):reader、nanopass 框架、全部 pass、发射器都是 Erlang 模块;不建 Scheme 金属层([07](07-scheme-layer.md) 作废),不需要种子与不动点门控。Clojure 宏仍用 Clojure 写,由驱动层编译加载后调用。clojerl 1.0 降级为 core.clj 移植参考 | [09](09-erlang-hosted-compiler.md) §0/§4 |
+| D3 | nanopass 实现 | **Erlang 内自实现**(`clj2_np` + `clj2_lang`):语言即数据(带 `extends`)、节点为 absform 形状的元组 `{Op, Anno, ...}`、框架自动穿通、每个 pass 边界运行期按输出语言整树校验;pass 即模块,渐进加 pass 即渐进优化 | [09](09-erlang-hosted-compiler.md) §1 |
 | D4 | 目标格式 | **Erlang abstract forms** + `compile:forms/2`;不产文本源码、不产 Core Erlang、v1 不碰 BEAM 汇编码 | [02](02-beam-backend.md) |
 | D5 | 编译器纯函数 | pass 链不读全局运行时状态;NS/Var 解析结果作为显式环境参数穿线(cleat D5 沿用) | [01](01-nanopass-pipeline.md) §4 |
 | D6 | 尾调用与闭包红利 | recur → 本地尾调用(BEAM PTC 原生);fn → Erlang fun 原生闭包,**免 closure conversion pass** | [01](01-nanopass-pipeline.md) §3 |
@@ -83,8 +83,8 @@ reader(Erlang 写,产出 Clojure 数据)
 Lcore(固定输入文法,reader 输出即合法 Lcore)         ← 编译器与读者的唯一契约
    │
    ▼
-nanopass 管线(Clojure 写,pass 链 L0→…→Labs)
-   │  每步:形式化语言对 (Lin → Lout),spec 校验,模板重写
+nanopass 管线(Erlang 写,pass 链 L0→…→Labs)
+   │  每步:形式化语言对 (Lin → Lout),pass 边界按语言整树校验,未写的 op 自动穿通
    ▼
 Labs(抽象格式层 IR,与 absform 一一对应)
    │
@@ -99,7 +99,7 @@ emitter(纯序列化器:Labs → absform 项 → compile:forms/2 → beam)
 
 ## 6. 风险总览(按优先级)
 
-1. **编译器自寄宿的冷启动**:stage0 子集必须小到能在 Erlang 里直译,又大到能编译真实编译器源码——jolt 的 00-kernel 分层是现成的解法,但分层边界需实测([04](04-bootstrap-and-conformance.md) §2,风险 1)。
+1. **core 的冷启动**(原"编译器自寄宿的冷启动",D2 改为 Erlang 后风险缩小):编译器不再自寄宿,只剩 clojure.core 自身的分层加载——00-kernel 层只用 special form,由 Erlang 编译器直接编译([09](09-erlang-hosted-compiler.md) §4,[04](04-bootstrap-and-conformance.md) §6)。
 2. **协议分派性能**:impl 模块方案的 `apply` 缓存命中率需基准验证;若不够,退回 ETS 方法表并接受 extend 写放大([03](03-runtime-model.md) §4 备选)。
 3. **字符串语义**:binary(UTF-8)下标 O(n) 与 Clojure JVM 的 UTF-16 语义分歧,进 known-divergences 并文档化([03](03-runtime-model.md) §1)。
 4. **惰性序列在 BEAM 的成本**:thunk + 缓存的方案与进程调度的交互需 spike(唯一保留自 05 号文的 spike,但范围小得多)。
@@ -110,16 +110,19 @@ emitter(纯序列化器:Labs → absform 项 → compile:forms/2 → beam)
 ## 7. 落地顺序
 
 1. **M0 spike**:值表示 + 协议 impl 模块分派基准 + lazy-seq thunk(风险 2/4)。
-2. **M1**:reader(Erlang)+ **M0.5:Scheme 金属层**(自研 Scheme-on-BEAM + skeg RNRS 代码复用,[07](07-scheme-layer.md))。原"Clojure 内 nanopass 骨架"由金属层上的标准 nanopass 取代。
-3. **M2**:pass 链核心(parse/resolve/ANF/emit)打通 `(fn [x] (+ x 1))` 级程序 → absform → beam → 执行。
-4. **M3**:Clojure 层自举( Scheme 写最小展开器 → clojure.core 自举,见 [07](07-scheme-layer.md) §6)→ 编译器自编译不动点(确定性构建比对,[07](07-scheme-layer.md) §5)。
+2. **M1**:reader(Erlang,已完成)+ Erlang 内 nanopass 框架(已完成,[09](09-erlang-hosted-compiler.md) §1)。~~M0.5 Scheme 金属层~~ 作废。
+3. **M2**:pass 链打通到 absform → beam → 执行。已完成第一段(parse/resolve/validate-recur/lower-loop/lower-letfn/emit,[09](09-erlang-hosted-compiler.md) §2);剩余 def/NS、解构、ANF、case*、互操作。
+4. **M3**:core 分层加载(00-kernel 起,宏 form-at-a-time)。编译器是 Erlang,**没有种子与不动点门控**。
 5. **M4**:协议/多方法/引用类型/惰性 + core 全层 + corpus 门控接入 CI。
 6. **M5**:REPL、编译缓存、rebar3 插件、`clojerl2` CLI。
 
 ## 8. 与其他文档的关系
 
 - [05](05-erts-target.md):ERTS 契合点分析沿用;其"生成 Erlang 源码是唯一正道"的结论被 Gleam/Elixir 实践更新为 abstract forms(D4);其最大风险(可变对/`eq?`)对本项目不适用(§6)。
-- [06](06-scheme-on-erts.md):runtime=进程、pdict 动态环境、诚实降级的设计哲学继承到 [03](03-runtime-model.md);其"先自举 Scheme metalayer"路线原被 D2/D3 取代,**2026-10-11 起以修正后的形式(逃逸续延)重新采纳**,见 [07](07-scheme-layer.md)。
+- [06](06-scheme-on-erts.md):runtime=进程、pdict 动态环境、诚实降级的设计哲学继承到 [03](03-runtime-model.md);其"先自举 Scheme metalayer"路线曾在 [07](07-scheme-layer.md) 短暂重新采纳,同日被 [09](09-erlang-hosted-compiler.md) 否决。
+- [07](07-scheme-layer.md):Scheme 金属层方案,**已作废**,保留作历史记录。
+- [08](08-nanopass-host-languages.md):nanopass 宿主语言调研,D3 的可行性依据。
+- [09](09-erlang-hosted-compiler.md):编译器宿主改为 Erlang 的裁决与框架设计(D2/D3)。
 - [01](01-nanopass-pipeline.md):pass 链与语言定义(D2/D3/D5/D6)。
 - [02](02-beam-backend.md):目标格式与发射器(D4/D11)。
 - [03](03-runtime-model.md):运行时模型(D7/D8/D9/D10)。

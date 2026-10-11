@@ -1,8 +1,8 @@
 # 04 自举策略与一致性测试(D2 / D12)
 
-状态:设计提案。覆盖 [00](00-overview.md) §4 的 D2(编译器自寄宿 + 入库种子)与 D12(语料库门控一致性)。自举方法照搬 jolt 的 checked-in seed + 字节级不动点模式;一致性照搬 jolt 的 corpus.edn + known-divergences 门控。本文的核心决策是 **stage0 的来源**(§2)。
+状态:设计提案,§1-§4 已作废(见下方修订说明)。覆盖 [00](00-overview.md) §4 的 D2(原:编译器自寄宿 + 入库种子)与 D12(语料库门控一致性)。自举方法照搬 jolt 的 checked-in seed + 字节级不动点模式;一致性照搬 jolt 的 corpus.edn + known-divergences 门控。本文的核心决策是 **stage0 的来源**(§2)。
 
-> **(2026-10-11)本节 stage0 决策已修订**:clojerl 1.0 种子模型废除,stage0 = 自研 Scheme 金属层([07](07-scheme-layer.md) §5),Clojure 层自举梯子见 [07](07-scheme-layer.md) §6。以下原文保留作历史记录。
+> **(2026-10-11 第二次修订)§1-§4 作废**:编译器改用 Erlang 写([09](09-erlang-hosted-compiler.md)),不再自寄宿,因此**没有 stage0 种子、没有不动点门控、没有编译器源码子集纪律**。(同日上午的"stage0 = Scheme 金属层"方案 [07](07-scheme-layer.md) 也已作废。)仍然有效的是 §5 一致性测试(D12)与 §6 分层 core 与宏自举:00-kernel 层只用 special form,由 Erlang 编译器直接编译,宏走 form-at-a-time 驱动。§7 里程碑中涉及种子/不动点的判据一并删除。以下原文保留作历史记录。
 
 > 结论先行:**stage0 采用 clojerl 1.0 作为种子宿主(方案 b),Erlang 直译编译器(方案 a)作为回退**。理由:clojerl 1.0 已经是一个能编译 defrecord/deftype/协议/多值函数到 beam 的完整实现,用它一次性生成首枚种子,省掉一个一次性 Erlang 编译器的全部工作量;代价是种子血统耦合于 clojerl 1.0 的方言怪癖——用"编译器源码子集纪律"(§2.4)+ 不动点门控(§4)把耦合封死在种子生成这一步,之后 clojerl 1.0 永久退场。种子提交入库,fresh clone 即可构建;`make selfhost` 门控字节级不动点,`make remint` 收敛重铸种子。
 
@@ -108,7 +108,7 @@ corpus/*.edn ──► runner ──► clojerl2 编译并求值 ──► 实�
    (宿主无关:表达式 + 期望值)                                ├─ EDN 规范化后比较 ─► pass/fail
 JVM Clojure(oracle)求值同一表达式 ──► 期望值 ──────────────┘
    ▲
-known-divergences.edn:已登记分歧的豁免注册表(门控)
+known-divergences.edn:已登记分歧的豁免注册表(门控)。2026-10-11 已建立于 `clojerl2/test/known-divergences.edn`(格式校验测试 `clj2_divergences_tests`),门控随 022 接入
 ```
 
 - **语料格式**(移植 jolt corpus.edn):每条目 `{:expr "…" :expected "…" :tags [:core :seq]}`;`expected` 由 JVM Clojure 求值生成(oracle 模式 `make corpus-regen`),入库后作为静态期望,日常 CI 不依赖 JVM。
@@ -132,9 +132,27 @@ corpus 按 §6 的 core 分层打标签;CI 先跑 kernel 层语料(M3 起),全�
 | `03-print` | `pr`/`print-method`/`prn` | 否 |
 | `04-repl` | REPL 支持函数 | 否 |
 
-`00-kernel` 打破"编译器依赖它要编译的库"的循环:编译器源码(§2.4 子集)只准依赖 kernel;kernel 只准依赖 Erlang 运行时原语([03](03-runtime-model.md))。加载顺序由 `core/boot-order.edn` 显式声明(每层的文件列表与依赖层),不做隐式文件序。
+> **2026-10-11 实测回填(clojerl2-014,O2 关闭)**。编译器是 Erlang([09](09-erlang-hosted-compiler.md)),"编译器依赖它要编译的库"的循环不存在,kernel 的定位改为:**clojure.core 的最底层,只用特殊形式、内核形式 `defmacro` 与 Erlang 调用写成**(lint:`:allowed-ns []`,即不得引用任何 Clojure 命名空间)。落地于 `clojerl2/src/clj2/core/00-kernel.clj`,加载器 `clj2_core`,层序 `core/boot-order.edn`。实测清单:
+>
+> | 类别 | 函数 / 宏 |
+> |---|---|
+> | 序列 | `list seq cons first rest next second ffirst nnext last count nth concat reverse nthnext drop take range` |
+> | 高阶 | `reduce some every? apply complement constantly comp partial`;**惰性**(019):`map filter remove mapcat concat take drop take-while drop-while range iterate repeat repeatedly cycle lazy-cat`,`lazy-seq delay force deref realized? doall dorun` |
+> | 集合 | `vector vec hash-map hash-set set get contains? keys vals assoc dissoc conj into list*` |
+> | 谓词 | `not nil? some? true? false? identity identical? string? number? integer? float? boolean? keyword? symbol? fn? ifn? vector? map? set? list? seq? coll? sequential? empty?` |
+> | 数与相等 | `= not= + - * / inc dec quot rem mod < > <= >= == zero? pos? neg? even? odd? max min` |
+> | 符号与字符串 | `str symbol keyword name namespace gensym` |
+> | 宏 | `comment declare when when-not if-not and or cond case -> ->> let fn loop defn defn- letfn if-let when-let dotimes doseq`;解构(`destructure`:vector 的 `&`/`:as`,map 的 `:keys`/`:strs`/`:syms`/`:or`/`:as` 与嵌套) |
+>
+> `02-protocols` 层(clojerl2-016):`type instance? satisfies? extends? record?`;`defprotocol`/`extend-type`/`extend-protocol`/`deftype`/`defrecord` 是编译器内核形式(需要命名空间、产出 impl 模块)。
+>
+> 第 0 层 Erlang 原语:`clj2_coll`(集合形状的唯一知情者)、`clj2_rt`(符号/关键字/字符串/apply,数据的 IFn)、`clj2_proto`(协议分派与类型 tag)。seq 暂为急切的 Erlang 列表,lazy-seq(019)与协议(016)落地后在同名函数下替换。
+
+`00-kernel` 打破"编译器依赖它要编译的库"的循环(2026-10-11:此循环已不存在,见上):编译器源码(§2.4 子集)只准依赖 kernel;kernel 只准依赖 Erlang 运行时原语([03](03-runtime-model.md))。加载顺序由 `core/boot-order.edn` 显式声明(每层的文件列表与依赖层),不做隐式文件序。
 
 ### 6.2 宏自举:form-at-a-time 驱动
+
+> 2026-10-11 落地:驱动逐个顶层形式解析与展开;每遇 `defmacro`,把此前的形式编译成编译期段模块并加载,宏对后续形式立即可见(机制见 [09](09-erlang-hosted-compiler.md) §4.1)。kernel 自身就是这样自展的:先用 `fn*` 定义函数,再用它们写宏,后面的定义再用这些宏。
 
 `defmacro` 需要编译期执行 Clojure 代码,而宏体本身要先被编译——这要求驱动器严格 form-at-a-time:每读一个顶层 form,立即(宏展开 → 编译 → 加载)后再读下一个,使 `defmacro` 建立的宏对后续 form 立即可见(驱动器与 macroexpand 的边界见 [01](01-nanopass-pipeline.md))。推论:**stage0 宿主也必须满足同一边界**——clojerl 1.0 的顶层求值已是逐 form(clje 编译器架构),满足;回退方案 (a) 的 Erlang 直译器若采用批量编译则必须改为逐 form,否则 kernel 的宏集无法自展。
 
@@ -152,7 +170,7 @@ corpus 按 §6 的 core 分层打标签;CI 先跑 kernel 层语料(M3 起),全�
 ## 8. 开放问题
 
 - **O1**:doc 00 §4 D2 的"Erlang stage0"措辞与本文 §2.3 的细化(clojerl 1.0 作为首选实现)需在 doc 00 下次修订时对齐。
-- **O2**:00-kernel 的确切函数清单需实测划定(doc 00 §6 风险 1 已预留);划定结果回填 §6.1。
+- ~~**O2**~~(2026-10-11 关闭):00-kernel 清单已实测划定并回填 §6.1。
 - **O3**:corpus 的浮点/比值表示在 BEAM(无 JVM ratio 原生类型)下的规范化规则,待 [03](03-runtime-model.md) §1 数值塔定稿后补充。
 
 ## 9. 风险

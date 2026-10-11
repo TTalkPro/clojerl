@@ -1,6 +1,6 @@
 # clojerl2-015 Var 与命名空间运行时
 
-状态:未开始
+状态:已完成(2026-10-11)
 里程碑:M4
 依赖:clojerl2-010
 
@@ -19,11 +19,11 @@
 
 ## 工作内容
 
-- [ ] ETS NS 注册表:一张 `named + read_concurrency` 表,单 gen_server 持有,写串行、读直连(03 §2.1)
-- [ ] `^:dynamic`/`^:redef` var 的 ETS 间接表,调用点编译为 `clj_rt_var:deref(NsMod, Name)`
-- [ ] NS 模块 `__ns_init__/0` on_load 注册 var 清单(02 §3.4),注意 on_load 禁止远程调用的限制
-- [ ] resolve-symbols pass 侧配合:编译期解析到的静态 var 直接生成 `NsMod:fn/N`;先跑 declare pass 收集全 NS 的 def 清单以解决前向引用
-- [ ] REPL 重定义的热代码两版本语义写入文档(02 §5:旧代码跑旧版,新调用链新版,不模拟 JVM 全局立即生效)
+- [x] ETS NS 注册表:一张 `named + read_concurrency` 表,单 gen_server 持有,写串行、读直连(03 §2.1)
+- [x] `^:dynamic`/`^:redef` var 的 ETS 间接表,调用点编译为访问器 `NsMod:Name()` → `clj2_var:deref/2`
+- [x] NS 模块 `__ns_init__/0` on_load 注册 var 清单(02 §3.4);实测限制是"不可远程调用本模块",同 NS 引用一律本地调用
+- [x] resolve-symbols pass 侧配合:编译期解析到的静态 var 直接生成 `NsMod:fn/N`(link pass);先跑 declare pass 收集全 NS 的 def 清单以解决前向引用
+- [x] REPL 重定义的热代码两版本语义写入文档(02 §5:旧代码跑旧版,新调用链新版,不模拟 JVM 全局立即生效)
 
 ## 验收标准
 
@@ -33,4 +33,12 @@
 
 ## 结论
 
-(完成后填写)
+2026-10-11 完成,设计落点见 [designs/03](../designs/03-runtime-model.md) §2.1a、[designs/02](../designs/02-beam-backend.md) §3.1/§3.4、[designs/09](../designs/09-erlang-hosted-compiler.md) §2/§3。
+
+- 代码:`clj2_ns`(注册表 gen_server)、`clj2_var`(根值 + 动态绑定栈)、`clj2_p_declare`、`clj2_p_link`;`clj2_p_parse`/`clj2_p_resolve`/`clj2_p_emit`/`clj2_compiler` 相应扩展(`compile_ns/1,2`、`load_ns/1,2`、`eval/2` 的 `ns` 选项)。
+- 测试 `clojerl2/test/clj2_ns_tests.erl`,三条验收:
+  - 直接链接:`beam_disasm` 断言跨 NS 调用是 `call_ext` 到 `{'t.basic', f, 1}`、同 NS 调用是本地 `call`,且无 `erlang:apply`/`clj2_rt:invoke`;
+  - 重定义:新调用走新代码,旧版本闭包仍返回旧值;有进程停在旧版本代码里时拒绝再次加载(不杀进程),进程退出后可以加载;
+  - 注册表并发:20 个写进程各做 50 轮注册/查询/删除,5 个读进程并发 `all/0`,无错误、无残留。
+- 偏离原设计:不做名称改编、arity 不进函数名(02 §3.1 修订);arity 不匹配的直接调用是编译错误(登记分歧);`ns` 暂由 parse 直接处理,只支持 `(:require [ns :as a :refer [...]])`。
+- 未做:`#'x` / Var 对象、`binding` 宏(需宏系统,运行时 `push_binding`/`pop_binding` 已就绪)、按源路径查找并加载 NS 文件(023/024)。
