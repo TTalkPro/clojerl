@@ -552,6 +552,9 @@ scope(#{ns_refs := Refs}, Ns, Vars, Unit, M, Ctx = #{aliases := Aliases, refers 
     Ext0 = maps:from_list([{R, info_or_fail(R)} || R <- Required, R =/= Ns]),
     Ext = lists:foldl(fun(Q, Acc) when Q =:= Ns; is_map_key(Q, Acc) -> Acc;
                          (Q, Acc) ->
+                              %% a namespace not loaded yet but on the source
+                              %% path (clojure.string ...) loads now
+                              clj2_rt_eval:ensure_loaded(Q),
                               case clj2_ns:info(Q) of
                                   {ok, Info} -> Acc#{Q => Info};
                                   error -> Acc        % an Erlang module

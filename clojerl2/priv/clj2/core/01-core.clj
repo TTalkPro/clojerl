@@ -546,3 +546,30 @@
 ;; BEAM has no shared mutable memory to guard: a body that only touches
 ;; values needs no lock, and io! has no transaction to refuse.
 (defmacro io! [& body] `(do ~@body))
+
+;;;; ------------------------------------------------------------------
+;;;; Regular expressions, chars, UUIDs, files (clojerl2-020)
+;;;;
+;;;; Patterns run on Erlang's re (PCRE2) in unicode mode (clj2_re);
+;;;; chars are code points (:char/integer); UUIDs print #uuid "...".
+
+(defn re-pattern [s] (clj2_re/pattern s))
+(defn re-matcher [re s] (clj2_re/matcher re s))
+(defn re-find
+  ([m] (clj2_re/matcher_find m))
+  ([re s] (clj2_re/re_find re s)))
+(defn re-matches [re s] (clj2_re/re_matches re s))
+(defn re-seq [re s] (seq (clj2_re/re_seq re s)))
+(defn re-groups [m] (clj2_re/groups m))
+
+(defn char [x] (clj2_string/char x))
+(defn char? [x] (clj2_string/is_char x))
+(def char-name-string (fn [c] (clj2_string/char_name c)))
+(def char-escape-string (fn [c] (clj2_string/char_escape c)))
+
+(defn random-uuid [] (clj2_string/random_uuid))
+(defn parse-uuid [s] (clj2_string/parse_uuid s))
+(defn uuid? [x] (clj2_string/is_uuid x))
+
+(defn slurp [f & opts] (clj2_io/slurp f (apply hash-map opts)))
+(defn spit [f content & options] (clj2_io/spit f content (apply hash-map options)))

@@ -45,12 +45,20 @@ TEST_MODS  := $(subst $(space),$(comma),$(strip $(basename $(notdir $(TESTS)))))
 
 CORE_SRCS := $(wildcard priv/clj2/core/*)
 
-all: $(SRC_BEAMS) $(EBIN)/clojure.core.beam $(EBIN)/clj2.build
+STDLIB_SRCS := $(shell find priv/clj2/stdlib -name '*.clj' 2>/dev/null)
+
+all: $(SRC_BEAMS) $(EBIN)/clojure.core.beam $(EBIN)/clj2.stdlib $(EBIN)/clj2.build
 
 # clojure.core prebuilt, so the CLI starts without compiling it
 # (clj2_core:ensure/0 falls back to compiling when it is missing)
 $(EBIN)/clojure.core.beam: $(SRC_BEAMS) $(CORE_SRCS)
 	erl $(ERL_FLAGS) -eval '{ok, _, _} = clj2_core:build("$(EBIN)"), halt().'
+
+# the standard library namespaces (clojure.string ...), prebuilt like core;
+# without them they compile from priv/clj2/stdlib on first use
+$(EBIN)/clj2.stdlib: $(EBIN)/clojure.core.beam $(STDLIB_SRCS)
+	erl $(ERL_FLAGS) -eval '#{} = clj2_build:build(#{src_dirs => ["priv/clj2/stdlib"], ebin_dir => "$(EBIN)", cache_dir => "_build/clj2_stdlib_cache"}), halt().'
+	@touch $@
 
 # the commit the CLI reports (designs/04 §4.3)
 $(EBIN)/clj2.build: FORCE

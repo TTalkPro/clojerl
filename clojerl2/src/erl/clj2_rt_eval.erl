@@ -136,7 +136,7 @@ load(Ns, Reload) ->
         false ->
             case find_source(Ns) of
                 {ok, Path} -> load_ns_file(Path);
-                error -> erlang:error({clj2_require, {not_found, Ns, source_path()}})
+                error -> erlang:error({clj2_require, {not_found, Ns, source_path() -- [stdlib_dir()]}})
             end
     end.
 
@@ -172,8 +172,13 @@ load_ns_file(Path) ->
             erlang:error({clj2_compile, {Path, {L, C}}, Why2})
     end.
 
+%% the user's directories, then clojerl2's own standard library
+%% (priv/clj2/stdlib: clojure.string ...), which is always searched
 source_path() ->
-    persistent_term:get({?MODULE, source_path}, ["src", "."]).
+    persistent_term:get({?MODULE, source_path}, ["src", "."]) ++ [stdlib_dir()].
+
+stdlib_dir() ->
+    filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "clj2", "stdlib"]).
 
 set_source_path(Dirs) ->
     persistent_term:put({?MODULE, source_path}, [unicode:characters_to_list(D) || D <- Dirs]).

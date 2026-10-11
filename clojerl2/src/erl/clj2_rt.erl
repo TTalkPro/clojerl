@@ -73,6 +73,7 @@ str1(B) when is_binary(B) -> B;
 str1(A) when is_atom(A) -> atom_to_binary(A);           % symbols, keywords (':k'), true/false
 str1(I) when is_integer(I) -> integer_to_binary(I);
 str1(F) when is_float(F) -> clj2_print:float_str(F);
+str1({Tag, _, S}) when (Tag =:= regex orelse Tag =:= uuid), is_binary(S) -> S;
 str1(X) -> clj2_print:pr_str(X).                         % collections, records, ...
 
 is_keyword(X) -> is_atom(X) andalso X =/= nil andalso X =/= true andalso X =/= false

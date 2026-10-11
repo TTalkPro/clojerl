@@ -64,7 +64,7 @@
   {:suite "charsets / malformed UTF-8" :label "a URI accessor decodes its escape runs through the same decoder" :cause :pending/missing-core-var}
   {:suite "charsets / malformed UTF-8" :label "a lead past U+10FFFF is one replacement then its strays" :cause :pending/missing-core-var}
   {:suite "charsets / malformed UTF-8" :label "a leading BOM decodes to U+FEFF rather than being dropped" :cause :pending/missing-core-var}
-  {:suite "charsets / malformed UTF-8" :label "a reader decodes a multibyte character split across its own buffer" :cause :pending/strings-io}
+  {:suite "charsets / malformed UTF-8" :label "a reader decodes a multibyte character split across its own buffer" :cause :pending/missing-core-var}
   {:suite "charsets / malformed UTF-8" :label "a three-byte overlong is three replacements through every door" :cause :pending/missing-core-var}
   {:suite "charsets / malformed UTF-8" :label "a valid but incomplete sequence at the end is one replacement" :cause :pending/missing-core-var}
   {:suite "charsets / malformed UTF-8" :label "an encoded surrogate costs one replacement for all three bytes" :cause :pending/missing-core-var}
@@ -118,15 +118,6 @@
   {:suite "clojure.core / leaf batch 3" :label "interpose xform" :cause :pending/missing-core-var}
   {:suite "clojure.core / leaf batch 3" :label "take-nth into" :cause :pending/missing-core-var}
   {:suite "clojure.core / leaf batch 3" :label "take-nth xform" :cause :pending/missing-core-var}
-  {:suite "clojure.core / leaf batch 4" :label "char-escape newline" :cause :pending/strings-io}
-  {:suite "clojure.core / leaf batch 4" :label "char-escape none" :cause :pending/strings-io}
-  {:suite "clojure.core / leaf batch 4" :label "char-escape quote" :cause :pending/strings-io}
-  {:suite "clojure.core / leaf batch 4" :label "char-name newline" :cause :pending/strings-io}
-  {:suite "clojure.core / leaf batch 4" :label "char-name none" :cause :pending/strings-io}
-  {:suite "clojure.core / leaf batch 4" :label "char-name space" :cause :pending/strings-io}
-  {:suite "clojure.core / leaf batch 4" :label "random-uuid distinct" :cause :pending/strings-io}
-  {:suite "clojure.core / leaf batch 4" :label "random-uuid is uuid" :cause :pending/strings-io}
-  {:suite "clojure.core / leaf batch 4" :label "random-uuid v4 shape" :cause :pending/strings-io}
   {:suite "clojure.core / leaf batch 4" :label "sort-by empty" :cause :pending/triage}
   {:suite "clojure.core / leaf batch 4" :label "sort-by nil coll" :cause :pending/triage}
   {:suite "clojure.core / pmap family" :label "pcalls" :cause :pending/missing-core-var}
@@ -157,7 +148,7 @@
   {:suite "clojure.edn / opts" :label ":readers nested" :cause :pending/stdlib-namespaces}
   {:suite "clojure.edn / opts" :label "inst tag" :cause :pending/missing-core-var}
   {:suite "clojure.edn / opts" :label "set literal" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.edn / opts" :label "uuid tag" :cause :pending/strings-io}
+  {:suite "clojure.edn / opts" :label "uuid tag" :cause :pending/stdlib-namespaces}
   {:suite "clojure.edn / reader opts" :label ":default receives the tag as a symbol" :cause :pending/stdlib-namespaces}
   {:suite "clojure.edn / unknown tags" :label ":default opt handles an unknown tag" :cause :pending/stdlib-namespaces}
   {:suite "clojure.edn / unknown tags" :label "object tag throws naming the tag" :cause :pending/stdlib-namespaces}
@@ -204,48 +195,44 @@
   {:suite "clojure.set / relational ops" :label "renaming onto a key that is itself renamed away keeps both" :cause :pending/stdlib-namespaces}
   {:suite "clojure.set / variadic" :label "intersection of 3 sets" :cause :pending/stdlib-namespaces}
   {:suite "clojure.set / variadic" :label "union of 4 sets" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "blank? false" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "blank? true" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "capitalize" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "ends-with?" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "includes?" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "index-of" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "index-of char needle miss is nil" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "index-of with a char needle" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "join" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "join no sep" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "lower-case" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "replace" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "replace empty match on empty input inserts once" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "replace with an empty match inserts at every position" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "reverse" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "split" :cause :pending/strings-io}
-  {:suite "clojure.string" :label "split-lines" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "starts-with?" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "trim" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "triml" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string" :label "upper-case" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string / replace" :label "char match and replacement" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string / replace" :label "char match, string replacement" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string / replace-first" :label "a regex first-match with a group reference" :cause :pending/strings-io}
-  {:suite "clojure.string / replace-first" :label "replaces only the first match" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string / split limit" :label "empty string" :cause :pending/strings-io}
-  {:suite "clojure.string / split limit" :label "interior empties kept" :cause :pending/strings-io}
-  {:suite "clojure.string / split limit" :label "neg keeps trailing" :cause :pending/strings-io}
-  {:suite "clojure.string / split limit" :label "omitted trims" :cause :pending/strings-io}
-  {:suite "clojure.string / split limit" :label "positive caps parts" :cause :pending/strings-io}
-  {:suite "clojure.string / split limit" :label "zero trims trailing" :cause :pending/strings-io}
-  {:suite "clojure.string / trim-newline" :label "interior kept" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string / trim-newline" :label "no trailing" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string / trim-newline" :label "only newlines" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string / trim-newline" :label "trailing \\r\\n" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string / trim-newline" :label "trailing newline" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string / unicode case" :label "accented latin round-trips" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string / unicode case" :label "cyrillic round-trips" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.string / unicode whitespace" :label "Zs, Zl and Zp are distinct" :cause :pending/strings-io}
-  {:suite "clojure.string / unicode whitespace" :label "\\p{Z} covers the separator categories" :cause :pending/strings-io}
-  {:suite "clojure.string / unicode whitespace" :label "trim and blank? follow isWhitespace" :cause :pending/strings-io}
-  {:suite "clojure.string / unicode whitespace" :label "triml and trimr reach the separators" :cause :pending/strings-io}
+  {:suite "clojure.string" :label "blank? false" :cause :pending/triage}
+  {:suite "clojure.string" :label "blank? true" :cause :pending/triage}
+  {:suite "clojure.string" :label "capitalize" :cause :pending/triage}
+  {:suite "clojure.string" :label "ends-with?" :cause :pending/triage}
+  {:suite "clojure.string" :label "includes?" :cause :pending/triage}
+  {:suite "clojure.string" :label "index-of" :cause :pending/triage}
+  {:suite "clojure.string" :label "index-of char needle miss is nil" :cause :pending/triage}
+  {:suite "clojure.string" :label "index-of with a char needle" :cause :pending/triage}
+  {:suite "clojure.string" :label "join" :cause :pending/triage}
+  {:suite "clojure.string" :label "join no sep" :cause :pending/triage}
+  {:suite "clojure.string" :label "lower-case" :cause :pending/triage}
+  {:suite "clojure.string" :label "replace" :cause :pending/triage}
+  {:suite "clojure.string" :label "replace empty match on empty input inserts once" :cause :pending/triage}
+  {:suite "clojure.string" :label "replace with an empty match inserts at every position" :cause :pending/triage}
+  {:suite "clojure.string" :label "reverse" :cause :pending/triage}
+  {:suite "clojure.string" :label "split" :cause :pending/triage}
+  {:suite "clojure.string" :label "split-lines" :cause :pending/triage}
+  {:suite "clojure.string" :label "starts-with?" :cause :pending/triage}
+  {:suite "clojure.string" :label "trim" :cause :pending/triage}
+  {:suite "clojure.string" :label "triml" :cause :pending/triage}
+  {:suite "clojure.string" :label "upper-case" :cause :pending/triage}
+  {:suite "clojure.string / split limit" :label "empty string" :cause :pending/triage}
+  {:suite "clojure.string / split limit" :label "interior empties kept" :cause :pending/triage}
+  {:suite "clojure.string / split limit" :label "neg keeps trailing" :cause :pending/triage}
+  {:suite "clojure.string / split limit" :label "omitted trims" :cause :pending/triage}
+  {:suite "clojure.string / split limit" :label "positive caps parts" :cause :pending/triage}
+  {:suite "clojure.string / split limit" :label "zero trims trailing" :cause :pending/triage}
+  {:suite "clojure.string / trim-newline" :label "interior kept" :cause :pending/triage}
+  {:suite "clojure.string / trim-newline" :label "no trailing" :cause :pending/triage}
+  {:suite "clojure.string / trim-newline" :label "only newlines" :cause :pending/triage}
+  {:suite "clojure.string / trim-newline" :label "trailing \\r\\n" :cause :pending/triage}
+  {:suite "clojure.string / trim-newline" :label "trailing newline" :cause :pending/triage}
+  {:suite "clojure.string / unicode case" :label "accented latin round-trips" :cause :pending/triage}
+  {:suite "clojure.string / unicode case" :label "cyrillic round-trips" :cause :pending/triage}
+  {:suite "clojure.string / unicode whitespace" :label "Zs, Zl and Zp are distinct" :cause :pending/triage}
+  {:suite "clojure.string / unicode whitespace" :label "\\p{Z} covers the separator categories" :cause :pending/triage}
+  {:suite "clojure.string / unicode whitespace" :label "trim and blank? follow isWhitespace" :cause :pending/triage}
+  {:suite "clojure.string / unicode whitespace" :label "triml and trimr reach the separators" :cause :pending/triage}
   {:suite "clojure.template / do-template" :label "substitutes the argv symbols through each group" :cause :pending/missing-core-var}
   {:suite "clojure.template / do-template" :label "substitution reaches inside quote" :cause :pending/missing-core-var}
   {:suite "clojure.walk / lists + seqs" :label "apply-template substitutes" :cause :pending/stdlib-namespaces}
@@ -295,23 +282,21 @@
   {:suite "conformance / #inst + syntax-quote literal collapse (spec 2.4/2.3)" :label "sq number collapse" :cause :pending/compiler}
   {:suite "conformance / 1.11 additions + ns fns (spec 35-var batch A)" :label "ns-publics lookup" :cause :pending/runtime-eval}
   {:suite "conformance / 1.11 additions + ns fns (spec 35-var batch A)" :label "partition pad" :cause :pending/missing-core-var}
-  {:suite "conformance / 1.11 additions + ns fns (spec 35-var batch A)" :label "require bare symbol" :cause :pending/stdlib-namespaces}
   {:suite "conformance / 1.11 additions + ns fns (spec 35-var batch A)" :label "with-redefs" :cause :pending/ref-types}
   {:suite "conformance / CRITICAL: multi-collection map" :label "map three colls" :cause :pending/missing-core-var}
   {:suite "conformance / HIGH: aliased namespace calls" :label "ns :use refers" :cause :pending/runtime-eval}
   {:suite "conformance / HIGH: aliased namespace calls" :label "ns form + alias" :cause :pending/runtime-eval}
-  {:suite "conformance / HIGH: aliased namespace calls" :label "require :as alias" :cause :pending/stdlib-namespaces}
+  {:suite "conformance / HIGH: aliased namespace calls" :label "require :as alias" :cause :pending/triage}
   {:suite "conformance / HIGH: dispatch" :label "multimethod" :cause :pending/multimethods}
   {:suite "conformance / HIGH: dispatch" :label "multimethod default" :cause :pending/multimethods}
   {:suite "conformance / characters" :label "apply str chars" :cause :pending/triage}
   {:suite "conformance / characters" :label "char newline" :cause :pending/missing-core-var}
-  {:suite "conformance / characters" :label "char of int" :cause :pending/strings-io}
   {:suite "conformance / characters" :label "char space" :cause :pending/missing-core-var}
   {:suite "conformance / characters" :label "int of char" :cause :pending/missing-core-var}
   {:suite "conformance / characters" :label "nth of string" :cause :char/integer}
   {:suite "conformance / characters" :label "pr-str char" :cause :char/integer}
   {:suite "conformance / characters" :label "str of chars" :cause :pending/triage}
-  {:suite "conformance / core misc" :label "bases of Long includes Number" :cause :pending/strings-io}
+  {:suite "conformance / core misc" :label "bases of Long includes Number" :cause :pending/host-types}
   {:suite "conformance / core misc" :label "definline instantiates the expansion template" :cause :pending/missing-core-var}
   {:suite "conformance / core misc" :label "mix-collection-hash is an integer" :cause :pending/missing-core-var}
   {:suite "conformance / core misc" :label "mix-collection-hash is deterministic" :cause :pending/missing-core-var}
@@ -403,28 +388,10 @@
   {:suite "conformance / r3" :label "inc nil is NPE" :cause :exceptions/erlang-classes}
   {:suite "conformance / r3" :label "pop empty list is IllegalStateException" :cause :exceptions/erlang-classes}
   {:suite "conformance / r3" :label "pop empty vector is IllegalStateException" :cause :exceptions/erlang-classes}
-  {:suite "conformance / regex" :label "hex escapes match their characters" :cause :pending/strings-io}
-  {:suite "conformance / regex" :label "re-find" :cause :pending/strings-io}
-  {:suite "conformance / regex" :label "re-matches" :cause :pending/strings-io}
-  {:suite "conformance / regex" :label "unicode escapes match their characters" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "alternation" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "flag case-insens" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "greedy backtrack" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "greedy thru group" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "lazy quantifier" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "lookahead" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "neg-lookahead" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "optional group" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "re-find groups" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "re-find no-groups" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "re-matches groups" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "re-matches no" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "re-seq" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "str/replace $1" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "str/replace regex" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "str/replace regex (2)" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "word-boundary" :cause :pending/strings-io}
-  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "word-boundary no" :cause :pending/strings-io}
+  {:suite "conformance / regex" :label "unicode escapes match their characters" :cause :pending/compiler}
+  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "str/replace $1" :cause :pending/triage}
+  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "str/replace regex" :cause :pending/triage}
+  {:suite "conformance / regex (capturing groups, backtracking, flags, lookahead)" :label "str/replace regex (2)" :cause :pending/triage}
   {:suite "conformance / seq" :label "keys and vals accept a seq of map entries" :cause :pending/triage}
   {:suite "conformance / sequences" :label "replace map" :cause :pending/missing-core-var}
   {:suite "conformance / stage3" :label "20-keyword map via hash-map is PersistentHashMap" :cause :pending/host-types}
@@ -432,10 +399,10 @@
   {:suite "conformance / stage3" :label "hash-map always hash-ordered" :cause :pending/triage}
   {:suite "conformance / stage3" :label "hash-map fn always PersistentHashMap" :cause :pending/host-types}
   {:suite "conformance / stage3" :label "map literal ≤8 is PersistentArrayMap" :cause :pending/host-types}
-  {:suite "conformance / strings (clojure.string)" :label "str/replace" :cause :pending/stdlib-namespaces}
-  {:suite "conformance / strings (clojure.string)" :label "str/split regex" :cause :pending/strings-io}
-  {:suite "conformance / strings (clojure.string)" :label "str/split ws" :cause :pending/strings-io}
-  {:suite "conformance / strings (clojure.string)" :label "str/trim" :cause :pending/stdlib-namespaces}
+  {:suite "conformance / strings (clojure.string)" :label "str/replace" :cause :pending/triage}
+  {:suite "conformance / strings (clojure.string)" :label "str/split regex" :cause :pending/triage}
+  {:suite "conformance / strings (clojure.string)" :label "str/split ws" :cause :pending/triage}
+  {:suite "conformance / strings (clojure.string)" :label "str/trim" :cause :pending/triage}
   {:suite "conformance / throwable-record" :label "= identity only (not equal)" :cause :pending/triage}
   {:suite "conformance / throwable-record" :label "associative? false" :cause :pending/missing-core-var}
   {:suite "conformance / throwable-record" :label "count throws UnsupportedOperationException with correct message" :cause :exceptions/erlang-classes}
@@ -454,7 +421,6 @@
   {:suite "conformance / transducers" :label "partition-by xform reduced" :cause :pending/missing-core-var}
   {:suite "conformance / transducers" :label "transduce drop" :cause :pending/missing-core-var}
   {:suite "conformance / transducers" :label "transduce map-indexed" :cause :pending/missing-core-var}
-  {:suite "conformance / uuid" :label "uuid as map key" :cause :pending/strings-io}
   {:suite "conformance / var fns as ordinary invokes (Stage 2 tier 6)" :label "alter-meta! + meta" :cause :pending/special-forms}
   {:suite "conformance / var fns as ordinary invokes (Stage 2 tier 6)" :label "alter-var-root rest args" :cause :pending/special-forms}
   {:suite "conformance / var fns as ordinary invokes (Stage 2 tier 6)" :label "intern + find-var" :cause :pending/runtime-eval}
@@ -506,12 +472,12 @@
   {:suite "core / ifn?" :label "multimethods and promises are IFn; promises deliver when invoked" :cause :pending/multimethods}
   {:suite "core / munge" :label "clojure.core/munge is Compiler/munge, keeping the argument's type" :cause :pending/missing-core-var}
   {:suite "core / munge" :label "two names that meet only after escaping compile to one class name" :cause :pending/missing-core-var}
-  {:suite "core / read+string" :label "EOF throws" :cause :pending/strings-io}
-  {:suite "core / read+string" :label "advances the stream" :cause :pending/strings-io}
-  {:suite "core / read+string" :label "eof-value arity" :cause :pending/strings-io}
-  {:suite "core / read+string" :label "form and text" :cause :pending/strings-io}
-  {:suite "core / read+string" :label "form value" :cause :pending/strings-io}
-  {:suite "core / read+string" :label "text covers the form" :cause :pending/strings-io}
+  {:suite "core / read+string" :label "EOF throws" :cause :pending/missing-core-var}
+  {:suite "core / read+string" :label "advances the stream" :cause :pending/missing-core-var}
+  {:suite "core / read+string" :label "eof-value arity" :cause :pending/missing-core-var}
+  {:suite "core / read+string" :label "form and text" :cause :pending/missing-core-var}
+  {:suite "core / read+string" :label "form value" :cause :pending/missing-core-var}
+  {:suite "core / read+string" :label "text covers the form" :cause :pending/missing-core-var}
   {:suite "core / reify" :label "multi-arity method dispatches by arg count" :cause :protocols/type-designators}
   {:suite "core / reify" :label "with-meta leaves the original untouched and keeps dispatch" :cause :protocols/type-designators}
   {:suite "core / with-local-vars" :label "a local var is thread-bound inside the form" :cause :pending/missing-core-var}
@@ -571,8 +537,6 @@
   {:suite "defprotocol / :sigs" :label "a method with neither doc nor tag" :cause :pending/compiler}
   {:suite "defprotocol / :sigs" :label "each method's signature: name, arglists, doc, tag" :cause :pending/triage}
   {:suite "deftype / custom toString" :label "computed toString" :cause :pending/compiler}
-  {:suite "deftype / custom toString" :label "defrecord without toString keeps repr" :cause :pending/strings-io}
-  {:suite "deftype / custom toString" :label "pr-str of a defrecord is the repr" :cause :pending/strings-io}
   {:suite "deftype / custom toString" :label "str concatenation uses it" :cause :pending/compiler}
   {:suite "deftype / custom toString" :label "str uses the method" :cause :pending/compiler}
   {:suite "deftype / destructured method param" :label "a defrecord method may destructure a param" :cause :pending/compiler}
@@ -631,8 +595,8 @@
   {:suite "errors / host operations carry a JVM class" :label "inc rejects a non-number" :cause :exceptions/erlang-classes}
   {:suite "errors / host operations carry a JVM class" :label "keyword rejects a non-string name" :cause :exceptions/erlang-classes}
   {:suite "errors / host operations carry a JVM class" :label "range rejects a non-number bound" :cause :exceptions/erlang-classes}
-  {:suite "errors / host operations carry a JVM class" :label "re-seq rejects a non-string" :cause :pending/strings-io}
-  {:suite "errors / host operations carry a JVM class" :label "split rejects a non-string" :cause :pending/strings-io}
+  {:suite "errors / host operations carry a JVM class" :label "re-seq rejects a non-string" :cause :exceptions/erlang-classes}
+  {:suite "errors / host operations carry a JVM class" :label "split rejects a non-string" :cause :exceptions/erlang-classes}
   {:suite "errors / host operations carry a JVM class" :label "subs rejects a non-string" :cause :exceptions/erlang-classes}
   {:suite "errors / host operations carry a JVM class" :label "swap! rejects a non-atom" :cause :exceptions/erlang-classes}
   {:suite "eval & load-string as values" :label "eval of a read-string #inst value" :cause :pending/host-types}
@@ -642,7 +606,7 @@
   {:suite "exceptions / ex-info" :label "nil data survives a catch as {}" :cause :exceptions/erlang-classes}
   {:suite "exceptions / host faults are throwables" :label "a bad string index is a StringIndexOutOfBoundsException" :cause :exceptions/erlang-classes}
   {:suite "exceptions / host faults are throwables" :label "a caught host fault is a typed throwable" :cause :pending/host-types}
-  {:suite "exceptions / host faults are throwables" :label "a caught host fault prints as an #error map naming its class" :cause :pending/strings-io}
+  {:suite "exceptions / host faults are throwables" :label "a caught host fault prints as an #error map naming its class" :cause :pending/host-types}
   {:suite "exceptions / host faults are throwables" :label "a host fault inside a future is the ExecutionException's typed cause" :cause :exceptions/erlang-classes}
   {:suite "exceptions / host faults are throwables" :label "a host fault passes a catch of an unrelated class" :cause :exceptions/erlang-classes}
   {:suite "exceptions / host faults are throwables" :label "a rethrown host fault is the same object" :cause :pending/host-types}
@@ -654,7 +618,7 @@
   {:suite "exceptions / host faults are throwables" :label "name and namespace of nil are NullPointerExceptions" :cause :exceptions/erlang-classes}
   {:suite "exceptions / host faults are throwables" :label "resolve of nil is a NullPointerException" :cause :exceptions/erlang-classes}
   {:suite "exceptions / host faults are throwables" :label "spit to nil is an IllegalArgumentException" :cause :exceptions/erlang-classes}
-  {:suite "exceptions / host faults are throwables" :label "the Throwable surface of a caught host fault" :cause :pending/strings-io}
+  {:suite "exceptions / host faults are throwables" :label "the Throwable surface of a caught host fault" :cause :pending/host-types}
   {:suite "exceptions / recur across try" :label "locking is still reentrant" :cause :pending/host-types}
   {:suite "exceptions / recur across try" :label "locking still returns its body" :cause :pending/host-types}
   {:suite "exceptions / recur across try" :label "loop inside locking recurs to itself" :cause :pending/host-types}
@@ -900,8 +864,8 @@
   {:suite "host-interop / class tokens & readers" :label "defmethod on nil dispatch value" :cause :pending/multimethods}
   {:suite "host-interop / class tokens & readers" :label "defmulti on class dispatches" :cause :pending/multimethods}
   {:suite "host-interop / class tokens & readers" :label "dispatch-only class name" :cause :pending/missing-core-var}
-  {:suite "host-interop / class tokens & readers" :label "replace fn gets group vector" :cause :pending/strings-io}
-  {:suite "host-interop / class tokens & readers" :label "replace with fn replacement is literal" :cause :pending/strings-io}
+  {:suite "host-interop / class tokens & readers" :label "replace fn gets group vector" :cause :pending/triage}
+  {:suite "host-interop / class tokens & readers" :label "replace with fn replacement is literal" :cause :pending/triage}
   {:suite "host-interop / exception + HashMap shims" :label "calling a non-fn throws ClassCastException" :cause :exceptions/erlang-classes}
   {:suite "host-interop / exception + HashMap shims" :label "non-fn cast is a RuntimeException too" :cause :exceptions/erlang-classes}
   {:suite "host-interop / instance? Object" :label "every non-nil value is an Object" :cause :pending/missing-core-var}
@@ -1039,26 +1003,13 @@
   {:suite "interop / reader classes" :label "LineNumberingPushbackReader reports its own class" :cause :pending/host-types}
   {:suite "interop / reader classes" :label "a PushbackReader is not line-numbering" :cause :pending/host-types}
   {:suite "interop / reader classes" :label "a plain PushbackReader reports its own class" :cause :pending/host-types}
-  {:suite "interop-fixes / (str pattern) yields raw source" :label "compose patterns via str" :cause :pending/strings-io}
-  {:suite "interop-fixes / (str pattern) yields raw source" :label "str of a regex" :cause :pending/strings-io}
   {:suite "interop-fixes / a var is callable as its value" :label "call a var directly" :cause :pending/special-forms}
   {:suite "interop-fixes / a var is callable as its value" :label "var bound as a client fn" :cause :pending/special-forms}
   {:suite "interop-fixes / deprecated #^ metadata reader" :label "#^ is equivalent to ^" :cause :pending/metadata}
   {:suite "interop-fixes / deprecated #^ metadata reader" :label "#^ type hint on a param" :cause :pending/reader}
   {:suite "interop-fixes / deprecated #^ metadata reader" :label "#^\"[B\" array hint" :cause :pending/reader}
-  {:suite "io / *in* + with-in-str + read-line" :label "*in* is bound" :cause :pending/strings-io}
-  {:suite "io / *in* + with-in-str + read-line" :label "empty line" :cause :pending/strings-io}
-  {:suite "io / *in* + with-in-str + read-line" :label "read-line EOF nil" :cause :pending/strings-io}
-  {:suite "io / *in* + with-in-str + read-line" :label "read-line after last" :cause :pending/strings-io}
-  {:suite "io / *in* + with-in-str + read-line" :label "read-line one line" :cause :pending/strings-io}
-  {:suite "io / *in* + with-in-str + read-line" :label "read-line sequential" :cause :pending/strings-io}
-  {:suite "io / *in* + with-in-str + read-line" :label "read-line strips nl" :cause :pending/strings-io}
-  {:suite "io / cold tagged types via print-method" :label "regex" :cause :pending/strings-io}
   {:suite "io / cold tagged types via print-method" :label "transient map" :cause :pending/transients}
   {:suite "io / cold tagged types via print-method" :label "transient vector" :cause :pending/transients}
-  {:suite "io / cold tagged types via print-method" :label "uuid" :cause :pending/strings-io}
-  {:suite "io / cold tagged types via print-method" :label "uuid nested" :cause :pending/strings-io}
-  {:suite "io / cold tagged types via print-method" :label "uuid through str unchanged" :cause :pending/strings-io}
   {:suite "io / line-seq" :label "line-seq" :cause :pending/strings-io}
   {:suite "io / line-seq" :label "line-seq count" :cause :pending/strings-io}
   {:suite "io / line-seq" :label "line-seq empty" :cause :pending/strings-io}
@@ -1067,24 +1018,19 @@
   {:suite "io / print family (overlay)" :label "pr of ##NaN is readable" :cause :pending/reader}
   {:suite "io / print family (overlay)" :label "pr of 1.5M keeps the M suffix" :cause :pending/numbers}
   {:suite "io / print family (overlay)" :label "pr of 2M keeps the M suffix" :cause :pending/numbers}
-  {:suite "io / print family (overlay)" :label "pr of a UUID has the #uuid prefix" :cause :pending/strings-io}
   {:suite "io / print family (overlay)" :label "pr of a bigint keeps the N suffix" :cause :pending/triage}
   {:suite "io / print family (overlay)" :label "pr of a mixed coll quotes strings and chars" :cause :pending/numbers}
-  {:suite "io / print family (overlay)" :label "pr of a regex is readable" :cause :pending/strings-io}
   {:suite "io / print family (overlay)" :label "pr writes no newline" :cause :char/integer}
   {:suite "io / print family (overlay)" :label "print of ##Inf is readable like pr" :cause :pending/reader}
   {:suite "io / print family (overlay)" :label "print of ##NaN is readable like pr" :cause :pending/reader}
   {:suite "io / print family (overlay)" :label "print of 1.5M keeps the M suffix like pr" :cause :pending/numbers}
   {:suite "io / print family (overlay)" :label "print of 2M keeps the M suffix like pr" :cause :pending/numbers}
-  {:suite "io / print family (overlay)" :label "print of a UUID has the #uuid prefix like pr" :cause :pending/strings-io}
   {:suite "io / print family (overlay)" :label "print of a bigint keeps the N suffix like pr" :cause :pending/triage}
   {:suite "io / print family (overlay)" :label "print of a bigint nested in a coll keeps the N" :cause :pending/triage}
   {:suite "io / print family (overlay)" :label "print of a mixed coll renders strings and chars bare, numbers readable" :cause :pending/numbers}
-  {:suite "io / print family (overlay)" :label "print of a regex is readable like pr" :cause :pending/strings-io}
   {:suite "io / print family (overlay)" :label "str of 2M drops the M suffix" :cause :pending/numbers}
   {:suite "io / print family (overlay)" :label "str of a char is bare" :cause :pending/triage}
-  {:suite "io / print family (overlay)" :label "str of a regex is the bare source" :cause :pending/strings-io}
-  {:suite "io / print-method multimethod" :label "a direct call renders a regex like pr" :cause :pending/strings-io}
+  {:suite "io / print-method multimethod" :label "a direct call renders a regex like pr" :cause :pending/host-types}
   {:suite "io / print-method multimethod" :label "a direct call renders a uuid like pr" :cause :pending/host-types}
   {:suite "io / print-method multimethod" :label "a host class method fires nested" :cause :pending/multimethods}
   {:suite "io / print-method multimethod" :label "a host class method fires through prn" :cause :pending/multimethods}
@@ -1093,37 +1039,35 @@
   {:suite "io / print-method multimethod" :label "methods table inspectable" :cause :pending/multimethods}
   {:suite "io / print-method multimethod" :label "records nested in colls" :cause :pending/triage}
   {:suite "io / print-method multimethod" :label "records print canonically" :cause :pending/triage}
-  {:suite "io / print-method multimethod" :label "removing the method restores the built-in printer" :cause :pending/strings-io}
+  {:suite "io / print-method multimethod" :label "removing the method restores the built-in printer" :cause :pending/multimethods}
   {:suite "io / print-method multimethod" :label "str ignores print-method" :cause :pending/multimethods}
-  {:suite "io / read" :label "read EOF throws" :cause :pending/strings-io}
-  {:suite "io / read" :label "read EOF value" :cause :pending/strings-io}
-  {:suite "io / read" :label "read a form" :cause :pending/strings-io}
-  {:suite "io / read" :label "read a list form" :cause :pending/strings-io}
-  {:suite "io / read" :label "read eval data" :cause :pending/strings-io}
-  {:suite "io / read" :label "read nil literal" :cause :pending/strings-io}
-  {:suite "io / read" :label "read then read-line" :cause :pending/strings-io}
-  {:suite "io / read" :label "read two forms" :cause :pending/strings-io}
-  {:suite "io / read" :label "read vector" :cause :pending/strings-io}
-  {:suite "io / reader mark and reset" :label "a block read after a reset delivers the replayed chars first" :cause :pending/strings-io}
-  {:suite "io / reader mark and reset" :label "a fresh mark after an invalidated one works again" :cause :pending/strings-io}
-  {:suite "io / reader mark and reset" :label "a peek loop (mark, read, reset before every char) terminates at EOF" :cause :pending/strings-io}
-  {:suite "io / reader mark and reset" :label "markSupported on the file reader" :cause :pending/strings-io}
+  {:suite "io / read" :label "read EOF throws" :cause :pending/runtime-eval}
+  {:suite "io / read" :label "read EOF value" :cause :pending/runtime-eval}
+  {:suite "io / read" :label "read a form" :cause :pending/runtime-eval}
+  {:suite "io / read" :label "read a list form" :cause :pending/runtime-eval}
+  {:suite "io / read" :label "read eval data" :cause :pending/runtime-eval}
+  {:suite "io / read" :label "read nil literal" :cause :pending/runtime-eval}
+  {:suite "io / read" :label "read then read-line" :cause :pending/runtime-eval}
+  {:suite "io / read" :label "read two forms" :cause :pending/runtime-eval}
+  {:suite "io / read" :label "read vector" :cause :pending/runtime-eval}
+  {:suite "io / reader mark and reset" :label "a block read after a reset delivers the replayed chars first" :cause :pending/missing-core-var}
+  {:suite "io / reader mark and reset" :label "a fresh mark after an invalidated one works again" :cause :pending/missing-core-var}
+  {:suite "io / reader mark and reset" :label "a peek loop (mark, read, reset before every char) terminates at EOF" :cause :pending/missing-core-var}
+  {:suite "io / reader mark and reset" :label "markSupported on the file reader" :cause :pending/missing-core-var}
   {:suite "io / reader mark and reset" :label "reading past what a mark keeps drops the mark, and the reader keeps going" :cause :exceptions/erlang-classes}
-  {:suite "io / reader mark and reset" :label "reset replays what was read since the mark, twice over" :cause :pending/strings-io}
+  {:suite "io / reader mark and reset" :label "reset replays what was read since the mark, twice over" :cause :pending/missing-core-var}
   {:suite "io / reader mark and reset" :label "reset with no mark is the JVM's IOException" :cause :exceptions/erlang-classes}
-  {:suite "io / reader mark and reset" :label "the LF owed to a CR-ended readLine is saved with the mark" :cause :pending/strings-io}
+  {:suite "io / reader mark and reset" :label "the LF owed to a CR-ended readLine is saved with the mark" :cause :pending/missing-core-var}
   {:suite "io / reader mark and reset" :label "the same over a StringReader" :cause :pending/missing-core-var}
   {:suite "io / slurp open failures" :label "io/input-stream reports a missing path the way FileInputStream does" :cause :exceptions/erlang-classes}
   {:suite "io / slurp open failures" :label "slurp and io/reader fail a directory the same way" :cause :exceptions/erlang-classes}
   {:suite "io / slurp open failures" :label "slurp of a directory is a FileNotFoundException, not a read error" :cause :exceptions/erlang-classes}
   {:suite "io / slurp open failures" :label "slurp of a missing path is a FileNotFoundException that says so" :cause :exceptions/erlang-classes}
   {:suite "io / slurp, spit, printf, flush (host-classified)" :label "file-seq finds files" :cause :pending/missing-core-var}
-  {:suite "io / slurp, spit, printf, flush (host-classified)" :label "printf formats" :cause :pending/strings-io}
-  {:suite "io / slurp, spit, printf, flush (host-classified)" :label "printf no newline" :cause :pending/strings-io}
-  {:suite "io / slurp, spit, printf, flush (host-classified)" :label "slurp content" :cause :pending/strings-io}
-  {:suite "io / slurp, spit, printf, flush (host-classified)" :label "slurp returns string" :cause :pending/strings-io}
-  {:suite "io / slurp, spit, printf, flush (host-classified)" :label "spit + slurp round" :cause :pending/strings-io}
-  {:suite "io / slurp, spit, printf, flush (host-classified)" :label "spit append" :cause :pending/strings-io}
+  {:suite "io / slurp, spit, printf, flush (host-classified)" :label "printf no newline" :cause :pending/triage}
+  {:suite "io / slurp, spit, printf, flush (host-classified)" :label "slurp content" :cause :pending/triage}
+  {:suite "io / slurp, spit, printf, flush (host-classified)" :label "spit + slurp round" :cause :pending/host-types}
+  {:suite "io / slurp, spit, printf, flush (host-classified)" :label "spit append" :cause :pending/host-types}
   {:suite "io / spit and writer on a URL" :label "a non-file URL is refused with the JVM's message" :cause :exceptions/erlang-classes}
   {:suite "io / spit and writer on a URL" :label "io/writer and io/output-stream through a file: URL" :cause :pending/host-types}
   {:suite "io / spit and writer on a URL" :label "spit :append through a URL" :cause :pending/host-types}
@@ -1158,9 +1102,9 @@
   {:suite "macros / JVM calling convention" :label "an expander fn is applicable with (form env & args)" :cause :pending/special-forms}
   {:suite "macros / JVM calling convention" :label "and a multi-arity macro, per arity" :cause :pending/special-forms}
   {:suite "macros / JVM calling convention" :label "ordinary macro use and macroexpand-1 are unchanged" :cause :pending/triage}
-  {:suite "macros / cond-> expands like the reference" :label "a list step keeps its extra args" :cause :pending/strings-io}
-  {:suite "macros / cond-> expands like the reference" :label "no clauses is the value in a let" :cause :pending/strings-io}
-  {:suite "macros / cond-> expands like the reference" :label "one let, a step per pair, threading through ->" :cause :pending/strings-io}
+  {:suite "macros / cond-> expands like the reference" :label "a list step keeps its extra args" :cause :pending/triage}
+  {:suite "macros / cond-> expands like the reference" :label "no clauses is the value in a let" :cause :pending/triage}
+  {:suite "macros / cond-> expands like the reference" :label "one let, a step per pair, threading through ->" :cause :pending/triage}
   {:suite "macros / core-overlay" :label "assert message" :cause :exceptions/erlang-classes}
   {:suite "macros / core-overlay" :label "doto returns obj" :cause :pending/missing-core-var}
   {:suite "macros / defmacro" :label "#() inside syntax-quote" :cause :pending/compiler}
@@ -1177,9 +1121,9 @@
   {:suite "macros / refer-clojure resolve" :label "refer-clojure has :macro true meta" :cause :pending/metadata}
   {:suite "macros / refer-clojure resolve" :label "refer-clojure is in ns-map" :cause :pending/runtime-eval}
   {:suite "macros / refer-clojure resolve" :label "refer-clojure resolves as a macro var" :cause :pending/runtime-eval}
-  {:suite "macros / time" :label "prints a quoted Elapsed time line ending in msecs" :cause :pending/stdlib-namespaces}
+  {:suite "macros / time" :label "prints a quoted Elapsed time line ending in msecs" :cause :pending/triage}
   {:suite "macros / time" :label "returns the expression's value" :cause :pending/triage}
-  {:suite "macros / time" :label "the elapsed figure reads as a number" :cause :pending/strings-io}
+  {:suite "macros / time" :label "the elapsed figure reads as a number" :cause :pending/triage}
   {:suite "macros / time, with-redefs, macroexpand" :label "time returns value" :cause :pending/triage}
   {:suite "macros / time, with-redefs, macroexpand" :label "with-redefs on deref reaches @ inside a fn" :cause :pending/ref-types}
   {:suite "macros / time, with-redefs, macroexpand" :label "with-redefs on deref reaches a value-position deref" :cause :pending/ref-types}
@@ -1386,28 +1330,27 @@
   {:suite "namespaces / alias, ns-unalias, ns-publics" :label "ns-unalias removes" :cause :pending/missing-core-var}
   {:suite "namespaces / def & vars" :label "def returns var" :cause :pending/compiler}
   {:suite "namespaces / def & vars" :label "var special form" :cause :pending/special-forms}
-  {:suite "namespaces / def & vars" :label "var sugar #'" :cause :pending/compiler}
-  {:suite "namespaces / def & vars" :label "var-get" :cause :pending/compiler}
+  {:suite "namespaces / def & vars" :label "var sugar #'" :cause :pending/runtime-eval}
+  {:suite "namespaces / def & vars" :label "var-get" :cause :pending/runtime-eval}
   {:suite "namespaces / def & vars" :label "var-set in binding" :cause :pending/special-forms}
   {:suite "namespaces / designators" :label "a designator that is not a symbol is a failed cast to Symbol" :cause :exceptions/erlang-classes}
   {:suite "namespaces / designators" :label "a nil namespace designator is a NullPointerException, as on the JVM" :cause :exceptions/erlang-classes}
   {:suite "namespaces / error inside a fn must not leak its defining ns" :label "*ns* restored after throw" :cause :pending/stdlib-namespaces}
-  {:suite "namespaces / error inside a fn must not leak its defining ns" :label "alias survives a throwing stdlib call" :cause :pending/stdlib-namespaces}
-  {:suite "namespaces / ns operations" :label "alter-meta! :macro makes a macro" :cause :pending/compiler}
-  {:suite "namespaces / ns operations" :label "defmacro var meta :macro" :cause :pending/compiler}
-  {:suite "namespaces / ns operations" :label "intern :macro meta makes a macro" :cause :pending/compiler}
-  {:suite "namespaces / ns operations" :label "intern symbol meta -> var meta" :cause :pending/compiler}
+  {:suite "namespaces / error inside a fn must not leak its defining ns" :label "alias survives a throwing stdlib call" :cause :pending/triage}
+  {:suite "namespaces / ns operations" :label "alter-meta! :macro makes a macro" :cause :pending/metadata}
+  {:suite "namespaces / ns operations" :label "defmacro var meta :macro" :cause :pending/metadata}
+  {:suite "namespaces / ns operations" :label "intern :macro meta makes a macro" :cause :pending/runtime-eval}
+  {:suite "namespaces / ns operations" :label "intern symbol meta -> var meta" :cause :pending/runtime-eval}
   {:suite "namespaces / ns operations" :label "ns :refer-clojure :exclude steers syntax-quote" :cause :pending/runtime-eval}
   {:suite "namespaces / ns operations" :label "ns :use :exclude falls through to the earlier use" :cause :pending/runtime-eval}
   {:suite "namespaces / ns operations" :label "ns :use :exclude leaves the name unresolvable" :cause :pending/runtime-eval}
   {:suite "namespaces / ns operations" :label "ns :use refers all" :cause :pending/runtime-eval}
   {:suite "namespaces / ns operations" :label "ns form + alias" :cause :pending/runtime-eval}
-  {:suite "namespaces / ns operations" :label "ns-name" :cause :pending/stdlib-namespaces}
   {:suite "namespaces / ns operations" :label "refer :all one level" :cause :pending/triage}
   {:suite "namespaces / ns operations" :label "resolve missing" :cause :pending/runtime-eval}
   {:suite "namespaces / ns operations" :label "resolve var" :cause :pending/runtime-eval}
   {:suite "namespaces / ns operations" :label "standalone use" :cause :pending/runtime-eval}
-  {:suite "namespaces / require & refer" :label "require :as" :cause :pending/stdlib-namespaces}
+  {:suite "namespaces / require & refer" :label "require :as" :cause :pending/triage}
   {:suite "namespaces / require & refer" :label "require :as + :refer" :cause :pending/missing-core-var}
   {:suite "namespaces / require & refer" :label "require :refer" :cause :pending/missing-core-var}
   {:suite "namespaces / require & refer" :label "require clojure.set" :cause :pending/stdlib-namespaces}
@@ -1418,7 +1361,7 @@
   {:suite "namespaces / require & refer" :label "walk stringify-keys" :cause :pending/stdlib-namespaces}
   {:suite "namespaces / unified alias store" :label "alias fn registers + resolves" :cause :pending/missing-core-var}
   {:suite "namespaces / unified alias store" :label "alias fn visible to ns-aliases" :cause :pending/missing-core-var}
-  {:suite "namespaces / unified alias store" :label "aliased call resolves" :cause :pending/stdlib-namespaces}
+  {:suite "namespaces / unified alias store" :label "aliased call resolves" :cause :pending/triage}
   {:suite "namespaces / unified alias store" :label "empty ns-aliases is a map" :cause :pending/runtime-eval}
   {:suite "namespaces / unified alias store" :label "ns-resolve through alias" :cause :pending/runtime-eval}
   {:suite "namespaces / unified alias store" :label "ns-unalias removes both views" :cause :pending/missing-core-var}
@@ -1446,13 +1389,13 @@
   {:suite "ns / ns-map, ns-unmap, ns-refers" :label "ns-unmap removes" :cause :pending/runtime-eval}
   {:suite "ns / ns-unmap" :label "unmap blocks the implicit core refer" :cause :pending/runtime-eval}
   {:suite "ns / ns-unmap refer-all name" :label "ns-unmap removes refer-all name from resolve" :cause :pending/runtime-eval}
-  {:suite "ns / private var references" :label "a private clojure.core name is not referred, so a bare use does not resolve" :cause :pending/stdlib-namespaces}
+  {:suite "ns / private var references" :label "a private clojure.core name is not referred, so a bare use does not resolve" :cause :pending/triage}
   {:suite "ns / private var references" :label "a private fn passed as a value is refused" :cause :pending/triage}
   {:suite "ns / private var references" :label "a private macro is refused" :cause :pending/triage}
   {:suite "ns / private var references" :label "a private var reached through an alias is refused as written" :cause :pending/triage}
   {:suite "ns / private var references" :label "a qualified call to another ns's private fn is refused" :cause :pending/triage}
   {:suite "ns / private var references" :label "resolve and ns-resolve answer nil for a private clojure.core name" :cause :pending/triage}
-  {:suite "ns / private var references" :label "the var special form still reaches a private var" :cause :pending/compiler}
+  {:suite "ns / private var references" :label "the var special form still reaches a private var" :cause :pending/triage}
   {:suite "ns / refer name checks" :label ":refer-clojure :only a missing name throws" :cause :pending/host-types}
   {:suite "ns / refer name checks" :label "refer :only a missing name throws IllegalAccessError" :cause :pending/runtime-eval}
   {:suite "ns / refer name checks" :label "refer :only a private name throws IllegalAccessError" :cause :pending/triage}
@@ -1685,7 +1628,7 @@
   {:suite "permissive / empty MapEntry" :label "empty of a map entry" :cause :pending/triage}
   {:suite "permissive / keys on pair vector" :label "keys works on vector of pairs" :cause :pending/triage}
   {:suite "pprint / line-breaks" :label "broken lines carry no trailing spaces" :cause :pending/stdlib-namespaces}
-  {:suite "predicates / compare, type, any? (stage 3)" :label "gensym prefix" :cause :pending/stdlib-namespaces}
+  {:suite "predicates / compare, type, any? (stage 3)" :label "gensym prefix" :cause :pending/triage}
   {:suite "predicates / compare, type, any? (stage 3)" :label "int? Inf false" :cause :pending/reader}
   {:suite "predicates / compare, type, any? (stage 3)" :label "integer? Inf false" :cause :pending/reader}
   {:suite "predicates / compare, type, any? (stage 3)" :label "integer? NaN false" :cause :pending/reader}
@@ -1708,15 +1651,11 @@
   {:suite "predicates / map? & coll? strictness" :label "coll? record" :cause :pending/triage}
   {:suite "predicates / map? & coll? strictness" :label "coll? sorted-map" :cause :pending/sorted-colls}
   {:suite "predicates / map? & coll? strictness" :label "coll? sorted-set" :cause :pending/sorted-colls}
-  {:suite "predicates / map? & coll? strictness" :label "coll? uuid" :cause :pending/strings-io}
   {:suite "predicates / map? & coll? strictness" :label "map? record" :cause :pending/triage}
   {:suite "predicates / map? & coll? strictness" :label "map? sorted-map" :cause :pending/sorted-colls}
   {:suite "predicates / map? & coll? strictness" :label "map? sorted-set" :cause :pending/sorted-colls}
-  {:suite "predicates / map? & coll? strictness" :label "map? uuid" :cause :pending/strings-io}
   {:suite "predicates / numeric guards & every? (overlay moves)" :label "char? char" :cause :pending/reader}
-  {:suite "predicates / numeric guards & every? (overlay moves)" :label "char? nil" :cause :pending/strings-io}
-  {:suite "predicates / numeric guards & every? (overlay moves)" :label "char? number" :cause :pending/strings-io}
-  {:suite "predicates / numeric guards & every? (overlay moves)" :label "char? string" :cause :pending/strings-io}
+  {:suite "predicates / numeric guards & every? (overlay moves)" :label "char? number" :cause :pending/triage}
   {:suite "predicates / numeric guards & every? (overlay moves)" :label "neg? throws" :cause :pending/triage}
   {:suite "predicates / numeric guards & every? (overlay moves)" :label "pos? throws" :cause :pending/triage}
   {:suite "predicates / numeric guards & every? (overlay moves)" :label "zero? throws" :cause :pending/triage}
@@ -1746,7 +1685,6 @@
   {:suite "predicates / types" :label "associative? map" :cause :pending/missing-core-var}
   {:suite "predicates / types" :label "associative? set" :cause :pending/missing-core-var}
   {:suite "predicates / types" :label "associative? vec" :cause :pending/missing-core-var}
-  {:suite "predicates / types" :label "char?" :cause :pending/strings-io}
   {:suite "predicates / types" :label "counted? vector" :cause :pending/missing-core-var}
   {:suite "predicates / types" :label "ifn? on keyword" :cause :pending/triage}
   {:suite "predicates / types" :label "indexed? vector" :cause :pending/missing-core-var}
@@ -1788,7 +1726,7 @@
   {:suite "protocols / dispatch miss message" :label "a miss on a method whose other receivers are extended" :cause :exceptions/erlang-classes}
   {:suite "protocols / dispatch miss message" :label "a receiver whose class has no implementation" :cause :exceptions/erlang-classes}
   {:suite "protocols / dispatch miss message" :label "a record of another type, on a method with arguments" :cause :exceptions/erlang-classes}
-  {:suite "protocols / dispatch miss message" :label "a reify of some other protocol is a miss like any other (its class name is host-minted)" :cause :pending/strings-io}
+  {:suite "protocols / dispatch miss message" :label "a reify of some other protocol is a miss like any other (its class name is host-minted)" :cause :exceptions/erlang-classes}
   {:suite "protocols / dispatch miss message" :label "nil names its class as nil" :cause :exceptions/erlang-classes}
   {:suite "protocols / extend & extends? on nil" :label "extend nil dispatches" :cause :pending/missing-core-var}
   {:suite "protocols / extend & extends? on nil" :label "extends? nil when extended" :cause :pending/missing-core-var}
@@ -1817,7 +1755,7 @@
   {:suite "read-string / opts arity" :label "no :eof key makes end of input an error" :cause :pending/missing-core-var}
   {:suite "read-string / opts arity" :label "reader conditionals read through the opts arity" :cause :pending/missing-core-var}
   {:suite "read-string / opts arity" :label "the opts arity reads a form" :cause :pending/missing-core-var}
-  {:suite "reader / EOF errors" :label "trailing backslash in string is a positioned EOF error" :cause :pending/strings-io}
+  {:suite "reader / EOF errors" :label "trailing backslash in string is a positioned EOF error" :cause :pending/host-types}
   {:suite "reader / anonymous fn #()" :label "%2 + rest" :cause :pending/triage}
   {:suite "reader / anonymous fn #()" :label "fixed + rest" :cause :pending/triage}
   {:suite "reader / anonymous fn #()" :label "rest %&" :cause :pending/triage}
@@ -1860,9 +1798,7 @@
   {:suite "reader / dispatch & sugar" :label "reader cond splice" :cause :pending/reader}
   {:suite "reader / dispatch & sugar" :label "reader cond splice no match" :cause :pending/reader}
   {:suite "reader / dispatch & sugar" :label "reader conditional" :cause :pending/reader}
-  {:suite "reader / dispatch & sugar" :label "regex literal" :cause :pending/strings-io}
-  {:suite "reader / dispatch & sugar" :label "tagged literal var" :cause :pending/compiler}
-  {:suite "reader / dispatch & sugar" :label "uuid literal" :cause :pending/reader}
+  {:suite "reader / dispatch & sugar" :label "tagged literal var" :cause :pending/runtime-eval}
   {:suite "reader / duplicate-literal" :label "duplicate keyword element" :cause :pending/triage}
   {:suite "reader / duplicate-literal" :label "duplicate map key" :cause :pending/triage}
   {:suite "reader / duplicate-literal" :label "duplicate set element" :cause :pending/triage}
@@ -1891,7 +1827,7 @@
   {:suite "reader / nested syntax-quote" :label "~'~x carries the outer macro's argument into the inner template" :cause :pending/compiler}
   {:suite "reader / octal literals" :label "0NNN is octal" :cause :pending/triage}
   {:suite "reader / octal literals" :label "negative octal" :cause :pending/triage}
-  {:suite "reader / octal literals" :label "octal char escape \\oNNN" :cause :pending/strings-io}
+  {:suite "reader / octal literals" :label "octal char escape \\oNNN" :cause :pending/triage}
   {:suite "reader / octal literals" :label "octal string escape is one char" :cause :pending/reader}
   {:suite "reader / quoted #inst constructs a value" :label "a quoted #inst literal is the constructed Date, not a tagged form" :cause :pending/reader}
   {:suite "reader / read-string backquote" :label "read (quote #{1 2})" :cause :pending/compiler}
@@ -1905,7 +1841,6 @@
   {:suite "reader / read-string constructs sets" :label "set keeps reader metadata" :cause :pending/metadata}
   {:suite "reader / record literal" :label "#ns.Type{} constructs record in read-string" :cause :pending/compiler}
   {:suite "reader / record vector ctor" :label "#ns.Type[] constructs record from vector" :cause :pending/compiler}
-  {:suite "reader / regex-literal" :label "escaped quote keeps its backslash in the source" :cause :pending/strings-io}
   {:suite "reader / scalar literals" :label "bigdec suffix M" :cause :pending/numbers}
   {:suite "reader / scalar literals" :label "char comma" :cause :pending/missing-core-var}
   {:suite "reader / scalar literals" :label "char open-brace" :cause :pending/missing-core-var}
@@ -1930,14 +1865,14 @@
   {:suite "reader / syntax-quote literal collapse (spec 2.4 S25)" :label "string nested" :cause :pending/compiler}
   {:suite "reader / syntax-quote literal collapse (spec 2.4 S25)" :label "string triple" :cause :pending/compiler}
   {:suite "reader / syntax-quote resolution" :label "& stays bare" :cause :pending/compiler}
-  {:suite "reader / syntax-quote resolution" :label "alias qualifies through the alias" :cause :pending/stdlib-namespaces}
+  {:suite "reader / syntax-quote resolution" :label "alias qualifies through the alias" :cause :pending/compiler}
   {:suite "reader / syntax-quote resolution" :label "core macro name qualifies to clojure.core" :cause :pending/compiler}
   {:suite "reader / syntax-quote resolution" :label "core-default name qualifies to clojure.core" :cause :pending/compiler}
   {:suite "reader / syntax-quote resolution" :label "unmapped name qualifies to current ns" :cause :pending/compiler}
   {:suite "reader / unquote" :label "~@x reads as clojure.core/unquote-splicing" :cause :pending/compiler}
   {:suite "reader / unquote" :label "~x reads as clojure.core/unquote" :cause :pending/compiler}
-  {:suite "reader / var-quote #'" :label "deref var-quote" :cause :pending/compiler}
-  {:suite "reader / var-quote #'" :label "is a var" :cause :pending/compiler}
+  {:suite "reader / var-quote #'" :label "deref var-quote" :cause :pending/triage}
+  {:suite "reader / var-quote #'" :label "is a var" :cause :pending/runtime-eval}
   {:suite "reader-model / nested fn literals" :label "nested #() reads" :cause :pending/compiler}
   {:suite "reader-model / read-eval" :label "#= evaluates under read-string" :cause :pending/triage}
   {:suite "record hasheq cache" :label "meta does not enter a record's hash or equality" :cause :pending/metadata}
@@ -2004,167 +1939,49 @@
   {:suite "refs / txn-leak" :label "future spawned in txn does not inherit *txn*" :cause :refs/no-stm}
   {:suite "refs / watch-after-commit" :label "watch fires once after commit with (pre-txn, committed)" :cause :refs/no-stm}
   {:suite "refs / watch-no-fire-on-rollback" :label "no watch notification on rolled-back txn" :cause :refs/no-stm}
-  {:suite "regex / V2 sre-parser" :label "$ before final newline" :cause :pending/strings-io}
-  {:suite "regex / V2 sre-parser" :label "\\Q..\\E literal quote" :cause :pending/strings-io}
-  {:suite "regex / V2 sre-parser" :label "\\x{1F600} supplementary hex" :cause :pending/strings-io}
-  {:suite "regex / V2 sre-parser" :label "intersection class" :cause :pending/strings-io}
-  {:suite "regex / V2 sre-parser" :label "lazy bounded {2,5}?" :cause :pending/strings-io}
-  {:suite "regex / V2 sre-parser" :label "named group" :cause :pending/strings-io}
-  {:suite "regex / V2 sre-parser" :label "p{L} supplementary" :cause :pending/strings-io}
-  {:suite "regex / V2 sre-parser" :label "scoped case-insensitive (?i:)" :cause :pending/strings-io}
-  {:suite "regex / V2 sre-parser" :label "scoped dot-all (?s:.)" :cause :pending/strings-io}
-  {:suite "regex / V2 sre-parser" :label "word boundary \\b" :cause :pending/strings-io}
-  {:suite "regex / \\Q quoting" :label "COMMENTS does not reach inside a quote" :cause :pending/strings-io}
-  {:suite "regex / \\Q quoting" :label "a quantifier after \\E binds the last quoted character alone" :cause :pending/strings-io}
-  {:suite "regex / \\Q quoting" :label "the quote is rewritten away before the pattern is read, so \\c sees the quoted letter" :cause :pending/strings-io}
-  {:suite "regex / \\Q..\\E quantifier" :label "quantifier after \\Q..\\E scopes only last char" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "(?u) accepted" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "COMMENTS skips once after p{ and then reads the family name raw" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "P{N} negation" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "a class over p{L}p{N} drops an arrow (#941)" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "a p{name=value} key is matched without regard to case, its value with" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "inside class" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "javaUpperCase/javaLowerCase are Unicode" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{Alnum} stays ASCII" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{Alpha} is ASCII" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{Digit} is ASCII" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{IsHex_Digit} still rejects a non-hex letter and a Roman numeral" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{IsHex_Digit} takes every Nd digit, as the JVM does" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{Ll} beyond Latin-1" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{Lu} beyond Latin-1" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{Lu}/p{Ll}" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{L} ascii" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{L} is letters, not every non-ASCII char (#941)" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{L} rejects digits" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{L} utf-8" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{Nd} is decimal digits, p{N} every number" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{N}" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{Ps}/p{Pe}" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{Ps}/p{Pe} are the open/close categories" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{P} is Unicode punctuation, p{Punct} ASCII" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{Upper} stays ASCII" :cause :pending/strings-io}
-  {:suite "regex / \\p property classes" :label "p{Z} space" :cause :pending/strings-io}
-  {:suite "regex / alternation submatch" :label "a non-participating alternation group is nil, not a stale capture" :cause :pending/strings-io}
-  {:suite "regex / an uncompilable pattern" :label "and does not leave the compile lock held" :cause :pending/strings-io}
-  {:suite "regex / anchored global scan" :label "(?m)^ is a line anchor, so it still matches after each newline" :cause :pending/strings-io}
-  {:suite "regex / anchored global scan" :label "\\A anchors the same way as ^" :cause :pending/strings-io}
-  {:suite "regex / anchored global scan" :label "a ^-anchored pattern replaces only at the string start" :cause :pending/strings-io}
-  {:suite "regex / anchored global scan" :label "a lazy quantifier under ^ strips the shortest prefix (Selmer include tags)" :cause :pending/strings-io}
-  {:suite "regex / anchored global scan" :label "an unanchored pattern still finds every match" :cause :pending/strings-io}
-  {:suite "regex / anchored global scan" :label "re-seq of a ^-anchored pattern yields at most one match" :cause :pending/strings-io}
-  {:suite "regex / anchored global scan" :label "split on a ^-anchored pattern splits once" :cause :pending/strings-io}
-  {:suite "regex / backreferences" :label "group still captures" :cause :pending/strings-io}
-  {:suite "regex / backreferences" :label "html tag pair" :cause :pending/strings-io}
-  {:suite "regex / backreferences" :label "mismatched run" :cause :pending/strings-io}
-  {:suite "regex / backreferences" :label "no repeat = nil" :cause :pending/strings-io}
-  {:suite "regex / backreferences" :label "repeated char" :cause :pending/strings-io}
-  {:suite "regex / backreferences" :label "repeated word" :cause :pending/strings-io}
-  {:suite "regex / backreferences" :label "thematic-break run" :cause :pending/strings-io}
-  {:suite "regex / bounded quantifiers" :label "exact {n}" :cause :pending/strings-io}
-  {:suite "regex / bounded quantifiers" :label "nested bounds compile" :cause :pending/strings-io}
-  {:suite "regex / bounded quantifiers" :label "range {n,m} max" :cause :pending/strings-io}
-  {:suite "regex / bounded quantifiers" :label "zero lower {0,n}" :cause :pending/strings-io}
-  {:suite "regex / bounded quantifiers" :label "{n,} unbounded" :cause :pending/strings-io}
-  {:suite "regex / bounded repetition" :label "an exact bound anchors and splits" :cause :pending/strings-io}
-  {:suite "regex / bounded repetition" :label "an exact bound inside a group stops the outer +" :cause :pending/strings-io}
-  {:suite "regex / bounded repetition" :label "{n,} and {n,m} keep their bounds" :cause :pending/strings-io}
-  {:suite "regex / bounded repetition" :label "{n} is exactly n, not n-or-more" :cause :pending/strings-io}
-  {:suite "regex / brace-less \\pL" :label "\\pL matches Unicode letter" :cause :pending/strings-io}
-  {:suite "regex / char-class dash" :label "dash + escaped dot in class" :cause :pending/strings-io}
-  {:suite "regex / char-class dash" :label "dash after \\w is literal" :cause :pending/strings-io}
-  {:suite "regex / char-class dash" :label "trailing dash in class" :cause :pending/strings-io}
-  {:suite "regex / comments-mode" :label "(?sx) combines dot-all with comments mode" :cause :pending/strings-io}
-  {:suite "regex / comments-mode" :label "(?x) ignores newlines in the pattern" :cause :pending/strings-io}
-  {:suite "regex / comments-mode" :label "(?x) ignores whitespace inside a character class" :cause :pending/strings-io}
-  {:suite "regex / comments-mode" :label "(?x) strips # comments to end of line" :cause :pending/strings-io}
-  {:suite "regex / comments-mode" :label "escaped space stays literal under (?x)" :cause :pending/strings-io}
-  {:suite "regex / dollar-eol" :label "$ does not match before two trailing newlines" :cause :pending/strings-io}
-  {:suite "regex / dollar-eol" :label "$ inside a character class stays literal" :cause :pending/strings-io}
-  {:suite "regex / dollar-eol" :label "$ matches before a final newline" :cause :pending/strings-io}
-  {:suite "regex / dollar-eol" :label "anchored replace strips through a final newline" :cause :pending/strings-io}
-  {:suite "regex / dollar-eol" :label "re-matches stays whole-input (trailing newline unmatched)" :cause :pending/strings-io}
-  {:suite "regex / escapes in and out of a character class" :label "\\R is a linebreak outside a class and an error inside" :cause :pending/strings-io}
-  {:suite "regex / escapes in and out of a character class" :label "\\a is BEL in both contexts" :cause :pending/strings-io}
-  {:suite "regex / escapes in and out of a character class" :label "\\b inside a class is a pattern error" :cause :pending/strings-io}
-  {:suite "regex / escapes in and out of a character class" :label "\\b is a word boundary outside a class" :cause :pending/strings-io}
-  {:suite "regex / escapes in and out of a character class" :label "\\c@ \\cZ \\ca are xor-64 of the raw char" :cause :pending/strings-io}
-  {:suite "regex / escapes in and out of a character class" :label "\\cX is the control character in both contexts" :cause :pending/strings-io}
-  {:suite "regex / escapes in and out of a character class" :label "\\e is ESC in both contexts" :cause :pending/strings-io}
-  {:suite "regex / escapes in and out of a character class" :label "\\t \\n \\r \\f inside a class" :cause :pending/strings-io}
-  {:suite "regex / escapes in and out of a character class" :label "a class unions its escaped members" :cause :pending/strings-io}
-  {:suite "regex / escapes in and out of a character class" :label "a dangling \\c is a pattern error" :cause :pending/strings-io}
-  {:suite "regex / escapes in and out of a character class" :label "octal, \\x and \\u inside a class" :cause :pending/strings-io}
-  {:suite "regex / inline flag groups" :label "(?-x) turns COMMENTS back off" :cause :pending/strings-io}
-  {:suite "regex / inline flag groups" :label "COMMENTS is scoped: (?x:...) to its own group, an unscoped (?x) to the enclosing one" :cause :pending/strings-io}
-  {:suite "regex / inline flag groups" :label "COMMENTS reaches inside a braced escape argument and a bound" :cause :pending/strings-io}
-  {:suite "regex / inline flag groups" :label "COMMENTS skips after \\c too, so the control letter is the next unit that survives" :cause :pending/strings-io}
+  {:suite "regex / V2 sre-parser" :label "intersection class" :cause :pending/triage}
+  {:suite "regex / \\Q quoting" :label "the quote is rewritten away before the pattern is read, so \\c sees the quoted letter" :cause :pending/triage}
+  {:suite "regex / \\p property classes" :label "(?u) accepted" :cause :pending/compiler}
+  {:suite "regex / \\p property classes" :label "a p{name=value} key is matched without regard to case, its value with" :cause :pending/compiler}
+  {:suite "regex / \\p property classes" :label "javaUpperCase/javaLowerCase are Unicode" :cause :pending/compiler}
+  {:suite "regex / \\p property classes" :label "p{Alnum} stays ASCII" :cause :pending/compiler}
+  {:suite "regex / \\p property classes" :label "p{Alpha} is ASCII" :cause :pending/triage}
+  {:suite "regex / \\p property classes" :label "p{Digit} is ASCII" :cause :pending/compiler}
+  {:suite "regex / \\p property classes" :label "p{IsHex_Digit} still rejects a non-hex letter and a Roman numeral" :cause :pending/compiler}
+  {:suite "regex / \\p property classes" :label "p{IsHex_Digit} takes every Nd digit, as the JVM does" :cause :pending/compiler}
+  {:suite "regex / \\p property classes" :label "p{P} is Unicode punctuation, p{Punct} ASCII" :cause :pending/compiler}
+  {:suite "regex / \\p property classes" :label "p{Upper} stays ASCII" :cause :pending/triage}
+  {:suite "regex / \\p property classes" :label "p{Z} space" :cause :pending/compiler}
+  {:suite "regex / char-class dash" :label "dash + escaped dot in class" :cause :pending/compiler}
+  {:suite "regex / char-class dash" :label "dash after \\w is literal" :cause :pending/compiler}
+  {:suite "regex / escapes in and out of a character class" :label "\\R is a linebreak outside a class and an error inside" :cause :exceptions/erlang-classes}
+  {:suite "regex / escapes in and out of a character class" :label "\\a is BEL in both contexts" :cause :pending/triage}
+  {:suite "regex / escapes in and out of a character class" :label "\\b inside a class is a pattern error" :cause :pending/triage}
+  {:suite "regex / escapes in and out of a character class" :label "\\c@ \\cZ \\ca are xor-64 of the raw char" :cause :pending/triage}
+  {:suite "regex / escapes in and out of a character class" :label "\\cX is the control character in both contexts" :cause :pending/triage}
+  {:suite "regex / escapes in and out of a character class" :label "\\e is ESC in both contexts" :cause :pending/triage}
+  {:suite "regex / escapes in and out of a character class" :label "\\t \\n \\r \\f inside a class" :cause :pending/triage}
+  {:suite "regex / escapes in and out of a character class" :label "a class unions its escaped members" :cause :pending/triage}
+  {:suite "regex / escapes in and out of a character class" :label "octal, \\x and \\u inside a class" :cause :pending/compiler}
+  {:suite "regex / inline flag groups" :label "COMMENTS reaches inside a braced escape argument and a bound" :cause :pending/compiler}
+  {:suite "regex / inline flag groups" :label "COMMENTS skips after \\c too, so the control letter is the next unit that survives" :cause :pending/triage}
   {:suite "regex / inline flag groups" :label "a \\c left with nothing after the run it skipped is refused, with or without one" :cause :exceptions/erlang-classes}
-  {:suite "regex / inline flag groups" :label "an x in the ON set turns COMMENTS on whatever else the group names" :cause :pending/strings-io}
-  {:suite "regex / inline flag groups" :label "the OFF set is applied over the ON set, not before it" :cause :pending/strings-io}
-  {:suite "regex / inline flags" :label "(?i)a(?-i)b toggles case off again — \"Ab\" matches" :cause :pending/strings-io}
-  {:suite "regex / inline flags" :label "(?i)a(?-i)b — \"AB\" does NOT match (case restored)" :cause :pending/strings-io}
-  {:suite "regex / inline flags" :label "(?i:a(?-i:b)) — nested case-off, \"AB\" does NOT match" :cause :pending/strings-io}
-  {:suite "regex / inline flags" :label "(a(?i)b)c groupscopes the flag" :cause :pending/strings-io}
-  {:suite "regex / inline flags" :label "a(?i)b embeds case insensitivity" :cause :pending/strings-io}
-  {:suite "regex / literal value" :label "quoted regex round-trips" :cause :pending/strings-io}
-  {:suite "regex / literal value" :label "re-matches on a literal" :cause :pending/strings-io}
-  {:suite "regex / literals & predicate" :label "combined (?sm) still works" :cause :pending/strings-io}
-  {:suite "regex / literals & predicate" :label "combined cluster modifiers (?si)" :cause :pending/strings-io}
-  {:suite "regex / literals & predicate" :label "combined cluster modifiers (?sx)" :cause :pending/strings-io}
-  {:suite "regex / literals & predicate" :label "combined cluster modifiers (?xs) order" :cause :pending/strings-io}
-  {:suite "regex / literals & predicate" :label "escaped ] amid class members" :cause :pending/strings-io}
-  {:suite "regex / literals & predicate" :label "escaped ] in a char class" :cause :pending/strings-io}
-  {:suite "regex / literals & predicate" :label "escaped digits" :cause :pending/strings-io}
-  {:suite "regex / literals & predicate" :label "escaped ws/non-ws" :cause :pending/strings-io}
-  {:suite "regex / literals & predicate" :label "re-quote-replacement of a regex" :cause :pending/strings-io}
-  {:suite "regex / literals & predicate" :label "regex? literal" :cause :pending/strings-io}
+  {:suite "regex / inline flag groups" :label "an x in the ON set turns COMMENTS on whatever else the group names" :cause :pending/triage}
+  {:suite "regex / literals & predicate" :label "re-quote-replacement of a regex" :cause :pending/triage}
+  {:suite "regex / literals & predicate" :label "regex? literal" :cause :pending/missing-core-var}
   {:suite "regex / literals & predicate" :label "regex? non-regex" :cause :pending/missing-core-var}
-  {:suite "regex / literals & predicate" :label "replacement backslash escape" :cause :pending/strings-io}
-  {:suite "regex / literals & predicate" :label "replacement escaped dollar" :cause :pending/strings-io}
-  {:suite "regex / literals & predicate" :label "scoped combined modifiers (?si:...)" :cause :pending/strings-io}
   {:suite "regex / look-behind bounds" :label "an unbounded possessive or lazy repetition with something ahead of it cannot be measured" :cause :exceptions/erlang-classes}
-  {:suite "regex / matcher" :label "re-find over a matcher" :cause :pending/strings-io}
-  {:suite "regex / matcher" :label "re-groups before a match throws" :cause :pending/strings-io}
-  {:suite "regex / matcher" :label "stateful step + re-groups" :cause :pending/strings-io}
-  {:suite "regex / nested quantifier" :label "(X+)* parses and matches" :cause :pending/strings-io}
-  {:suite "regex / nested quantifier capture" :label "(a+)* group 1 captures the greedy whole like Java" :cause :pending/strings-io}
-  {:suite "regex / possessive *+" :label "a*+ is possessive (no backtracking)" :cause :pending/strings-io}
-  {:suite "regex / possessive ++" :label "a++ is possessive" :cause :pending/strings-io}
-  {:suite "regex / possessive {n,m}+" :label "bounded possessive {n,m}+" :cause :pending/strings-io}
-  {:suite "regex / re-find" :label "first match only" :cause :pending/strings-io}
-  {:suite "regex / re-find" :label "match" :cause :pending/strings-io}
-  {:suite "regex / re-find" :label "no match nil" :cause :pending/strings-io}
-  {:suite "regex / re-find" :label "with groups" :cause :pending/strings-io}
-  {:suite "regex / re-matches" :label "full match" :cause :pending/strings-io}
-  {:suite "regex / re-matches" :label "groups" :cause :pending/strings-io}
-  {:suite "regex / re-matches" :label "no match nil" :cause :pending/strings-io}
-  {:suite "regex / re-matches" :label "partial = nil" :cause :pending/strings-io}
-  {:suite "regex / re-pattern & string ops" :label "re-pattern build" :cause :pending/strings-io}
   {:suite "regex / re-pattern & string ops" :label "re-pattern is regex?" :cause :pending/missing-core-var}
-  {:suite "regex / re-pattern & string ops" :label "replace $1" :cause :pending/strings-io}
-  {:suite "regex / re-pattern & string ops" :label "replace regex" :cause :pending/strings-io}
-  {:suite "regex / re-pattern & string ops" :label "split on regex" :cause :pending/strings-io}
-  {:suite "regex / re-seq" :label "all matches" :cause :pending/strings-io}
-  {:suite "regex / re-seq" :label "empty when none" :cause :pending/strings-io}
-  {:suite "regex / re-seq" :label "words" :cause :pending/strings-io}
-  {:suite "regex / re-seq zero-width" :label "a zero-width lookahead split resumes after the match (#940)" :cause :pending/strings-io}
-  {:suite "regex / re-seq zero-width" :label "a zero-width match advances by one without repeating" :cause :pending/strings-io}
-  {:suite "regex / redundant-escapes" :label "backslash-< is a literal <" :cause :pending/strings-io}
-  {:suite "regex / redundant-escapes" :label "backslash-> is a literal >" :cause :pending/strings-io}
-  {:suite "regex / redundant-escapes" :label "escaped backslash before > keeps both chars" :cause :pending/strings-io}
+  {:suite "regex / re-pattern & string ops" :label "replace $1" :cause :pending/triage}
+  {:suite "regex / re-pattern & string ops" :label "replace regex" :cause :pending/triage}
+  {:suite "regex / re-pattern & string ops" :label "split on regex" :cause :pending/triage}
   {:suite "regex-parity / class escapes" :label "empty quote escape [\\Q\\E] is rejected in a class" :cause :exceptions/erlang-classes}
   {:suite "regex-parity / class escapes" :label "linebreak escape [\\R] is rejected in a class" :cause :exceptions/erlang-classes}
   {:suite "regex-parity / flag groups" :label "dangling ? after a body-less flag group is rejected" :cause :exceptions/erlang-classes}
-  {:suite "regex-parity / flag groups" :label "empty flag group (?) matches empty" :cause :pending/strings-io}
-  {:suite "regex-parity / flag groups" :label "empty flag group quantified {0,0} inside a capture" :cause :pending/strings-io}
-  {:suite "regex-parity / flag groups" :label "unknown flag c is a no-op flag char" :cause :pending/strings-io}
-  {:suite "regex-parity / intersection" :label "[%-&&&] range %-& intersected with empty keeps % and &" :cause :pending/strings-io}
-  {:suite "regex-parity / intersection" :label "[&&x] empty left side intersects to just x" :cause :pending/strings-io}
-  {:suite "regex-parity / intersection" :label "[a-z&&[^aeiou]] excludes vowels" :cause :pending/strings-io}
-  {:suite "regex-parity / intersection" :label "[a-z&&[^aeiou]] keeps consonants" :cause :pending/strings-io}
-  {:suite "regex-parity / intersection" :label "[x&&&&] repeated intersection keeps just x" :cause :pending/strings-io}
-  {:suite "regex-parity / intersection" :label "[x&&] empty right side intersects to just x" :cause :pending/strings-io}
-  {:suite "regex-parity / intersection" :label "[x&&y] disjoint intersection matches nothing" :cause :pending/strings-io}
+  {:suite "regex-parity / flag groups" :label "empty flag group quantified {0,0} inside a capture" :cause :pending/triage}
+  {:suite "regex-parity / flag groups" :label "unknown flag c is a no-op flag char" :cause :pending/triage}
+  {:suite "regex-parity / intersection" :label "[a-z&&[^aeiou]] keeps consonants" :cause :pending/triage}
+  {:suite "regex-parity / intersection" :label "[x&&y] disjoint intersection matches nothing" :cause :pending/triage}
   {:suite "regex-parity / quantifiers" :label "quantifier min greater than max {1,0} is rejected" :cause :exceptions/erlang-classes}
   {:suite "regex-parity / ranges" :label "inverted range [b-a] is rejected" :cause :exceptions/erlang-classes}
   {:suite "regex-parity / ranges" :label "inverted range inside nested classes [[[[{-\\c}]]]] is rejected" :cause :exceptions/erlang-classes}
@@ -2430,35 +2247,18 @@
   {:suite "streams / pipes and stream targets" :label "reading a closed pipe is an IOException" :cause :exceptions/erlang-classes}
   {:suite "streams / pipes and stream targets" :label "spit writes into a writer" :cause :pending/host-types}
   {:suite "streams / pipes and stream targets" :label "spit writes into an output stream" :cause :pending/host-types}
-  {:suite "string / index-of clamps" :label "from past end -> nil" :cause :pending/stdlib-namespaces}
-  {:suite "string / index-of clamps" :label "negative from clamps to 0" :cause :pending/stdlib-namespaces}
-  {:suite "string / last-index-of" :label "absent" :cause :pending/stdlib-namespaces}
-  {:suite "string / last-index-of" :label "char value" :cause :pending/stdlib-namespaces}
-  {:suite "string / last-index-of" :label "empty needle answers the length" :cause :pending/stdlib-namespaces}
-  {:suite "string / last-index-of" :label "last occurrence" :cause :pending/stdlib-namespaces}
-  {:suite "string / last-index-of from" :label "from past the end clamps" :cause :pending/stdlib-namespaces}
-  {:suite "string / last-index-of from" :label "largest start <= from" :cause :pending/stdlib-namespaces}
-  {:suite "string / last-index-of from" :label "match may start at from and extend past" :cause :pending/stdlib-namespaces}
-  {:suite "string / last-index-of from" :label "negative from is nil" :cause :pending/stdlib-namespaces}
-  {:suite "string / last-index-of from" :label "no match at or before from" :cause :pending/stdlib-namespaces}
   {:suite "string / namespace-munge" :label "from a symbol" :cause :pending/missing-core-var}
   {:suite "string / namespace-munge" :label "hyphens to underscores" :cause :pending/missing-core-var}
   {:suite "string / namespace-munge" :label "no hyphens unchanged" :cause :pending/missing-core-var}
-  {:suite "string / regex literal" :label "a hoisted literal in a loop matches every iteration" :cause :pending/strings-io}
-  {:suite "string / regex literal" :label "a literal inside a collection literal still matches" :cause :pending/strings-io}
-  {:suite "string / regex literal" :label "one site evaluated twice is the identical Pattern" :cause :pending/strings-io}
-  {:suite "string / regex literal" :label "two sites reading alike are distinct Patterns" :cause :pending/strings-io}
+  {:suite "string / regex literal" :label "two sites reading alike are distinct Patterns" :cause :pending/triage}
   {:suite "string / scan parity" :label "indexOf contains replace case batch" :cause :pending/host-types}
-  {:suite "string / split-lines" :label "crlf splits like lf" :cause :pending/stdlib-namespaces}
-  {:suite "string / split-lines" :label "drops the trailing newline's empty" :cause :pending/stdlib-namespaces}
-  {:suite "string / split-lines" :label "keeps interior empties, drops trailing" :cause :pending/stdlib-namespaces}
-  {:suite "string / split-lines" :label "no-newline input is one line" :cause :pending/stdlib-namespaces}
   {:suite "string / str & basics" :label "pr-str and Long/toString agree with str on an integer" :cause :pending/triage}
   {:suite "string / str & basics" :label "pr-str of a defn" :cause :pending/compiler}
   {:suite "string / str & basics" :label "pr-str of a var" :cause :pending/compiler}
   {:suite "string / str & basics" :label "str of a var" :cause :pending/compiler}
   {:suite "string / str & basics" :label "str of integers at the edges" :cause :pending/compiler}
-  {:suite "string / toString coercion" :label "case fns and searches take any Object through toString" :cause :pending/stdlib-namespaces}
+  {:suite "string / toString coercion" :label "case fns and searches take any Object through toString" :cause :pending/triage}
+  {:suite "string / toString coercion" :label "nil s throws; nil substr throws" :cause :pending/triage}
   {:suite "string-model / codepoint strings" :label "count of astral string" :cause :pending/triage}
   {:suite "string-model / codepoint strings" :label "seq counts codepoints" :cause :pending/triage}
   {:suite "string-model / codepoint strings" :label "subs across astral boundary" :cause :pending/triage}
@@ -2469,7 +2269,7 @@
   {:suite "strings / nil arguments" :label "a method on a nil receiver" :cause :exceptions/erlang-classes}
   {:suite "strings / nil arguments" :label "alength of nil" :cause :exceptions/erlang-classes}
   {:suite "strings / nil arguments" :label "clojure.string/replace refuses a nil match" :cause :exceptions/erlang-classes}
-  {:suite "strings / nil arguments" :label "clojure.string/replace with a nil replacement or a non-string one" :cause :pending/strings-io}
+  {:suite "strings / nil arguments" :label "clojure.string/replace with a nil replacement or a non-string one" :cause :exceptions/erlang-classes}
   {:suite "strings / nil arguments" :label "trim-newline and re-quote-replacement of nil" :cause :exceptions/erlang-classes}
   {:suite "strings / str small arities" :label "char and string" :cause :pending/triage}
   {:suite "structmaps" :label "defstruct / struct-map / struct" :cause :pending/missing-core-var}
@@ -2614,8 +2414,6 @@
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "memfn with args" :cause :pending/missing-core-var}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "print-dup nil writer throws" :cause :pending/missing-core-var}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "print-method nil writer throws" :cause :pending/missing-core-var}
-  {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "re-groups throws" :cause :pending/strings-io}
-  {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "re-matcher builds" :cause :pending/strings-io}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "seque passthrough" :cause :pending/missing-core-var}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "update-proxy" :cause :pending/missing-core-var}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "uri? nil" :cause :pending/missing-core-var}
@@ -2640,7 +2438,6 @@
   {:suite "untested / misc seqs + binding machinery" :label "xml-seq root" :cause :pending/missing-core-var}
   {:suite "untested / misc seqs + binding machinery" :label "xml-seq walks" :cause :pending/missing-core-var}
   {:suite "untested / ns + REPL machinery" :label "*clojure-version* major" :cause :pending/missing-core-var}
-  {:suite "untested / ns + REPL machinery" :label "*in* bound" :cause :pending/missing-core-var}
   {:suite "untested / ns + REPL machinery" :label "*unchecked-math*" :cause :pending/missing-core-var}
   {:suite "untested / ns + REPL machinery" :label "ns-imports empty user" :cause :pending/missing-core-var}
   {:suite "untested / ns + REPL machinery" :label "ns-interns countable" :cause :pending/runtime-eval}
@@ -2698,36 +2495,7 @@
   {:suite "untested / unchecked-* are plain ops" :label "unchecked-short" :cause :pending/missing-core-var}
   {:suite "untested / unchecked-* are plain ops" :label "unchecked-subtract" :cause :pending/missing-core-var}
   {:suite "untested / unchecked-* are plain ops" :label "unchecked-subtract-int" :cause :pending/missing-core-var}
-  {:suite "uuid / #uuid reader literal" :label "= parse-uuid" :cause :pending/reader}
-  {:suite "uuid / #uuid reader literal" :label "pr-str round-trips" :cause :pending/reader}
-  {:suite "uuid / #uuid reader literal" :label "reads to uuid" :cause :pending/reader}
-  {:suite "uuid / #uuid reader literal" :label "str of literal" :cause :pending/reader}
-  {:suite "uuid / parse-uuid" :label "bad dashes -> nil" :cause :pending/strings-io}
-  {:suite "uuid / parse-uuid" :label "case-insensitive =" :cause :pending/strings-io}
-  {:suite "uuid / parse-uuid" :label "empty -> nil" :cause :pending/strings-io}
-  {:suite "uuid / parse-uuid" :label "garbage -> nil" :cause :pending/strings-io}
-  {:suite "uuid / parse-uuid" :label "keyword throws" :cause :pending/strings-io}
-  {:suite "uuid / parse-uuid" :label "leading extra -> nil" :cause :pending/strings-io}
-  {:suite "uuid / parse-uuid" :label "map throws" :cause :pending/strings-io}
-  {:suite "uuid / parse-uuid" :label "non-hex -> nil" :cause :pending/strings-io}
-  {:suite "uuid / parse-uuid" :label "non-string throws" :cause :pending/strings-io}
-  {:suite "uuid / parse-uuid" :label "parses to uuid" :cause :pending/strings-io}
-  {:suite "uuid / parse-uuid" :label "short -> nil" :cause :pending/strings-io}
-  {:suite "uuid / parse-uuid" :label "too long -> nil" :cause :pending/strings-io}
-  {:suite "uuid / parse-uuid" :label "valid round-trips" :cause :pending/strings-io}
-  {:suite "uuid / random-uuid" :label "8-4-4-4-12 shape" :cause :pending/strings-io}
-  {:suite "uuid / random-uuid" :label "all hex digits" :cause :pending/strings-io}
-  {:suite "uuid / random-uuid" :label "distinct" :cause :pending/strings-io}
-  {:suite "uuid / random-uuid" :label "returns a uuid" :cause :pending/strings-io}
-  {:suite "uuid / random-uuid" :label "str is 36 chars" :cause :pending/strings-io}
-  {:suite "uuid / random-uuid" :label "variant nibble 8-b" :cause :pending/strings-io}
-  {:suite "uuid / random-uuid" :label "version nibble is 4" :cause :pending/strings-io}
-  {:suite "uuid / value semantics" :label "equal by value" :cause :pending/strings-io}
-  {:suite "uuid / value semantics" :label "unequal differs" :cause :pending/strings-io}
-  {:suite "uuid / value semantics" :label "uuid? false on nil" :cause :pending/strings-io}
-  {:suite "uuid / value semantics" :label "uuid? false on string" :cause :pending/strings-io}
-  {:suite "uuid / value semantics" :label "works as map key" :cause :pending/strings-io}
-  {:suite "uuid / value semantics" :label "works in a set" :cause :pending/strings-io}
+  {:suite "uuid / random-uuid" :label "8-4-4-4-12 shape" :cause :pending/triage}
   {:suite "var-meta / core docstrings" :label "core vars carry :doc" :cause :pending/special-forms}
   {:suite "var-meta / core docstrings" :label "image stdlib vars carry :doc" :cause :pending/special-forms}
   {:suite "var-meta / image-baked macros" :label "an image-baked defmacro keeps its derived :arglists" :cause :pending/special-forms}

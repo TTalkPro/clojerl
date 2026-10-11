@@ -45,6 +45,8 @@ pr({vector, _, T}, R) when is_tuple(T) -> [$[, join([pr(X, R) || X <- tuple_to_l
 pr({map, _, M}, R) when is_map(M) -> map_str(M, R);
 pr({set, _, M}, R) when is_map(M) -> [<<"#{">>, join([pr(X, R) || X <- lists:sort(maps:keys(M))], " "), $}];
 pr({delay, _, _}, _) -> <<"#object[clojure.lang.Delay]">>;
+pr({regex, _, Src}, _) when is_binary(Src) -> [<<"#\"">>, Src, $"];
+pr({uuid, _, S}, _) when is_binary(S) -> [<<"#uuid \"">>, S, $"];
 pr({var, _, {Ns, Name}}, _) when is_atom(Ns), is_atom(Name) ->
     [<<"#'">>, atom_to_binary(Ns), $/, atom_to_binary(Name)];
 pr({clj2_fn, _, _}, _) -> <<"#object[clojure.lang.AFunction]">>;

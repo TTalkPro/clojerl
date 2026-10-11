@@ -264,6 +264,17 @@ form({syntax_quote, [], T}, A, E) -> squote(T, A, E);
 form({fnstar, [], [{arity, [], [Ps, Body]}]}, A, E) -> fn([[Ps, Body]], A, E);
 form({deref, [], X}, A, E) -> form(['clojure.core/deref', X], A, E);
 form({var, [], X}, A, E) -> form([var, X], A, E);           % #'x
+%% #"..." (as read, or as a value from a macro): checked now, as the JVM
+%% reader does; compiled on first use (clj2_re)
+form({regex, _, Src}, A, _E) when is_binary(Src) ->
+    try {const, A, clj2_re:pattern(Src)}
+    catch error:R -> syntax(A, {bad_regex, Src, R})
+    end;
+form({uuid, _, S} = U, A, _E) when is_binary(S) -> {const, A, U};
+form({tagged, [], uuid, S}, A, _E) when is_binary(S) ->
+    try {const, A, clj2_string:uuid(S)}
+    catch error:_ -> syntax(A, {bad_uuid, S})
+    end;
 form({Unq, [], _}, A, _E) when Unq =:= unquote; Unq =:= unquote_splicing ->
     syntax(A, unquote_outside_syntax_quote);
 form(X, A, E) ->

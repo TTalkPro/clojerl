@@ -29,6 +29,9 @@ to_data({vector, _, T} = X) when is_tuple(T) -> X;           % already a value
 to_data({map, _, M} = X) when is_map(M) -> X;
 to_data({set, _, M} = X) when is_map(M) -> X;
 to_data({var, [], X}) -> [var, to_data(X)];                 % #'x is (var x)
+to_data({regex, [], Src}) -> {regex, nil, Src};              % a pattern value
+to_data({tagged, [], uuid, S}) when is_binary(S) -> clj2_string:uuid(S);
+to_data({Tag, _, B} = X) when (Tag =:= regex orelse Tag =:= uuid), is_binary(B) -> X;
 to_data(X) -> erlang:error({clj2_form, {no_data_form, element(1, X)}}).
 
 %% @doc A macro's result → a form: lazy seqs and lazy-tailed lists are
