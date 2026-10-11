@@ -14,6 +14,7 @@ c_src/*.mk
 *.out*
 rebar.lock
 *.dump
+*.crashdump
 ebin/
 result.prev.txt
 erlang_ls.config

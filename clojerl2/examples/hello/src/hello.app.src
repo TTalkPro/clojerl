@@ -1,0 +1,5 @@
+{application, hello,
+ [{description, "clojerl2 example project"},
+  {vsn, "0.1.0"},
+  {applications, [kernel, stdlib, clojerl2]}
+ ]}.

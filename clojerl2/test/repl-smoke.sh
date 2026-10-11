@@ -74,7 +74,7 @@ cat > "$work/src/smoke/main_ns.clj" <<'CLJ'
 (defn -main [& args] (println "main got" (vec args)))
 CLJ
 m=$("$clj" -p "$work/src" -m smoke.main-ns x y 2>&1)
-expect -m "$m" 'main got ["x" "y"]'
+expect -m "$m" 'main got [x y]'
 
 # --- exit status: an uncaught error is 1, with a report on stderr
 "$clj" -e '(throw (ex-info "bad" {}))' >/dev/null 2>"$work/err"; rc=$?

@@ -162,9 +162,14 @@ load_file(Path) ->
 %% @doc Compile and load a namespace source file. → the namespace.
 load_ns_file(Path) ->
     {ok, Bin} = file:read_file(Path),
-    case clj2_compiler:load_ns(Bin, #{file => unicode:characters_to_list(Path)}) of
+    try clj2_compiler:load_ns(Bin, #{file => unicode:characters_to_list(Path)}) of
         {ok, Ns} -> Ns;
         {error, Why} -> erlang:error({clj2_load, Path, Why})
+    catch
+        %% a compile error names its place in the file (the innermost
+        %% file, when the error is in a namespace this one requires)
+        error:{clj2_compile, {L, C}, Why2} when is_integer(L) ->
+            erlang:error({clj2_compile, {Path, {L, C}}, Why2})
     end.
 
 source_path() ->

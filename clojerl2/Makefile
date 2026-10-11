@@ -4,6 +4,8 @@
 #                   (bin/clojerl2 runs from there)
 #   make test       compile everything and run the eunit suites
 #   make smoke      REPL / CLI smoke test (test/repl-smoke.sh)
+#   make example    the rebar3 plugin on examples/hello (test/rebar3-example.sh)
+#   make docs-check the `;=>' examples in docs/*.md (test/docs-examples.sh)
 #   make corpus     run the conformance corpus, write notes/corpus-baseline.md
 #   make certify    the corpus gate: fails on an unlisted failure or a stale
 #                   entry in test/corpus-known-failures.edn
@@ -39,9 +41,9 @@ empty      :=
 space      := $(empty) $(empty)
 TEST_MODS  := $(subst $(space),$(comma),$(strip $(basename $(notdir $(TESTS)))))
 
-.PHONY: all test smoke FORCE corpus certify corpus-rebaseline corpus-regen clean
+.PHONY: all test smoke example docs-check FORCE corpus certify corpus-rebaseline corpus-regen clean
 
-CORE_SRCS := $(wildcard src/clj2/core/*)
+CORE_SRCS := $(wildcard priv/clj2/core/*)
 
 all: $(SRC_BEAMS) $(EBIN)/clojure.core.beam $(EBIN)/clj2.build
 
@@ -91,6 +93,12 @@ corpus-regen:
 
 smoke: all
 	sh test/repl-smoke.sh
+
+example: all
+	sh test/rebar3-example.sh
+
+docs-check: all
+	sh test/docs-examples.sh
 
 clean:
 	rm -rf $(EBIN)

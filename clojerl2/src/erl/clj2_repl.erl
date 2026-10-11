@@ -99,8 +99,10 @@ err(Chars) -> io:put_chars(standard_error, unicode:characters_to_binary(Chars)).
 %%====================================================================
 
 %% @doc An exception as a Clojure-style report (chardata, ends in a newline).
-format_error(error, {clj2_compile, {L, C}, {Phase, Why}}, _S) ->
+format_error(error, {clj2_compile, {L, C}, {Phase, Why}}, _S) when is_integer(L) ->
     io_lib:format("Syntax error compiling at (~ts:~b:~b).~n~ts~n", [where(), L, C, compile_msg(Phase, Why)]);
+format_error(error, {clj2_compile, {File, {L, C}}, {Phase, Why}}, _S) ->
+    io_lib:format("Syntax error compiling at (~ts:~b:~b).~n~ts~n", [File, L, C, compile_msg(Phase, Why)]);
 format_error(error, {clj2_lint, Es}, _S) ->
     io_lib:format("Syntax error compiling (BEAM lint):~n~ts~n", [brief(Es)]);
 format_error(error, {clj2_read, Msg}, _S) ->

@@ -147,6 +147,19 @@ read → 管线([01]) → emit → compile:forms → code:load_binary(eval_mod_N
 - **缓存键**:`sha256(源文本) + 编译器版本 + OTP 主版本 + 编译选项指纹`,产物为 .beam 二进制;命中即跳过整条管线。
 - **粒度**:NS 级。跨 NS 依赖经 [03](03-runtime-model.md) 的协议 impl 模块存在性缓存自然失效(extend 只新增 impl 模块,不触发 NS 重编译——D9 的直接红利)。
 - **rebar3 插件**:provider 在 compile 前查缓存目录(`_build/<profile>/clojerl2_cache/`),miss 才调编译器;`clean` 清缓存。结构与 `rebar3_clojerl` 对齐,降低用户迁移成本。
+- **2026-10-11 落地(clojerl2-024)**,实现在 `clj2_build`,rebar3 插件 `rebar3_clojerl2` 是它的薄壳。
+  - **缓存键补了一项**:上面的四项不够。命名空间 A 的产物还取决于它在编译期看到的依赖:
+    - 宏展开的结果;
+    - 直接链接依赖的 arity 和 var 种类(fn/const/cell/dynamic)。
+    只看源码哈希,B 改了宏或 arity 之后 A 会拿到过期的 beam。所以键里还有每个被 require 的命名空间的**接口指纹**:var info 去掉 `doc`;如果 B 定义了宏,再加上宏函数及其可达的本模块函数的抽象代码(取自 debug_info,行号擦除)。
+  - **效果**:B 改函数体或 docstring,只重编 B;B 改 arity 或宏,A 也重编。`extend-type` 编进扩展方自己的 impl 模块,不触发其他重编(D9)。
+  - **已知漏洞**:宏在展开时调用了**第三个**命名空间的函数,那个函数变了不会触发重编。
+  - **编译器指纹**:各 `clj2_*` 模块和 clojure.core 的 md5。clojure.core 本身也进缓存(`core-<hash>`)。
+  - **core 源码位置**:随之从 `src/clj2/core` 移到 `priv/clj2/core`。rebar3 依赖、checkout 和 release 只带 `priv/`,不带 `src/` 下的非 Erlang 文件。
+  - **实测**(40 个命名空间的链式项目,各 26 个 fn 加一个宏;三次取平均):
+    - clojerl2 阶段:3.6–4.5s 降到约 0.3s(7–8%);
+    - 整条 `rebar3 clojerl2 compile`:从零构建 5.78s 对 1.04s(18%);只重编项目时 4.25s 对 1.00s(23.5%)。
+    后者剩下的约 0.7s 是 rebar3 自身的启动和依赖检查,项目越大比例越低。
 
 ## 7. 风险清单(按优先级)
 

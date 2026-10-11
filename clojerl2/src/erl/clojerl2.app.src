@@ -1,0 +1,8 @@
+{application, clojerl2,
+ [{description, "clojerl2: Clojure on BEAM (compiler and runtime)"},
+  {vsn, "0.1.0"},
+  {registered, [clj2_ns]},
+  {applications, [kernel, stdlib, compiler, crypto]},
+  {env, []},
+  {licenses, ["EPL-1.0"]}
+ ]}.

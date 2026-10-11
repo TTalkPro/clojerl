@@ -144,8 +144,15 @@ nth(Coll, I) ->
 nth({vector, _, T}, I, _) when is_integer(I), I >= 0, I < tuple_size(T) -> element(I + 1, T);
 nth(L, I, NotFound) when (is_list(L) orelse element(1, L) =:= lazy_seq), is_integer(I), I >= 0 ->
     nth_seq(seq(L), I, NotFound);
+%% a string is indexed by code point, walking the UTF-8 binary: O(n)
+%% (JVM: UTF-16 units, O(1); known divergence :string/code-point-indexing)
+nth(B, I, NotFound) when is_binary(B), is_integer(I), I >= 0 -> nth_utf8(B, I, NotFound);
 nth(nil, _, NotFound) -> NotFound;
 nth(_, _, NotFound) -> NotFound.
+
+nth_utf8(<<C/utf8, _/binary>>, 0, _) -> C;
+nth_utf8(<<_/utf8, Rest/binary>>, I, NotFound) -> nth_utf8(Rest, I - 1, NotFound);
+nth_utf8(_, _, NotFound) -> NotFound.
 
 nth_seq(nil, _, NotFound) -> NotFound;
 nth_seq([H | _], 0, _) -> H;

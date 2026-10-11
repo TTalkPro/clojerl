@@ -456,3 +456,26 @@
   (if (find-ns x) x (throw (ex-info (str "No namespace: " x " found") {:ns x}))))
 (defn create-ns [name] (clj2_ns/ensure name) name)
 (defn ns-name [ns] (the-ns ns))
+
+;;;; ------------------------------------------------------------------
+;;;; Refs and STM: not provided (designs/03 §5.2). BEAM has no
+;;;; multi-object transactional memory and faking one would lie; these
+;;;; raise instead of being missing (known divergence :refs/no-stm).
+
+(defn stm-unsupported
+  "Raises: refs and STM are not supported (designs/03 §5.2)."
+  [what]
+  (throw (ex-info (str what ": refs and STM (dosync) are not supported on clojerl2;"
+                       " keep related state in one process and update it by message")
+                  {:unsupported what})))
+
+(defn ref [& _] (stm-unsupported "ref"))
+(defn alter [& _] (stm-unsupported "alter"))
+(defn commute [& _] (stm-unsupported "commute"))
+(defn ref-set [& _] (stm-unsupported "ref-set"))
+(defn ensure [& _] (stm-unsupported "ensure"))
+(defmacro dosync [& _] `(stm-unsupported "dosync"))
+(defmacro sync [& _] `(stm-unsupported "sync"))
+
+;; There are no chunked seqs (known divergence :lazy-seq/no-chunking).
+(defn chunked-seq? [s] false)

@@ -1,0 +1,8 @@
+{application, rebar3_clojerl2,
+ [{description, "rebar3 plugin for clojerl2 projects: compile (cached), repl, clean"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications, [kernel, stdlib]},
+  {env, []},
+  {licenses, ["EPL-1.0"]}
+ ]}.

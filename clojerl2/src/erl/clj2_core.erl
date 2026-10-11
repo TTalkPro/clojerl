@@ -13,7 +13,7 @@
 %%%-------------------------------------------------------------------
 -module(clj2_core).
 
--export([boot/0, boot/1, ensure/0, build/1, layers/0, layer_vars/0, source_dir/0]).
+-export([boot/0, boot/1, ensure/0, build/1, build_modules/0, layers/0, layer_vars/0, source_dir/0]).
 
 %% @doc Compile and load clojure.core (all layers).
 boot() -> boot(#{}).
@@ -37,11 +37,19 @@ ensure() ->
 %% namespace module and its protocol impl modules — as .beam files to
 %% `Dir'. Impl modules load on first dispatch (clj2_proto).
 build(Dir) ->
-    {Src, CompileOpts} = source(#{}),
-    case clj2_compiler:compile_ns_modules(Src, CompileOpts) of
+    case build_modules() of
         {ok, Ns, Mods} ->
             [ok = file:write_file(filename:join(Dir, atom_to_list(M) ++ ".beam"), Bin) || {M, Bin} <- Mods],
             {ok, Ns, [M || {M, _} <- Mods]};
+        {error, _} = E -> E
+    end.
+
+%% @doc Compile clojure.core (all layers): `{ok, Ns, [{Module, Beam}]}',
+%% impl modules first; nothing is loaded or written.
+build_modules() ->
+    {Src, CompileOpts} = source(#{}),
+    case clj2_compiler:compile_ns_modules(Src, CompileOpts) of
+        {ok, Ns, Mods} -> {ok, Ns, Mods};
         {error, Es, _} -> {error, Es}
     end.
 
@@ -91,7 +99,9 @@ unloc({clj2_loc, _, _, F, _}) -> F;
 unloc(F) -> F.
 
 source_dir() ->
-    filename:join([filename:dirname(code:which(?MODULE)), "..", "src", "clj2", "core"]).
+    %% priv/: shipped with the application (rebar3 dependencies and
+    %% checkouts, releases), unlike src/
+    filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "clj2", "core"]).
 
 %%====================================================================
 %% boot-order.edn

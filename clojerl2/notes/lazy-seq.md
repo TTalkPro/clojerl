@@ -1,7 +1,7 @@
 # 惰性序列实现与吞吐基线(clojerl2-019)
 
 实现:`src/erl/clj2_lazy.erl`(记忆单元、实现、delay),`clj2_coll`(seq 原语认识惰性值),
-`src/clj2/core/00-kernel.clj`(惰性的 map/filter/concat/take/drop/range/iterate/repeat/cycle/...)。
+`priv/clj2/core/00-kernel.clj`(惰性的 map/filter/concat/take/drop/range/iterate/repeat/cycle/...)。
 设计:[designs/03](../../designs/03-runtime-model.md) §5.3、§6。
 
 ## 表示

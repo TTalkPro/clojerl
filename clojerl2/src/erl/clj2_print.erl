@@ -13,50 +13,54 @@
 
 -export([pr_str/1, print_str/1, float_str/1]).
 
-%% pr/1 mixes UTF-8 binaries with code-point lists (io_lib output):
+%% pr/2 mixes UTF-8 binaries with code-point lists (io_lib output):
 %% only unicode:characters_to_binary/1 joins those correctly. A string
 %% that is not valid UTF-8 (bytes from outside) is kept byte for byte.
-pr_str(X) ->
-    P = pr(X),
+pr_str(X) -> chars(pr(X, true)).
+
+%% print/println: like pr, but strings (at any depth) print bare, as JVM
+%% Clojure does with *print-readably* false: (print ["a"]) shows [a].
+print_str(X) -> chars(pr(X, false)).
+
+chars(P) ->
     case unicode:characters_to_binary(P) of
         B when is_binary(B) -> B;
         _ -> iolist_to_binary(P)
     end.
 
-print_str(B) when is_binary(B) -> B;
-print_str(X) -> pr_str(X).
-
-pr(nil) -> <<"nil">>;
-pr(true) -> <<"true">>;
-pr(false) -> <<"false">>;
-pr(A) when is_atom(A) -> atom_to_binary(A);                  % symbols, keywords
-pr(I) when is_integer(I) -> integer_to_binary(I);
-pr(F) when is_float(F) -> float_str(F);
-pr(B) when is_binary(B) -> [$", escape(B), $"];
-pr({ratio, N, D}) -> [integer_to_binary(N), $/, integer_to_binary(D)];
-pr([]) -> <<"()">>;
-pr(L) when is_list(L) -> seq_str(L);
-pr({lazy_seq, _, _} = L) -> seq_str(L);
-pr({vector, _, T}) when is_tuple(T) -> [$[, join([pr(X) || X <- tuple_to_list(T)], " "), $]];
-pr({map, _, M}) when is_map(M) -> map_str(M);
-pr({set, _, M}) when is_map(M) -> [<<"#{">>, join([pr(X) || X <- lists:sort(maps:keys(M))], " "), $}];
-pr({delay, _, _}) -> <<"#object[clojure.lang.Delay]">>;
-pr({var, _, {Ns, Name}}) when is_atom(Ns), is_atom(Name) ->
+%% R: readably (pr) or not (print)
+pr(nil, _) -> <<"nil">>;
+pr(true, _) -> <<"true">>;
+pr(false, _) -> <<"false">>;
+pr(A, _) when is_atom(A) -> atom_to_binary(A);               % symbols, keywords
+pr(I, _) when is_integer(I) -> integer_to_binary(I);
+pr(F, _) when is_float(F) -> float_str(F);
+pr(B, true) when is_binary(B) -> [$", escape(B), $"];
+pr(B, false) when is_binary(B) -> B;
+pr({ratio, N, D}, _) -> [integer_to_binary(N), $/, integer_to_binary(D)];
+pr([], _) -> <<"()">>;
+pr(L, R) when is_list(L) -> seq_str(L, R);
+pr({lazy_seq, _, _} = L, R) -> seq_str(L, R);
+pr({vector, _, T}, R) when is_tuple(T) -> [$[, join([pr(X, R) || X <- tuple_to_list(T)], " "), $]];
+pr({map, _, M}, R) when is_map(M) -> map_str(M, R);
+pr({set, _, M}, R) when is_map(M) -> [<<"#{">>, join([pr(X, R) || X <- lists:sort(maps:keys(M))], " "), $}];
+pr({delay, _, _}, _) -> <<"#object[clojure.lang.Delay]">>;
+pr({var, _, {Ns, Name}}, _) when is_atom(Ns), is_atom(Name) ->
     [<<"#'">>, atom_to_binary(Ns), $/, atom_to_binary(Name)];
-pr({clj2_fn, _, _}) -> <<"#object[clojure.lang.AFunction]">>;
-pr(F) when is_function(F) -> [<<"#object[">>, io_lib:format("~tp", [F]), $]];
-pr({Tag, _, M}) when is_atom(Tag), is_map(M) ->              % record
-    [$#, atom_to_binary(Tag), map_str(M)];
-pr({Tag, _, T}) when is_atom(Tag), is_tuple(T) ->            % deftype
+pr({clj2_fn, _, _}, _) -> <<"#object[clojure.lang.AFunction]">>;
+pr(F, _) when is_function(F) -> [<<"#object[">>, io_lib:format("~tp", [F]), $]];
+pr({Tag, _, M}, R) when is_atom(Tag), is_map(M) ->           % record
+    [$#, atom_to_binary(Tag), map_str(M, R)];
+pr({Tag, _, T}, _) when is_atom(Tag), is_tuple(T) ->         % deftype
     [<<"#object[">>, atom_to_binary(Tag), $]];
-pr(P) when is_pid(P) -> [<<"#object[pid ">>, pid_to_list(P), $]];
-pr(X) -> io_lib:format("~tp", [X]).
+pr(P, _) when is_pid(P) -> [<<"#object[pid ">>, pid_to_list(P), $]];
+pr(X, _) -> io_lib:format("~tp", [X]).
 
-seq_str(L) -> [$(, join([pr(X) || X <- clj2_coll:to_list(L)], " "), $)].
+seq_str(L, R) -> [$(, join([pr(X, R) || X <- clj2_coll:to_list(L)], " "), $)].
 
-map_str(M) ->
+map_str(M, R) ->
     %% hash maps print in key order: deterministic output
-    [${, join([[pr(K), $\s, pr(V)] || {K, V} <- lists:sort(maps:to_list(M))], ", "), $}].
+    [${, join([[pr(K, R), $\s, pr(V, R)] || {K, V} <- lists:sort(maps:to_list(M))], ", "), $}].
 
 join([], _) -> [];
 join([X], _) -> [X];

@@ -28,3 +28,7 @@ jobs:
       run: make -C clojerl2 certify
     - name: REPL / CLI smoke (clojerl2-023)
       run: make -C clojerl2 smoke
+    - name: rebar3 plugin on the example project (clojerl2-024)
+      run: make -C clojerl2 example
+    - name: Documentation examples (clojerl2-025)
+      run: make -C clojerl2 docs-check

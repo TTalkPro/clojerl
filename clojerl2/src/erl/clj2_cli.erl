@@ -81,10 +81,16 @@ source_path(_) ->
         P -> string:split(P, ":", all)
     end.
 
-%% @doc The commit clojerl2 was built from (ebin/clj2.build), or "dev".
+%% @doc The commit clojerl2 was built from (ebin/clj2.build, written by
+%% `make'); in a rebar3 build, the application's version.
 build() ->
     File = filename:join(filename:dirname(code:which(?MODULE)), "clj2.build"),
     case file:read_file(File) of
         {ok, B} -> string:trim(B);
-        {error, _} -> <<"dev">>
+        {error, _} ->
+            _ = application:load(clojerl2),
+            case application:get_key(clojerl2, vsn) of
+                {ok, V} -> unicode:characters_to_binary(V);
+                undefined -> <<"dev">>
+            end
     end.

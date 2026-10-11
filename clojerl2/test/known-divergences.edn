@@ -1,57 +1,95 @@
-;; clojerl2 known divergences from JVM Clojure (designs/04 §5, D12).
+;; clojerl2 known divergences from JVM Clojure (designs/04 §5.1, D12;
+;; finalized in clojerl2-025). User-facing version: docs/differences.md.
 ;;
-;; Every deliberate difference is registered here with its reason and
-;; the design that decided it. The corpus gate (`make certify',
-;; clojerl2-022) accepts a failing corpus entry only when
-;; test/corpus-known-failures.edn gives it a cause: one of these ids, or
-;; a :pending cause (work not done yet). clj2_divergences_tests checks
-;; both files' shape.
+;; Every deliberate difference is registered here with
+;;   :reason       what clojerl2 does and why
+;;   :design       the design section that decided it
+;;   :alternative  what to write instead
+;; and is checked two ways:
+;;   * evidence: clj2_divergence_evidence_tests has one test per id
+;;     (`:a/b-c' → a__b_c_test) showing the behavior; it fails if the
+;;     divergence goes away, and the ids and tests must match one for one;
+;;   * the corpus gate (`make certify'): a failing corpus entry may cite an
+;;     id here as its cause in test/corpus-known-failures.edn.
+;; clj2_divergences_tests asserts both, and that docs/differences.md
+;; covers every id.
 [{:id :lazy-seq/per-process-realization
   :area :lazy
-  :reason "Lazy seqs and delays memoize in the process dictionary (default): another process holding the same lazy seq realizes it again. Values agree for pure thunks; a side-effecting thunk runs once per process. The ets memo switch (clj2_lazy:set_memo/1) realizes once across processes."
-  :design "designs/03 §5.3, clojerl2-003, clojerl2-019"}
+  :reason "Lazy seqs and delays memoize in the process dictionary: another process walking the same lazy seq realizes it again. Values agree for pure thunks; a side-effecting thunk runs once per process. The ets memo switch (clj2_lazy:set_memo/1) realizes once across processes."
+  :design "designs/03 §5.3"
+  :alternative "Keep side effects out of lazy seqs (use doseq/run! for effects), or realize the seq (doall, vec) before handing it to another process."}
  {:id :lazy-seq/bounded-memo
   :area :lazy
   :reason "The memo store is bounded (clj2_lazy:memo_limit/0, default 100000 cells); past it the store is cleared, and a lazy seq walked again afterwards realizes again. Keeps long-lived processes from growing without bound."
-  :design "designs/03 §6, clojerl2-019"}
+  :design "designs/03 §6"
+  :alternative "Realize a seq you walk many times into a vector; raise the limit with clj2_lazy:set_memo_limit/1 if a process legitimately holds more."}
  {:id :lazy-seq/no-chunking
   :area :lazy
   :reason "No chunked seqs: realization is one element at a time (map over a vector does not realize 32 at once). An optimisation, not semantics."
-  :design "designs/03 §6"}
+  :design "designs/03 §6"
+  :alternative "Nothing to change; code that relied on chunks realizing ahead (side effects in map) should not."}
  {:id :symbol/no-metadata
   :area :reader
-  :reason "Symbols are atoms and carry no metadata: metadata on a def/defn name (^:private, ^:dynamic via macros) is lost; defn- is defn. ^:dynamic written directly on a def name is kept."
-  :design "designs/03 §1 (D8), clojerl2-014"}
+  :reason "Symbols are atoms and carry no metadata of their own. Metadata written directly on a def name is kept (^:private, ^:dynamic, ^{:doc ...}), and so is a defn docstring; metadata that reaches def through a macro is lost: defn- and (defn ^:private ...) define public vars."
+  :design "designs/03 §1.1"
+  :alternative "Write (def ^:private name (fn ...)) for a private fn; give docs as the defn docstring."}
  {:id :char/integer
-  :area :reader
-  :reason "A character is its integer code point; there is no separate char type."
-  :design "designs/03 §1 (D8)"}
+  :area :strings
+  :reason "A character is its integer code point; there is no separate char type: \\a is 97, (str \\a) is \"97\", (seq \"ab\") is (97 98)."
+  :design "designs/03 §1.1, §7"
+  :alternative "Build strings from chars with (apply str (map (fn [c] (unicode/characters_to_binary (list c))) cs)) or work on strings (subs, clojure string fns) rather than chars."}
+ {:id :string/code-point-indexing
+  :area :strings
+  :reason "Strings are UTF-8 binaries indexed by code point: count, nth and subs count code points, so (count \"😀\") is 1 (JVM: 2 UTF-16 units), and nth/subs walk the binary (O(n), JVM O(1))."
+  :design "designs/03 §7"
+  :alternative "Traverse with seq/reduce rather than indexing in a loop; convert once with (unicode/characters_to_list s) when you need random access."}
  {:id :number/no-ratio-arithmetic
   :area :numbers
-  :reason "(/ 1 2) is 0.5: integer division that does not divide exactly gives a float (ratios read but are not computed with)."
-  :design "clojerl2-014"}
+  :reason "(/ 1 2) is 0.5: integer division that does not divide exactly gives a float; ratios read but are not computed with."
+  :design "designs/03 §1.1"
+  :alternative "Use quot/rem for exact integer division; keep numerator and denominator yourself where exact fractions matter."}
+ {:id :number/beam-semantics
+  :area :numbers
+  :reason "Arithmetic follows BEAM, not the JVM (a project decision): integers are unbounded (no 64-bit long overflow, wrap-around, truncation or range checks: parse-long of a big number is that number, ^long/^double hints coerce nothing, bit ops take bignums, %x of a negative number is signed); floats compare exactly, so 0.0 and -0.0 differ; float division by zero raises badarith and ##Inf/##NaN cannot be read (BEAM floats have no Inf/NaN); comparisons and numeric predicates do not type-check their arguments (Erlang term order: (< nil 1) is false, no exception)."
+  :design "designs/03 §1.1; user decision 2026-10-11 (clojerl2-023)"
+  :alternative "Check argument types yourself where a JVM program relied on ClassCastException; mask with (bit-and x 0xFFFFFFFFFFFFFFFF) where 64-bit wrap-around was intended; test for zero before dividing floats."}
  {:id :fn/arity-at-compile-time
   :area :compiler
-  :reason "A direct call to a fn var with an arity it does not have is a compile error (JVM: ArityException at run time)."
-  :design "designs/03 §2.1a, clojerl2-015"}
+  :reason "A direct call to a fn var with an arity it does not have is a compile error (JVM: ArityException at run time), because vars link directly to module functions."
+  :design "designs/03 §2.1a"
+  :alternative "Call through a value when the arity is only known at run time: (apply f args), or a local (let [g f] (g 1 2)), raises at run time as on the JVM."}
+ {:id :fn/structural-identity
+  :area :compiler
+  :reason "Fns are Erlang funs, which compare by value: two closures of the same fn form over equal captured values are = and identical?, and collapse as set members or map keys (JVM: every evaluation of a fn form is a distinct object)."
+  :design "designs/03 §1.1, §2.1"
+  :alternative "Do not use fn identity as an identity token; tag values explicitly (a map with an id) instead."}
  {:id :exceptions/erlang-classes
   :area :compiler
-  :reason "catch takes Erlang exception classes :error :exit :throw; :default, Exception and Throwable catch every class; throw raises an Erlang error."
-  :design "designs/09 §3"}
+  :reason "catch takes Erlang exception classes :error, :exit and :throw; :default, Exception and Throwable catch every class; JVM class names (ArithmeticException, IllegalArgumentException ...) are a compile error. throw raises an Erlang error."
+  :design "designs/09 §3"
+  :alternative "(catch Exception e ...) or (catch :error e ...), and dispatch on the reason or (ex-data e) inside the handler."}
  {:id :protocols/type-designators
   :area :protocols
   :reason "extend-type names clj2 type tags (nil boolean keyword symbol integer float string list lazy_seq vector map set fn ... default) or deftype/defrecord names, with a few JVM aliases (Object String Long Integer Double Boolean Keyword Symbol); no class hierarchy, no reify."
-  :design "designs/03 §4.1a, clojerl2-016"}
+  :design "designs/03 §4.1a"
+  :alternative "extend-type the clj2 tag (e.g. integer instead of Long/Number); use a defrecord plus extend-type where reify was used."}
  {:id :namespaces/hot-code-two-versions
   :area :namespaces
-  :reason "Redefinition follows BEAM's two-version code loading: reloading a namespace, or redefining a var at the REPL (each REPL var has a module of its own), keeps the previous version alive; closures and fn values taken from it keep running the old code while new calls run the new one. A second redefinition purges the oldest version: fn values still holding it raise badfun when called, and a process still executing it makes the redefinition fail (old_code_in_use). JVM-style immediate global rebinding is not emulated."
-  :design "designs/02 §5, designs/03 §2.2, clojerl2-023"} {:id :fn/structural-identity
-  :area :compiler
-  :reason "Fns are Erlang funs, which compare by value: two closures of the same fn form over equal captured values are = and identical?, and collapse as set members or map keys (JVM: every evaluation of a fn form is a distinct object)."
-  :design "designs/03 §1 (D8)"} {:id :number/beam-semantics
-  :area :numbers
-  :reason "Arithmetic follows BEAM, not the JVM (a project decision): integers are unbounded (no 64-bit long overflow, wrap-around, truncation or range checks: parse-long of a big number is that number, ^long/^double hints coerce nothing, bit ops take bignums, %x of a negative number is signed); float division by zero raises badarith (BEAM floats have no Inf/NaN); comparisons and numeric predicates do not type-check their arguments (Erlang term order)."
-  :design "designs/03 §1 (D8); user decision 2026-10-11 (clojerl2-023)"} {:id :namespaces/symbols
+  :reason "Redefinition follows BEAM's two-version code loading: reloading a namespace, or redefining a var at the REPL (each REPL var has a module of its own), keeps the previous version alive; fn values taken from it keep running the old code while new calls run the new one. A second redefinition purges the oldest version: fn values still holding it raise badfun when called, and a process still executing it makes the redefinition fail (old_code_in_use). JVM-style immediate global rebinding is not emulated."
+  :design "designs/02 §5, designs/03 §2.2"
+  :alternative "Hold the var's name rather than its value when you want the latest definition: call (f ...) directly or through a wrapper fn (fn [& args] (apply f args))."}
+ {:id :namespaces/symbols
   :area :namespaces
-  :reason "A namespace is its symbol: *ns*, in-ns, the-ns, find-ns and create-ns deal in symbols (there are no Namespace objects), and *ns* prints as the bare name. *ns* is bound per process, so each REPL process has its own current namespace."
-  :design "clojerl2-023 (clj2_rt_eval)"}]
+  :reason "A namespace is its symbol: *ns*, in-ns, the-ns, find-ns and create-ns deal in symbols (there are no Namespace objects), and *ns* prints as the bare name."
+  :design "designs/03 §2.1"
+  :alternative "Use (ns-name *ns*) or *ns* where a name is needed; code that called Namespace methods needs the clj2 fns instead."}
+ {:id :dynamic/per-process-bindings
+  :area :namespaces
+  :reason "Dynamic bindings live in the process dictionary: a binding (and the current namespace, *1/*2/*3/*e at the REPL) belongs to the process that made it and is not seen by other processes."
+  :design "designs/03 §3"
+  :alternative "Pass values to other processes explicitly (as arguments or in messages) rather than through dynamic vars."}
+ {:id :refs/no-stm
+  :area :state
+  :reason "Refs and STM are not provided: ref, dosync, sync, alter, commute, ref-set and ensure raise an ex-info saying so. BEAM has no multi-object transactional memory, and a fake one would lie about isolation."
+  :design "designs/03 §5.2"
+  :alternative "Keep state that changes together in one value owned by one process (a gen_server, or an agent) and update it by message; atoms (clojerl2-018, not yet available) will cover single values."}]

@@ -3,7 +3,7 @@
 语料:`test/corpus.edn`(jolt `test/chez/corpus.edn` @ 6c2685e,EPL-2.0;`:expected` 经 `make corpus-regen` 以 JVM Clojure 1.12.5 重新生成),只计 `:portability :common` 条目。
 生成:`make corpus`;门控:`make certify`(对照 `test/corpus-known-failures.edn`)。判定见 `src/erl/clj2_corpus.erl`。
 
-**通过 1952 / 4842(40.3%)**
+**通过 1955 / 4842(40.4%)**
 
 ## 按 core 分层
 
@@ -11,10 +11,10 @@
 
 | 层 | 通过 | 条目 | 通过率 |
 |---|---|---|---|
-| 00-kernel | 1305 | 3242 | 40% |
-| 01-core | 587 | 1374 | 43% |
+| 00-kernel | 1305 | 3210 | 41% |
+| 01-core | 588 | 1406 | 42% |
 | 02-protocols | 13 | 65 | 20% |
-| 03-print | 43 | 157 | 27% |
+| 03-print | 45 | 157 | 29% |
 | 04-repl | 4 | 4 | 100% |
 
 ## 按 suite
@@ -65,7 +65,7 @@
 | uuid | 0 | 30 | 0% |
 | records | 11 | 30 | 37% |
 | clojure.edn | 2 | 27 | 7% |
-| printer | 14 | 26 | 54% |
+| printer | 16 | 26 | 62% |
 | charsets | 0 | 26 | 0% |
 | clojure.math | 0 | 25 | 0% |
 | hierarchy | 0 | 24 | 0% |
@@ -114,7 +114,7 @@
 | printing | 0 | 5 | 0% |
 | eval & load-string as values | 3 | 5 | 60% |
 | concurrency | 0 | 5 | 0% |
-| chunked-seq | 0 | 5 | 0% |
+| chunked-seq | 1 | 5 | 20% |
 | time | 0 | 4 | 0% |
 | symbols | 4 | 4 | 100% |
 | reflect | 0 | 4 | 0% |
@@ -165,38 +165,42 @@
 
 | cause | 条目 |
 |---|---|
-| `:pending/missing-core-var` | 477 |
+| `:pending/missing-core-var` | 492 |
 | `:pending/triage` | 350 |
 | `:pending/strings-io` | 311 |
-| `:pending/ref-types` | 241 |
-| `:pending/jvm-exception-classes` | 216 |
+| `:pending/ref-types` | 218 |
+| `:exceptions/erlang-classes` | 215 |
 | `:pending/host-types` | 208 |
-| `:pending/compiler` | 167 |
 | `:pending/metadata` | 131 |
 | `:pending/stdlib-namespaces` | 125 |
+| `:pending/compiler` | 124 |
 | `:pending/reader` | 118 |
 | `:pending/sorted-colls` | 114 |
-| `:pending/special-forms` | 105 |
+| `:pending/special-forms` | 104 |
 | `:pending/transients` | 79 |
 | `:pending/multimethods` | 77 |
 | `:pending/numbers` | 66 |
 | `:pending/runtime-eval` | 59 |
 | `:number/beam-semantics` | 33 |
+| `:lazy-seq/no-chunking` | 22 |
+| `:refs/no-stm` | 15 |
+| `:protocols/type-designators` | 11 |
 | `:fn/structural-identity` | 6 |
+| `:char/integer` | 4 |
 | `:number/no-ratio-arithmetic` | 4 |
-| `:char/integer` | 3 |
+| `:fn/arity-at-compile-time` | 1 |
 
 ## 失败类别
 
 | 类别 | 条目 |
 |---|---|
-| compile: unresolved symbol | 1456 |
-| threw (unexpected) | 305 |
-| compile: syntax | 271 |
-| wrong value | 208 |
+| compile: unresolved symbol | 1437 |
+| threw (unexpected) | 319 |
+| compile: syntax | 270 |
+| wrong value | 212 |
 | compile: unsupported literal regex | 200 |
 | compile: unsupported literal tagged | 100 |
-| compile: unsupported special form var | 93 |
+| compile: unsupported special form var | 92 |
 | compile: unsupported literal bigdec | 66 |
 | compile: link | 43 |
 | expected a throw | 38 |
@@ -222,7 +226,7 @@
 
 | 符号 | 条目 |
 |---|---|
-| `atom` | 140 |
+| `atom` | 142 |
 | `meta` | 105 |
 | `class` | 81 |
 | `sorted-map` | 51 |
@@ -236,49 +240,49 @@
 | `transient` | 25 |
 | `parse-uuid` | 21 |
 | `doto` | 20 |
-| `ref` | 18 |
 | `int` | 18 |
 | `re-find` | 17 |
-| `future` | 12 |
 | `.getName` | 12 |
-| `unchecked-add` | 11 |
+| `future` | 12 |
 | `eduction` | 11 |
 | `Object.` | 11 |
+| `unchecked-add` | 11 |
 | `reify` | 11 |
 | `with-local-vars` | 10 |
-| `random-uuid` | 9 |
 | `spit` | 9 |
+| `random-uuid` | 9 |
+| `bigint` | 7 |
+| `.getMessage` | 7 |
+| `with-redefs` | 7 |
+| `unchecked-multiply` | 7 |
 | `with-open` | 7 |
 | `sorted-set-by` | 7 |
-| `.getMessage` | 7 |
-| `unchecked-multiply` | 7 |
 | `unchecked-inc` | 7 |
-| `bigint` | 7 |
 | `sorted?` | 7 |
-| `with-redefs` | 7 |
-| `subseq` | 6 |
+| `unchecked-int` | 6 |
 | `replace` | 6 |
-| `agent` | 6 |
-| `uuid?` | 6 |
 | `alias` | 6 |
 | `unchecked-negate` | 6 |
-| `volatile!` | 6 |
-| `chunked-seq?` | 6 |
-| `unchecked-int` | 6 |
-| `long` | 6 |
 | `defmethod` | 6 |
-| `extend` | 5 |
-| `long-array` | 5 |
-| `String` | 5 |
-| `associative?` | 5 |
-| `map-entry?` | 5 |
-| `NaN?` | 5 |
-| `unchecked-long` | 5 |
-| `java.util.Random.` | 5 |
-| `reader-conditional` | 5 |
+| `volatile!` | 6 |
+| `uuid?` | 6 |
+| `subseq` | 6 |
+| `long` | 6 |
+| `agent` | 6 |
 | `resolve` | 5 |
-| `var?` | 5 |
-| `num` | 5 |
+| `long-array` | 5 |
 | `halt-when` | 5 |
-| `counted?` | 4 |
+| `reader-conditional` | 5 |
+| `java.util.Random.` | 5 |
+| `num` | 5 |
+| `map-entry?` | 5 |
+| `associative?` | 5 |
+| `var?` | 5 |
+| `extend` | 5 |
+| `unchecked-long` | 5 |
+| `NaN?` | 5 |
+| `String` | 5 |
+| `char` | 4 |
 | `.getBytes` | 4 |
+| `atom?` | 4 |
+| `munge` | 4 |

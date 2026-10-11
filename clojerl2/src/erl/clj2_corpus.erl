@@ -383,9 +383,8 @@ pending_legend() ->
      {':pending/transients', <<"transient/persistent! and the bang ops are not implemented yet.">>, <<"clojerl2-021 follow-up">>},
      {':pending/host-types', <<"class/type/instance? and other host type queries are not implemented yet; JVM class names need a mapping onto clj2 type tags.">>, <<"clojerl2-021 follow-up">>},
      {':pending/stdlib-namespaces', <<"clojure.string, clojure.set, clojure.walk, clojure.edn, clojure.math ... are not ported yet.">>, <<"clojerl2-021 follow-up">>},
-     {':pending/missing-core-var', <<"A clojure.core var the corpus uses is not ported yet.">>, <<"clojerl2-021 follow-up">>},
+     {':pending/missing-core-var', <<"A clojure.core var, or an arity of one (transducer arities, variadic bit ops ...), is not ported yet.">>, <<"clojerl2-021 follow-up">>},
      {':pending/special-forms', <<"A special form (var, set!, ., new, letfn* ...) is not compiled yet.">>, <<"clojerl2-021 follow-up">>},
-     {':pending/jvm-exception-classes', <<"catch names a JVM exception class (ClassCastException, IllegalArgumentException ...); only Erlang classes, Exception and Throwable are understood (designs/09 §3)."/utf8>>, <<"clojerl2-021 follow-up">>},
      {':pending/numbers', <<"BigDecimal (1.5M) literals and arithmetic are not implemented yet.">>, <<"clojerl2-021 follow-up">>},
      {':pending/reader', <<"The reader rejects the source (reader conditionals, number syntax, escapes ...).">>, <<"clojerl2-021 follow-up">>},
      {':pending/compiler', <<"The compiler rejects the entry (syntax, linking, recur, verify ...): a compiler gap or bug.">>, <<"clojerl2-021 follow-up">>},
@@ -393,9 +392,23 @@ pending_legend() ->
 
 %% A first guess at a new failure's cause: a registered divergence when the
 %% entry plainly exercises one, else a pending cause by failure kind.
-cause(#{suite := Suite, expected := Exp, actual := Act}, Why) ->
+cause(#{suite := Suite, label := Label, expected := Exp, actual := Act}, Why) ->
     Has = fun(Src, Re) -> is_binary(Src) andalso re:run(Src, Re, [unicode]) =/= nomatch end,
+    Chunking = (Has(Suite, "chunk") orelse Has(Label, "chunk")) andalso not Has(Label, "not chunked|unchunked")
+               andalso not Has(Suite, "unchunked"),
+    Stm = case Why of
+              {threw, B0} when is_binary(B0) -> binary:match(B0, <<"refs and STM">>) =/= nomatch;
+              _ -> false
+          end,
     case Why of
+        _ when Chunking -> ':lazy-seq/no-chunking';
+        {compile_error, {syntax, {bad_catch_class, _}}} -> ':exceptions/erlang-classes';
+        %% a core fn without that arity is a gap; a fn of the entry's own,
+        %% the divergence (a compile error, not a run-time ArityException)
+        {compile_error, {link, {arity, 'clojure.core', _, _}}} -> ':pending/missing-core-var';
+        {compile_error, {link, {arity, _, _, _}}} -> ':fn/arity-at-compile-time';
+        {compile_error, {resolve, {unresolved_symbol, reify}}} -> ':protocols/type-designators';
+        {threw, _} when Stm -> ':refs/no-stm';
         {mismatch, _} ->
             case {Has(Suite, "^fn identity"), Has(Exp, "(^|[^\\w\"])-?\\d+/\\d+"), Has(Exp, "\\\\[a-z]")} of
                 {true, _, _} -> ':fn/structural-identity';
@@ -420,7 +433,6 @@ cause(#{suite := Suite, expected := Exp, actual := Act}, Why) ->
 pending_cause({compile_error, {resolve, {unresolved_symbol, S}}}) -> symbol_cause(S);
 pending_cause({compile_error, {resolve, {no_such_var, _, S}}}) -> symbol_cause(S);
 pending_cause({compile_error, {unsupported, {special_form, _}}}) -> ':pending/special-forms';
-pending_cause({compile_error, {syntax, {bad_catch_class, _}}}) -> ':pending/jvm-exception-classes';
 pending_cause({compile_error, {syntax, ns_must_be_first_form}}) -> ':pending/runtime-eval';
 pending_cause({compile_error, {read, _}}) -> ':pending/reader';
 pending_cause({compile_error, {unsupported, {literal, regex}}}) -> ':pending/strings-io';

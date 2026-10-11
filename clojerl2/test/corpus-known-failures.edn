@@ -19,9 +19,8 @@
   :pending/transients {:reason "transient/persistent! and the bang ops are not implemented yet." :task "clojerl2-021 follow-up"}
   :pending/host-types {:reason "class/type/instance? and other host type queries are not implemented yet; JVM class names need a mapping onto clj2 type tags." :task "clojerl2-021 follow-up"}
   :pending/stdlib-namespaces {:reason "clojure.string, clojure.set, clojure.walk, clojure.edn, clojure.math ... are not ported yet." :task "clojerl2-021 follow-up"}
-  :pending/missing-core-var {:reason "A clojure.core var the corpus uses is not ported yet." :task "clojerl2-021 follow-up"}
+  :pending/missing-core-var {:reason "A clojure.core var, or an arity of one (transducer arities, variadic bit ops ...), is not ported yet." :task "clojerl2-021 follow-up"}
   :pending/special-forms {:reason "A special form (var, set!, ., new, letfn* ...) is not compiled yet." :task "clojerl2-021 follow-up"}
-  :pending/jvm-exception-classes {:reason "catch names a JVM exception class (ClassCastException, IllegalArgumentException ...); only Erlang classes, Exception and Throwable are understood (designs/09 §3)." :task "clojerl2-021 follow-up"}
   :pending/numbers {:reason "BigDecimal (1.5M) literals and arithmetic are not implemented yet." :task "clojerl2-021 follow-up"}
   :pending/reader {:reason "The reader rejects the source (reader conditionals, number syntax, escapes ...)." :task "clojerl2-021 follow-up"}
   :pending/compiler {:reason "The compiler rejects the entry (syntax, linking, recur, verify ...): a compiler gap or bug." :task "clojerl2-021 follow-up"}
@@ -38,28 +37,28 @@
   {:suite "arrays / areduce + amap" :label "areduce over a double-array" :cause :pending/missing-core-var}
   {:suite "arrays / areduce + amap" :label "areduce sees enclosing locals" :cause :pending/missing-core-var}
   {:suite "arrays / areduce + amap" :label "areduce sums an array" :cause :pending/missing-core-var}
-  {:suite "arrays / oob exception" :label "OOB not caught by an unrelated exception class" :cause :pending/jvm-exception-classes}
-  {:suite "arrays / oob exception" :label "aget OOB carries the JVM message" :cause :pending/jvm-exception-classes}
-  {:suite "arrays / oob exception" :label "aget OOB caught as ArrayIndexOutOfBoundsException" :cause :pending/jvm-exception-classes}
+  {:suite "arrays / oob exception" :label "OOB not caught by an unrelated exception class" :cause :exceptions/erlang-classes}
+  {:suite "arrays / oob exception" :label "aget OOB carries the JVM message" :cause :exceptions/erlang-classes}
+  {:suite "arrays / oob exception" :label "aget OOB caught as ArrayIndexOutOfBoundsException" :cause :exceptions/erlang-classes}
   {:suite "arrays / oob exception" :label "aget OOB class name" :cause :pending/missing-core-var}
-  {:suite "arrays / oob exception" :label "aset OOB caught by parent IndexOutOfBoundsException" :cause :pending/jvm-exception-classes}
-  {:suite "arrays / oob exception" :label "byte-array aset OOB" :cause :pending/jvm-exception-classes}
-  {:suite "arrays / oob exception" :label "negative index message" :cause :pending/jvm-exception-classes}
-  {:suite "assert" :label "failed assert throws AssertionError" :cause :pending/jvm-exception-classes}
+  {:suite "arrays / oob exception" :label "aset OOB caught by parent IndexOutOfBoundsException" :cause :exceptions/erlang-classes}
+  {:suite "arrays / oob exception" :label "byte-array aset OOB" :cause :exceptions/erlang-classes}
+  {:suite "arrays / oob exception" :label "negative index message" :cause :exceptions/erlang-classes}
+  {:suite "assert" :label "failed assert throws AssertionError" :cause :exceptions/erlang-classes}
   {:suite "assert / message" :label "message expression evaluates at failure time" :cause :pending/host-types}
-  {:suite "assoc / bounds" :label "assoc past a vector end throws IndexOutOfBoundsException" :cause :pending/jvm-exception-classes}
+  {:suite "assoc / bounds" :label "assoc past a vector end throws IndexOutOfBoundsException" :cause :exceptions/erlang-classes}
   {:suite "binding / no-auto-deref" :label "binding does not auto-deref var-cell value" :cause :pending/special-forms}
   {:suite "bit-ops / bignum operand" :label "bit-and rejects an operand outside long range" :cause :number/beam-semantics}
   {:suite "casts / checked narrow" :label "doubles range-check themselves, then truncate" :cause :pending/reader}
-  {:suite "casts / checked narrow" :label "float range-checks against Float/MAX_VALUE" :cause :pending/jvm-exception-classes}
-  {:suite "casts / checked narrow" :label "out-of-range values throw IllegalArgumentException" :cause :pending/jvm-exception-classes}
+  {:suite "casts / checked narrow" :label "float range-checks against Float/MAX_VALUE" :cause :exceptions/erlang-classes}
+  {:suite "casts / checked narrow" :label "out-of-range values throw IllegalArgumentException" :cause :exceptions/erlang-classes}
   {:suite "casts / checked narrow" :label "ratios and bigdecs truncate; non-numbers are CCE" :cause :pending/numbers}
-  {:suite "casts / checked narrow" :label "the throw carries the JVM message" :cause :pending/jvm-exception-classes}
-  {:suite "casts / fixnum fast path" :label "byte/short/long throw IllegalArgumentException one past their bounds" :cause :pending/jvm-exception-classes}
+  {:suite "casts / checked narrow" :label "the throw carries the JVM message" :cause :exceptions/erlang-classes}
+  {:suite "casts / fixnum fast path" :label "byte/short/long throw IllegalArgumentException one past their bounds" :cause :exceptions/erlang-classes}
   {:suite "casts / fixnum fast path" :label "checked casts pass at their bounds" :cause :pending/missing-core-var}
   {:suite "casts / fixnum fast path" :label "unchecked-int at and either side of the 32-bit bounds" :cause :pending/missing-core-var}
   {:suite "casts / fixnum fast path" :label "unchecked-long is identity at the 64-bit bounds" :cause :pending/missing-core-var}
-  {:suite "casts / int overflow class" :label "int overflows on an INTEGER as ArithmeticException, on a DOUBLE as IllegalArgumentException" :cause :pending/jvm-exception-classes}
+  {:suite "casts / int overflow class" :label "int overflows on an INTEGER as ArithmeticException, on a DOUBLE as IllegalArgumentException" :cause :exceptions/erlang-classes}
   {:suite "casts / unchecked wrap" :label "unchecked casts wrap and sign-fold; doubles saturate" :cause :pending/reader}
   {:suite "charsets / malformed UTF-8" :label "a BOM survives a path read, a reader read and a byte read alike" :cause :pending/missing-core-var}
   {:suite "charsets / malformed UTF-8" :label "a URI accessor decodes its escape runs through the same decoder" :cause :pending/missing-core-var}
@@ -85,23 +84,22 @@
   {:suite "charsets / named encodings" :label "a stateful charset closes back to ASCII" :cause :pending/host-types}
   {:suite "charsets / named encodings" :label "a stateful charset leaves pure ASCII unescaped" :cause :pending/host-types}
   {:suite "charsets / named encodings" :label "a stateful charset shifts back mid-string too" :cause :pending/host-types}
-  {:suite "charsets / named encodings" :label "an unknown charset is an UnsupportedEncodingException, not silent UTF-8" :cause :pending/jvm-exception-classes}
+  {:suite "charsets / named encodings" :label "an unknown charset is an UnsupportedEncodingException, not silent UTF-8" :cause :exceptions/erlang-classes}
   {:suite "charsets / named encodings" :label "getBytes honors a charset outside the Unicode family" :cause :pending/host-types}
-  {:suite "chunked-seq / over a vector" :label "chunk-first contents + chunk-rest boundary" :cause :pending/missing-core-var}
-  {:suite "chunked-seq / over a vector" :label "chunk-first is a 32-element block" :cause :pending/missing-core-var}
-  {:suite "chunked-seq / over a vector" :label "chunk-first window past the first block" :cause :pending/missing-core-var}
-  {:suite "chunked-seq / over a vector" :label "chunked-seq? false for a list seq" :cause :pending/missing-core-var}
-  {:suite "chunked-seq / over a vector" :label "chunked-seq? true for vector seq" :cause :pending/missing-core-var}
-  {:suite "chunking-model / realization granularity" :label "first over a chunked vector realizes the whole 32-block" :cause :pending/ref-types}
-  {:suite "chunking-model / realization granularity" :label "first over keep of a chunked vector realizes the whole 32-block" :cause :pending/ref-types}
-  {:suite "chunking-model / realization granularity" :label "first over keep-indexed of a chunked vector realizes the whole 32-block" :cause :pending/ref-types}
-  {:suite "chunking-model / realization granularity" :label "first over map-indexed of a chunked vector realizes the whole 32-block" :cause :pending/ref-types}
-  {:suite "chunking-model / realization granularity" :label "nth 0 over a chunked vector realizes the whole 32-block" :cause :pending/ref-types}
+  {:suite "chunked-seq / over a vector" :label "chunk-first contents + chunk-rest boundary" :cause :lazy-seq/no-chunking}
+  {:suite "chunked-seq / over a vector" :label "chunk-first is a 32-element block" :cause :lazy-seq/no-chunking}
+  {:suite "chunked-seq / over a vector" :label "chunk-first window past the first block" :cause :lazy-seq/no-chunking}
+  {:suite "chunked-seq / over a vector" :label "chunked-seq? true for vector seq" :cause :lazy-seq/no-chunking}
+  {:suite "chunking-model / realization granularity" :label "first over a chunked vector realizes the whole 32-block" :cause :lazy-seq/no-chunking}
+  {:suite "chunking-model / realization granularity" :label "first over keep of a chunked vector realizes the whole 32-block" :cause :lazy-seq/no-chunking}
+  {:suite "chunking-model / realization granularity" :label "first over keep-indexed of a chunked vector realizes the whole 32-block" :cause :lazy-seq/no-chunking}
+  {:suite "chunking-model / realization granularity" :label "first over map-indexed of a chunked vector realizes the whole 32-block" :cause :lazy-seq/no-chunking}
+  {:suite "chunking-model / realization granularity" :label "nth 0 over a chunked vector realizes the whole 32-block" :cause :lazy-seq/no-chunking}
   {:suite "chunking-model / unchunked realization granularity" :label "dedupe is fully lazy at construction" :cause :pending/ref-types}
   {:suite "chunking-model / unchunked realization granularity" :label "mapcat is fully lazy at construction" :cause :pending/ref-types}
-  {:suite "clojure 1.12 / arity" :label "more than twenty args" :cause :pending/jvm-exception-classes}
+  {:suite "clojure 1.12 / arity" :label "more than twenty args" :cause :exceptions/erlang-classes}
   {:suite "clojure 1.12 / partitionv" :label "partitionv-all has a transducer arity" :cause :pending/missing-core-var}
-  {:suite "clojure 1.12 / reader" :label "a bad arg literal" :cause :pending/jvm-exception-classes}
+  {:suite "clojure 1.12 / reader" :label "a bad arg literal" :cause :exceptions/erlang-classes}
   {:suite "clojure 1.12 / version" :label "*clojure-version* is 1.12" :cause :pending/missing-core-var}
   {:suite "clojure.core / futures — deref" :label "@ reader macro derefs" :cause :pending/ref-types}
   {:suite "clojure.core / futures — deref" :label "body error re-raised on deref" :cause :pending/ref-types}
@@ -122,7 +120,7 @@
   {:suite "clojure.core / leaf batch (complement fnil munge etc.)" :label "bigdec" :cause :pending/missing-core-var}
   {:suite "clojure.core / leaf batch (complement fnil munge etc.)" :label "clojure-version" :cause :pending/missing-core-var}
   {:suite "clojure.core / leaf batch (complement fnil munge etc.)" :label "denominator throws" :cause :pending/missing-core-var}
-  {:suite "clojure.core / leaf batch (complement fnil munge etc.)" :label "fnil only first 3" :cause :pending/compiler}
+  {:suite "clojure.core / leaf batch (complement fnil munge etc.)" :label "fnil only first 3" :cause :pending/missing-core-var}
   {:suite "clojure.core / leaf batch (complement fnil munge etc.)" :label "munge dashes" :cause :pending/missing-core-var}
   {:suite "clojure.core / leaf batch (complement fnil munge etc.)" :label "munge symbol" :cause :pending/missing-core-var}
   {:suite "clojure.core / leaf batch (complement fnil munge etc.)" :label "numerator throws" :cause :pending/missing-core-var}
@@ -133,9 +131,9 @@
   {:suite "clojure.core / leaf batch 2" :label "memoize" :cause :pending/ref-types}
   {:suite "clojure.core / leaf batch 2" :label "memoize caches nil" :cause :pending/ref-types}
   {:suite "clojure.core / leaf batch 3" :label "empty sorted keeps cmp" :cause :pending/sorted-colls}
-  {:suite "clojure.core / leaf batch 3" :label "interpose xform" :cause :pending/compiler}
-  {:suite "clojure.core / leaf batch 3" :label "take-nth into" :cause :pending/compiler}
-  {:suite "clojure.core / leaf batch 3" :label "take-nth xform" :cause :pending/compiler}
+  {:suite "clojure.core / leaf batch 3" :label "interpose xform" :cause :pending/missing-core-var}
+  {:suite "clojure.core / leaf batch 3" :label "take-nth into" :cause :pending/missing-core-var}
+  {:suite "clojure.core / leaf batch 3" :label "take-nth xform" :cause :pending/missing-core-var}
   {:suite "clojure.core / leaf batch 4" :label "char-escape newline" :cause :pending/strings-io}
   {:suite "clojure.core / leaf batch 4" :label "char-escape none" :cause :pending/strings-io}
   {:suite "clojure.core / leaf batch 4" :label "char-escape quote" :cause :pending/strings-io}
@@ -155,19 +153,19 @@
   {:suite "clojure.core / pmap family" :label "pvalues" :cause :pending/missing-core-var}
   {:suite "clojure.core / pmap family" :label "snapshot semantics" :cause :pending/ref-types}
   {:suite "clojure.core / select-keys" :label "select-keys preserves metadata" :cause :pending/metadata}
-  {:suite "clojure.edn / closed dispatch table" :label "#< is unreadable in both readers" :cause :pending/jvm-exception-classes}
+  {:suite "clojure.edn / closed dispatch table" :label "#< is unreadable in both readers" :cause :exceptions/erlang-classes}
   {:suite "clojure.edn / closed dispatch table" :label "a leading quote is part of the symbol, not a quote form" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.edn / closed dispatch table" :label "the dispatch characters edn does not have" :cause :pending/jvm-exception-classes}
+  {:suite "clojure.edn / closed dispatch table" :label "the dispatch characters edn does not have" :cause :exceptions/erlang-classes}
   {:suite "clojure.edn / closed dispatch table" :label "the ones it does have still read" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.edn / non-constituent @ ` ~" :label "@ where a form should start is a leading-character error, not a deref form" :cause :pending/jvm-exception-classes}
-  {:suite "clojure.edn / non-constituent @ ` ~" :label "` and ~ are non-constituent on the same terms" :cause :pending/jvm-exception-classes}
-  {:suite "clojure.edn / non-constituent @ ` ~" :label "a character literal's name is a token too" :cause :pending/jvm-exception-classes}
-  {:suite "clojure.edn / non-constituent @ ` ~" :label "a keyword's token is judged the same way" :cause :pending/jvm-exception-classes}
-  {:suite "clojure.edn / non-constituent @ ` ~" :label "a token that starts like a number takes the @ in and fails as a number" :cause :pending/jvm-exception-classes}
-  {:suite "clojure.edn / non-constituent @ ` ~" :label "a trailing @ after a token throws instead of truncating the read" :cause :pending/jvm-exception-classes}
+  {:suite "clojure.edn / non-constituent @ ` ~" :label "@ where a form should start is a leading-character error, not a deref form" :cause :exceptions/erlang-classes}
+  {:suite "clojure.edn / non-constituent @ ` ~" :label "` and ~ are non-constituent on the same terms" :cause :exceptions/erlang-classes}
+  {:suite "clojure.edn / non-constituent @ ` ~" :label "a character literal's name is a token too" :cause :exceptions/erlang-classes}
+  {:suite "clojure.edn / non-constituent @ ` ~" :label "a keyword's token is judged the same way" :cause :exceptions/erlang-classes}
+  {:suite "clojure.edn / non-constituent @ ` ~" :label "a token that starts like a number takes the @ in and fails as a number" :cause :exceptions/erlang-classes}
+  {:suite "clojure.edn / non-constituent @ ` ~" :label "a trailing @ after a token throws instead of truncating the read" :cause :exceptions/erlang-classes}
   {:suite "clojure.edn / non-constituent @ ` ~" :label "an @ after a DELIMITED form is ordinary trailing junk, and still ignored" :cause :pending/stdlib-namespaces}
-  {:suite "clojure.edn / non-constituent @ ` ~" :label "an @ mid-token throws, rather than dropping everything from it on" :cause :pending/jvm-exception-classes}
-  {:suite "clojure.edn / non-constituent @ ` ~" :label "and so is a token inside a collection" :cause :pending/jvm-exception-classes}
+  {:suite "clojure.edn / non-constituent @ ` ~" :label "an @ mid-token throws, rather than dropping everything from it on" :cause :exceptions/erlang-classes}
+  {:suite "clojure.edn / non-constituent @ ` ~" :label "and so is a token inside a collection" :cause :exceptions/erlang-classes}
   {:suite "clojure.edn / non-constituent @ ` ~" :label "the source reader is untouched — there @ ends the token and derefs" :cause :pending/triage}
   {:suite "clojure.edn / opts" :label ":default fn" :cause :pending/stdlib-namespaces}
   {:suite "clojure.edn / opts" :label ":eof on empty" :cause :pending/stdlib-namespaces}
@@ -278,7 +276,7 @@
   {:suite "clojure.walk / records keep their type" :label "postwalk preserves record type" :cause :pending/stdlib-namespaces}
   {:suite "clojure.walk / records keep their type" :label "postwalk still walks record fields" :cause :pending/stdlib-namespaces}
   {:suite "clojure.walk / records keep their type" :label "prewalk preserves record type" :cause :pending/stdlib-namespaces}
-  {:suite "collections / conj a map onto a map" :label "a non-pair vector is rejected as an entry" :cause :pending/jvm-exception-classes}
+  {:suite "collections / conj a map onto a map" :label "a non-pair vector is rejected as an entry" :cause :exceptions/erlang-classes}
   {:suite "collections / conj a map onto a map" :label "a record's fields conj in, and the result is a plain map" :cause :pending/runtime-eval}
   {:suite "collections / conj a map onto a map" :label "a seq of map entries conjs in" :cause :pending/sorted-colls}
   {:suite "collections / conj a map onto a map" :label "a sorted map conjs in" :cause :pending/sorted-colls}
@@ -289,33 +287,33 @@
   {:suite "collections / first without a seq cell" :label "empty sorted map" :cause :pending/sorted-colls}
   {:suite "collections / first without a seq cell" :label "sorted map leftmost" :cause :pending/sorted-colls}
   {:suite "collections / first without a seq cell" :label "sorted set leftmost" :cause :pending/sorted-colls}
-  {:suite "collections / nth tail and trie" :label "nil index throws NPE" :cause :pending/jvm-exception-classes}
+  {:suite "collections / nth tail and trie" :label "nil index throws NPE" :cause :exceptions/erlang-classes}
   {:suite "collections / nth tail and trie" :label "nth on nil is nil" :cause :pending/triage}
-  {:suite "collections / nth tail and trie" :label "out of range throws" :cause :pending/jvm-exception-classes}
+  {:suite "collections / nth tail and trie" :label "out of range throws" :cause :exceptions/erlang-classes}
   {:suite "collections / vector-of" :label "a primitive vector behaves as a vector" :cause :pending/missing-core-var}
   {:suite "collections / vector-of" :label "a primitive vector grows past its tail and through the trie" :cause :pending/missing-core-var}
   {:suite "collections / vector-of" :label "a primitive vector prints, hashes and compares like a vector" :cause :pending/missing-core-var}
   {:suite "collections / vector-of" :label "elements are coerced to the element type" :cause :pending/missing-core-var}
-  {:suite "collections / vector-of" :label "transient-free edits: assoc past the end, pop to empty, subvec" :cause :pending/jvm-exception-classes}
+  {:suite "collections / vector-of" :label "transient-free edits: assoc past the end, pop to empty, subvec" :cause :exceptions/erlang-classes}
   {:suite "compare / identity" :label "NaN and the ordinary orderings are unchanged" :cause :pending/reader}
   {:suite "compile-eval / quoted require not scanned" :label "quoted require does not leak aliases" :cause :pending/runtime-eval}
   {:suite "compile-eval / require scope" :label "a require inside a fn body aliases nothing until it runs" :cause :pending/runtime-eval}
   {:suite "compile-eval / require scope" :label "a top-level do's require is in force for its next sibling" :cause :pending/stdlib-namespaces}
-  {:suite "compile-eval / require scope" :label "re-aliasing to another namespace raises, nothing pre-registered it" :cause :pending/jvm-exception-classes}
-  {:suite "concurrency / ExecutorService.invokeAll" :label "a failing task is done, and its get raises ExecutionException" :cause :pending/jvm-exception-classes}
+  {:suite "compile-eval / require scope" :label "re-aliasing to another namespace raises, nothing pre-registered it" :cause :exceptions/erlang-classes}
+  {:suite "concurrency / ExecutorService.invokeAll" :label "a failing task is done, and its get raises ExecutionException" :cause :exceptions/erlang-classes}
   {:suite "concurrency / ExecutorService.invokeAll" :label "invokeAll blocks until every task completes and returns their futures" :cause :pending/host-types}
   {:suite "concurrency / ExecutorService.invokeAll" :label "invokeAll of no tasks, and with a timeout" :cause :pending/host-types}
   {:suite "concurrency / ExecutorService.invokeAll" :label "invokeAny returns a successful result, skipping failures" :cause :pending/host-types}
-  {:suite "concurrency / ExecutorService.invokeAll" :label "invokeAny with every task failing, or none" :cause :pending/jvm-exception-classes}
+  {:suite "concurrency / ExecutorService.invokeAll" :label "invokeAny with every task failing, or none" :cause :exceptions/erlang-classes}
   {:suite "concurrency-model / compare-and-set!" :label "identity mismatch on equal values fails" :cause :pending/ref-types}
   {:suite "concurrency-model / compare-and-set!" :label "immediate fixnums have no distinct boxes" :cause :pending/ref-types}
   {:suite "conformance / #inst + syntax-quote literal collapse (spec 2.4/2.3)" :label "inst partial = full" :cause :pending/reader}
   {:suite "conformance / #inst + syntax-quote literal collapse (spec 2.4/2.3)" :label "sq number collapse" :cause :pending/compiler}
   {:suite "conformance / 1.11 additions + ns fns (spec 35-var batch A)" :label "ns-publics lookup" :cause :pending/runtime-eval}
-  {:suite "conformance / 1.11 additions + ns fns (spec 35-var batch A)" :label "partition pad" :cause :pending/compiler}
+  {:suite "conformance / 1.11 additions + ns fns (spec 35-var batch A)" :label "partition pad" :cause :pending/missing-core-var}
   {:suite "conformance / 1.11 additions + ns fns (spec 35-var batch A)" :label "require bare symbol" :cause :pending/stdlib-namespaces}
   {:suite "conformance / 1.11 additions + ns fns (spec 35-var batch A)" :label "with-redefs" :cause :pending/ref-types}
-  {:suite "conformance / CRITICAL: multi-collection map" :label "map three colls" :cause :pending/compiler}
+  {:suite "conformance / CRITICAL: multi-collection map" :label "map three colls" :cause :pending/missing-core-var}
   {:suite "conformance / HIGH: aliased namespace calls" :label "ns :use refers" :cause :pending/runtime-eval}
   {:suite "conformance / HIGH: aliased namespace calls" :label "ns form + alias" :cause :pending/runtime-eval}
   {:suite "conformance / HIGH: aliased namespace calls" :label "require :as alias" :cause :pending/stdlib-namespaces}
@@ -335,7 +333,7 @@
   {:suite "conformance / characters" :label "char of int" :cause :pending/strings-io}
   {:suite "conformance / characters" :label "char space" :cause :pending/missing-core-var}
   {:suite "conformance / characters" :label "int of char" :cause :pending/missing-core-var}
-  {:suite "conformance / characters" :label "nth of string" :cause :pending/triage}
+  {:suite "conformance / characters" :label "nth of string" :cause :char/integer}
   {:suite "conformance / characters" :label "pr-str char" :cause :char/integer}
   {:suite "conformance / characters" :label "str of chars" :cause :pending/triage}
   {:suite "conformance / core misc" :label "bases of Long includes Number" :cause :pending/strings-io}
@@ -422,18 +420,18 @@
   {:suite "conformance / numbers / bits" :label "Float/floatToIntBits range-checks like (float x)" :cause :pending/reader}
   {:suite "conformance / numbers / bits" :label "Float/floatToIntBits rounds to single precision first" :cause :pending/reader}
   {:suite "conformance / numbers / bits" :label "Float/intBitsToFloat has the float's value" :cause :pending/missing-core-var}
-  {:suite "conformance / r3" :label "+ nil operand is NPE" :cause :pending/jvm-exception-classes}
-  {:suite "conformance / r3" :label "+ string operand is CCE" :cause :pending/jvm-exception-classes}
-  {:suite "conformance / r3" :label "< nil operand is NPE" :cause :pending/jvm-exception-classes}
-  {:suite "conformance / r3" :label "< string operand is CCE" :cause :pending/jvm-exception-classes}
-  {:suite "conformance / r3" :label "arity error is ArityException" :cause :pending/jvm-exception-classes}
-  {:suite "conformance / r3" :label "assoc on non-associative is CCE" :cause :pending/jvm-exception-classes}
-  {:suite "conformance / r3" :label "conj on non-coll is CCE" :cause :pending/jvm-exception-classes}
-  {:suite "conformance / r3" :label "disj on non-set is CCE" :cause :pending/jvm-exception-classes}
-  {:suite "conformance / r3" :label "dissoc on non-map is CCE" :cause :pending/jvm-exception-classes}
-  {:suite "conformance / r3" :label "inc nil is NPE" :cause :pending/jvm-exception-classes}
-  {:suite "conformance / r3" :label "pop empty list is IllegalStateException" :cause :pending/jvm-exception-classes}
-  {:suite "conformance / r3" :label "pop empty vector is IllegalStateException" :cause :pending/jvm-exception-classes}
+  {:suite "conformance / r3" :label "+ nil operand is NPE" :cause :exceptions/erlang-classes}
+  {:suite "conformance / r3" :label "+ string operand is CCE" :cause :exceptions/erlang-classes}
+  {:suite "conformance / r3" :label "< nil operand is NPE" :cause :exceptions/erlang-classes}
+  {:suite "conformance / r3" :label "< string operand is CCE" :cause :exceptions/erlang-classes}
+  {:suite "conformance / r3" :label "arity error is ArityException" :cause :exceptions/erlang-classes}
+  {:suite "conformance / r3" :label "assoc on non-associative is CCE" :cause :exceptions/erlang-classes}
+  {:suite "conformance / r3" :label "conj on non-coll is CCE" :cause :exceptions/erlang-classes}
+  {:suite "conformance / r3" :label "disj on non-set is CCE" :cause :exceptions/erlang-classes}
+  {:suite "conformance / r3" :label "dissoc on non-map is CCE" :cause :exceptions/erlang-classes}
+  {:suite "conformance / r3" :label "inc nil is NPE" :cause :exceptions/erlang-classes}
+  {:suite "conformance / r3" :label "pop empty list is IllegalStateException" :cause :exceptions/erlang-classes}
+  {:suite "conformance / r3" :label "pop empty vector is IllegalStateException" :cause :exceptions/erlang-classes}
   {:suite "conformance / regex" :label "hex escapes match their characters" :cause :pending/strings-io}
   {:suite "conformance / regex" :label "re-find" :cause :pending/strings-io}
   {:suite "conformance / regex" :label "re-matches" :cause :pending/strings-io}
@@ -469,22 +467,22 @@
   {:suite "conformance / strings (clojure.string)" :label "str/trim" :cause :pending/stdlib-namespaces}
   {:suite "conformance / throwable-record" :label "= identity only (not equal)" :cause :pending/triage}
   {:suite "conformance / throwable-record" :label "associative? false" :cause :pending/missing-core-var}
-  {:suite "conformance / throwable-record" :label "count throws UnsupportedOperationException with correct message" :cause :pending/jvm-exception-classes}
+  {:suite "conformance / throwable-record" :label "count throws UnsupportedOperationException with correct message" :cause :exceptions/erlang-classes}
   {:suite "conformance / throwable-record" :label "counted? false" :cause :pending/missing-core-var}
   {:suite "conformance / throwable-record" :label "reader-conditional :form" :cause :pending/missing-core-var}
   {:suite "conformance / throwable-record" :label "reader-conditional :splicing?" :cause :pending/missing-core-var}
   {:suite "conformance / throwable-record" :label "reader-conditional = self" :cause :pending/missing-core-var}
   {:suite "conformance / throwable-record" :label "reader-conditional map? false" :cause :pending/missing-core-var}
   {:suite "conformance / throwable-record" :label "reader-conditional pr-str" :cause :pending/missing-core-var}
-  {:suite "conformance / throwable-record" :label "seq throws IAE" :cause :pending/jvm-exception-classes}
+  {:suite "conformance / throwable-record" :label "seq throws IAE" :cause :exceptions/erlang-classes}
   {:suite "conformance / throwable-record" :label "str renders ClassName: message data" :cause :pending/triage}
-  {:suite "conformance / transducers" :label "into take xform" :cause :pending/compiler}
-  {:suite "conformance / transducers" :label "partition-all xform" :cause :pending/compiler}
-  {:suite "conformance / transducers" :label "partition-all xform comp" :cause :pending/compiler}
-  {:suite "conformance / transducers" :label "partition-by xform" :cause :pending/compiler}
-  {:suite "conformance / transducers" :label "partition-by xform reduced" :cause :pending/compiler}
-  {:suite "conformance / transducers" :label "transduce drop" :cause :pending/compiler}
-  {:suite "conformance / transducers" :label "transduce map-indexed" :cause :pending/compiler}
+  {:suite "conformance / transducers" :label "into take xform" :cause :pending/missing-core-var}
+  {:suite "conformance / transducers" :label "partition-all xform" :cause :pending/missing-core-var}
+  {:suite "conformance / transducers" :label "partition-all xform comp" :cause :pending/missing-core-var}
+  {:suite "conformance / transducers" :label "partition-by xform" :cause :pending/missing-core-var}
+  {:suite "conformance / transducers" :label "partition-by xform reduced" :cause :pending/missing-core-var}
+  {:suite "conformance / transducers" :label "transduce drop" :cause :pending/missing-core-var}
+  {:suite "conformance / transducers" :label "transduce map-indexed" :cause :pending/missing-core-var}
   {:suite "conformance / uuid" :label "uuid as map key" :cause :pending/strings-io}
   {:suite "conformance / var fns as ordinary invokes (Stage 2 tier 6)" :label "alter-meta! + meta" :cause :pending/special-forms}
   {:suite "conformance / var fns as ordinary invokes (Stage 2 tier 6)" :label "alter-var-root rest args" :cause :pending/special-forms}
@@ -495,19 +493,19 @@
   {:suite "conformance / volatiles / delays" :label "delay deref once" :cause :pending/ref-types}
   {:suite "conformance / volatiles / delays" :label "volatile" :cause :pending/ref-types}
   {:suite "conformance / volatiles / delays" :label "vswap!" :cause :pending/ref-types}
-  {:suite "contracts / collection fns" :label "keys/vals of empties are nil; contains? on a string is index-only" :cause :pending/jvm-exception-classes}
-  {:suite "contracts / collection fns" :label "transient demands an editable collection; empty on a record throws" :cause :pending/jvm-exception-classes}
-  {:suite "contracts / misc" :label "nth of nil honors notFound; a nil index throws; the starred specials are special" :cause :pending/jvm-exception-classes}
+  {:suite "contracts / collection fns" :label "keys/vals of empties are nil; contains? on a string is index-only" :cause :exceptions/erlang-classes}
+  {:suite "contracts / collection fns" :label "transient demands an editable collection; empty on a record throws" :cause :exceptions/erlang-classes}
+  {:suite "contracts / misc" :label "nth of nil honors notFound; a nil index throws; the starred specials are special" :cause :exceptions/erlang-classes}
   {:suite "contracts / misc" :label "rand-nth of nil is nil; of a set throws" :cause :pending/triage}
-  {:suite "contracts / misc" :label "vector invocation has nth semantics; run! honors reduced; eval self-evaluates values" :cause :pending/jvm-exception-classes}
+  {:suite "contracts / misc" :label "vector invocation has nth semantics; run! honors reduced; eval self-evaluates values" :cause :exceptions/erlang-classes}
   {:suite "contracts / numbers" :label "number?/rational?/num accept BigDecimal; NaN quotient throws" :cause :pending/numbers}
-  {:suite "contracts / numbers" :label "numerator/denominator over real ratios; even?/odd? demand integers" :cause :pending/jvm-exception-classes}
+  {:suite "contracts / numbers" :label "numerator/denominator over real ratios; even?/odd? demand integers" :cause :exceptions/erlang-classes}
   {:suite "contracts / ordering" :label "keywords order namespace-first with nil first, like symbols" :cause :pending/triage}
-  {:suite "contracts / stacks and pending" :label "peek/pop demand a stack; realized? demands IPending; pop nil is nil" :cause :pending/jvm-exception-classes}
+  {:suite "contracts / stacks and pending" :label "peek/pop demand a stack; realized? demands IPending; pop nil is nil" :cause :exceptions/erlang-classes}
   {:suite "control / conditional-binding scope" :label "if-let evals test once" :cause :pending/ref-types}
   {:suite "control / conditionals" :label "a large case evaluates its expression once and an arm may recur" :cause :pending/ref-types}
   {:suite "control / conditionals" :label "a large case over integers past the long range" :cause :pending/compiler}
-  {:suite "control / conditionals" :label "a large case with no default throws with the value" :cause :pending/jvm-exception-classes}
+  {:suite "control / conditionals" :label "a large case with no default throws with the value" :cause :exceptions/erlang-classes}
   {:suite "control / conditionals" :label "a large integer case matches by = semantics, not by numeric value" :cause :pending/numbers}
   {:suite "control / conditionals" :label "a large mixed case keeps each constant's own equality" :cause :pending/metadata}
   {:suite "control / iteration" :label "doseq :let" :cause :pending/ref-types}
@@ -522,7 +520,7 @@
   {:suite "control / threading" :label "doto returns subject" :cause :pending/missing-core-var}
   {:suite "core / Inst protocol" :label "Inst is a protocol whose one method is inst-ms*" :cause :pending/reader}
   {:suite "core / Inst protocol" :label "a type that extends Inst is an inst" :cause :pending/missing-core-var}
-  {:suite "core / Inst protocol" :label "inst-ms on a non-inst is the protocol's miss" :cause :pending/jvm-exception-classes}
+  {:suite "core / Inst protocol" :label "inst-ms on a non-inst is the protocol's miss" :cause :exceptions/erlang-classes}
   {:suite "core / Inst protocol" :label "inst-ms* is a protocol method var" :cause :pending/compiler}
   {:suite "core / Inst protocol" :label "inst? on a sorted collection is a plain false (the old tag probe crashed in the comparator)" :cause :pending/missing-core-var}
   {:suite "core / Inst protocol" :label "satisfies? and inst? agree on non-insts, nil included" :cause :pending/missing-core-var}
@@ -557,15 +555,15 @@
   {:suite "core / read+string" :label "form and text" :cause :pending/strings-io}
   {:suite "core / read+string" :label "form value" :cause :pending/strings-io}
   {:suite "core / read+string" :label "text covers the form" :cause :pending/strings-io}
-  {:suite "core / reify" :label "multi-arity method dispatches by arg count" :cause :pending/missing-core-var}
-  {:suite "core / reify" :label "with-meta leaves the original untouched and keeps dispatch" :cause :pending/missing-core-var}
+  {:suite "core / reify" :label "multi-arity method dispatches by arg count" :cause :protocols/type-designators}
+  {:suite "core / reify" :label "with-meta leaves the original untouched and keeps dispatch" :cause :protocols/type-designators}
   {:suite "core / with-local-vars" :label "a local var is thread-bound inside the form" :cause :pending/missing-core-var}
   {:suite "core / with-local-vars" :label "a local var takes a thread binding" :cause :pending/missing-core-var}
   {:suite "core / with-local-vars" :label "and unbound once the form is left" :cause :pending/missing-core-var}
   {:suite "core / with-local-vars" :label "body result" :cause :pending/missing-core-var}
   {:suite "core / with-local-vars" :label "init sees outer" :cause :pending/missing-core-var}
   {:suite "core / with-local-vars" :label "sibling locals are independent" :cause :pending/missing-core-var}
-  {:suite "core / with-local-vars" :label "so var-set on a carried-out local var throws" :cause :pending/jvm-exception-classes}
+  {:suite "core / with-local-vars" :label "so var-set on a carried-out local var throws" :cause :exceptions/erlang-classes}
   {:suite "core / with-local-vars" :label "two vars" :cause :pending/missing-core-var}
   {:suite "core / with-local-vars" :label "var-get initial" :cause :pending/missing-core-var}
   {:suite "core / with-local-vars" :label "var-set" :cause :pending/missing-core-var}
@@ -657,51 +655,51 @@
   {:suite "edn / readers in collections" :label "a :default tag reader applies inside a set" :cause :pending/stdlib-namespaces}
   {:suite "edn / readers in collections" :label "a registered reader applies inside a set" :cause :pending/stdlib-namespaces}
   {:suite "edn / strictness" :label "M literals construct; lists are lists; discarded tags validate" :cause :pending/stdlib-namespaces}
-  {:suite "edn / strictness" :label "duplicate literal keys and elements throw" :cause :pending/jvm-exception-classes}
+  {:suite "edn / strictness" :label "duplicate literal keys and elements throw" :cause :exceptions/erlang-classes}
   {:suite "edn / strictness" :label "eof honors :eof; a missing :eof is an error; \\r ends comments" :cause :pending/stdlib-namespaces}
-  {:suite "edn / strictness" :label "invalid numbers and ratio edges throw" :cause :pending/jvm-exception-classes}
+  {:suite "edn / strictness" :label "invalid numbers and ratio edges throw" :cause :exceptions/erlang-classes}
   {:suite "edn / strictness" :label "invalid tokens throw; :/ and ns// are valid" :cause :pending/stdlib-namespaces}
   {:suite "equality / base scalars of different kinds" :label "char vs its code point" :cause :pending/triage}
-  {:suite "equality / case by identity" :label "no match without a default throws" :cause :pending/jvm-exception-classes}
+  {:suite "equality / case by identity" :label "no match without a default throws" :cause :exceptions/erlang-classes}
   {:suite "equality / identity" :label "= short-circuits on identity without realizing a lazy seq (Util.equiv k1 == k2)" :cause :pending/ref-types}
-  {:suite "errors / host operations carry a JVM class" :label "a Math static rejects a non-number" :cause :pending/jvm-exception-classes}
-  {:suite "errors / host operations carry a JVM class" :label "a System static rejects a non-string" :cause :pending/jvm-exception-classes}
-  {:suite "errors / host operations carry a JVM class" :label "a ^double hint rejects a non-number" :cause :pending/jvm-exception-classes}
-  {:suite "errors / host operations carry a JVM class" :label "a ^double hint rejects nil" :cause :pending/jvm-exception-classes}
-  {:suite "errors / host operations carry a JVM class" :label "a ^long hint rejects a non-number" :cause :pending/jvm-exception-classes}
-  {:suite "errors / host operations carry a JVM class" :label "a bit op rejects a non-integer in call position" :cause :pending/jvm-exception-classes}
-  {:suite "errors / host operations carry a JVM class" :label "a format conversion error is an IllegalArgumentException" :cause :pending/jvm-exception-classes}
-  {:suite "errors / host operations carry a JVM class" :label "a method call on nil is a NullPointerException" :cause :pending/jvm-exception-classes}
-  {:suite "errors / host operations carry a JVM class" :label "an unknown conversion is a RuntimeException" :cause :pending/jvm-exception-classes}
+  {:suite "errors / host operations carry a JVM class" :label "a Math static rejects a non-number" :cause :exceptions/erlang-classes}
+  {:suite "errors / host operations carry a JVM class" :label "a System static rejects a non-string" :cause :exceptions/erlang-classes}
+  {:suite "errors / host operations carry a JVM class" :label "a ^double hint rejects a non-number" :cause :exceptions/erlang-classes}
+  {:suite "errors / host operations carry a JVM class" :label "a ^double hint rejects nil" :cause :exceptions/erlang-classes}
+  {:suite "errors / host operations carry a JVM class" :label "a ^long hint rejects a non-number" :cause :exceptions/erlang-classes}
+  {:suite "errors / host operations carry a JVM class" :label "a bit op rejects a non-integer in call position" :cause :exceptions/erlang-classes}
+  {:suite "errors / host operations carry a JVM class" :label "a format conversion error is an IllegalArgumentException" :cause :exceptions/erlang-classes}
+  {:suite "errors / host operations carry a JVM class" :label "a method call on nil is a NullPointerException" :cause :exceptions/erlang-classes}
+  {:suite "errors / host operations carry a JVM class" :label "an unknown conversion is a RuntimeException" :cause :exceptions/erlang-classes}
   {:suite "errors / host operations carry a JVM class" :label "every conversion renders nil as null" :cause :pending/triage}
   {:suite "errors / host operations carry a JVM class" :label "format rejects a non-number with the JVM class and message" :cause :pending/host-types}
-  {:suite "errors / host operations carry a JVM class" :label "format rejects a non-string format" :cause :pending/jvm-exception-classes}
-  {:suite "errors / host operations carry a JVM class" :label "inc rejects a non-number" :cause :pending/jvm-exception-classes}
-  {:suite "errors / host operations carry a JVM class" :label "keyword rejects a non-string name" :cause :pending/jvm-exception-classes}
-  {:suite "errors / host operations carry a JVM class" :label "range rejects a non-number bound" :cause :pending/jvm-exception-classes}
+  {:suite "errors / host operations carry a JVM class" :label "format rejects a non-string format" :cause :exceptions/erlang-classes}
+  {:suite "errors / host operations carry a JVM class" :label "inc rejects a non-number" :cause :exceptions/erlang-classes}
+  {:suite "errors / host operations carry a JVM class" :label "keyword rejects a non-string name" :cause :exceptions/erlang-classes}
+  {:suite "errors / host operations carry a JVM class" :label "range rejects a non-number bound" :cause :exceptions/erlang-classes}
   {:suite "errors / host operations carry a JVM class" :label "re-seq rejects a non-string" :cause :pending/strings-io}
   {:suite "errors / host operations carry a JVM class" :label "split rejects a non-string" :cause :pending/strings-io}
-  {:suite "errors / host operations carry a JVM class" :label "subs rejects a non-string" :cause :pending/jvm-exception-classes}
-  {:suite "errors / host operations carry a JVM class" :label "swap! rejects a non-atom" :cause :pending/jvm-exception-classes}
+  {:suite "errors / host operations carry a JVM class" :label "subs rejects a non-string" :cause :exceptions/erlang-classes}
+  {:suite "errors / host operations carry a JVM class" :label "swap! rejects a non-atom" :cause :exceptions/erlang-classes}
   {:suite "eval & load-string as values" :label "eval of a read-string #inst value" :cause :pending/host-types}
   {:suite "eval & load-string as values" :label "load-string applies #inst literal" :cause :pending/compiler}
   {:suite "exceptions / ex-info" :label "nil data is indistinguishable from {}" :cause :pending/triage}
   {:suite "exceptions / ex-info" :label "nil data reads back as {}" :cause :pending/triage}
-  {:suite "exceptions / ex-info" :label "nil data survives a catch as {}" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / host faults are throwables" :label "a bad string index is a StringIndexOutOfBoundsException" :cause :pending/jvm-exception-classes}
+  {:suite "exceptions / ex-info" :label "nil data survives a catch as {}" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / host faults are throwables" :label "a bad string index is a StringIndexOutOfBoundsException" :cause :exceptions/erlang-classes}
   {:suite "exceptions / host faults are throwables" :label "a caught host fault is a typed throwable" :cause :pending/host-types}
   {:suite "exceptions / host faults are throwables" :label "a caught host fault prints as an #error map naming its class" :cause :pending/strings-io}
-  {:suite "exceptions / host faults are throwables" :label "a host fault inside a future is the ExecutionException's typed cause" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / host faults are throwables" :label "a host fault passes a catch of an unrelated class" :cause :pending/jvm-exception-classes}
+  {:suite "exceptions / host faults are throwables" :label "a host fault inside a future is the ExecutionException's typed cause" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / host faults are throwables" :label "a host fault passes a catch of an unrelated class" :cause :exceptions/erlang-classes}
   {:suite "exceptions / host faults are throwables" :label "a rethrown host fault is the same object" :cause :pending/host-types}
-  {:suite "exceptions / host faults are throwables" :label "a rethrown host fault keeps its class" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / host faults are throwables" :label "a wrong-typed argument to a host method is a ClassCastException" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / host faults are throwables" :label "catch clauses dispatch a host fault by its class" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / host faults are throwables" :label "clojure.string on nil is a NullPointerException" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / host faults are throwables" :label "clojure.string/blank? on a non-string is a ClassCastException" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / host faults are throwables" :label "name and namespace of nil are NullPointerExceptions" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / host faults are throwables" :label "resolve of nil is a NullPointerException" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / host faults are throwables" :label "spit to nil is an IllegalArgumentException" :cause :pending/jvm-exception-classes}
+  {:suite "exceptions / host faults are throwables" :label "a rethrown host fault keeps its class" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / host faults are throwables" :label "a wrong-typed argument to a host method is a ClassCastException" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / host faults are throwables" :label "catch clauses dispatch a host fault by its class" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / host faults are throwables" :label "clojure.string on nil is a NullPointerException" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / host faults are throwables" :label "clojure.string/blank? on a non-string is a ClassCastException" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / host faults are throwables" :label "name and namespace of nil are NullPointerExceptions" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / host faults are throwables" :label "resolve of nil is a NullPointerException" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / host faults are throwables" :label "spit to nil is an IllegalArgumentException" :cause :exceptions/erlang-classes}
   {:suite "exceptions / host faults are throwables" :label "the Throwable surface of a caught host fault" :cause :pending/strings-io}
   {:suite "exceptions / recur across try" :label "locking is still reentrant" :cause :pending/host-types}
   {:suite "exceptions / recur across try" :label "locking still returns its body" :cause :pending/host-types}
@@ -712,16 +710,16 @@
   {:suite "exceptions / runtime error classes" :label "non-seqable is IllegalArgumentException" :cause :pending/missing-core-var}
   {:suite "exceptions / try-catch" :label "finally runs on ok" :cause :pending/ref-types}
   {:suite "exceptions / try-catch" :label "finally runs on throw" :cause :pending/ref-types}
-  {:suite "exceptions / wrong-class throws" :label "ArrayList get out of range" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / wrong-class throws" :label "conj of a non-pair vector onto a map" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / wrong-class throws" :label "deref and var-get of nil are NullPointerExceptions" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / wrong-class throws" :label "key, val and rseq of a non-entry are ClassCastExceptions" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / wrong-class throws" :label "sorted-map with a dangling key" :cause :pending/jvm-exception-classes}
-  {:suite "exceptions / wrong-class throws" :label "unary + and * pass nil through and cast anything else" :cause :pending/jvm-exception-classes}
+  {:suite "exceptions / wrong-class throws" :label "ArrayList get out of range" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / wrong-class throws" :label "conj of a non-pair vector onto a map" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / wrong-class throws" :label "deref and var-get of nil are NullPointerExceptions" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / wrong-class throws" :label "key, val and rseq of a non-entry are ClassCastExceptions" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / wrong-class throws" :label "sorted-map with a dangling key" :cause :exceptions/erlang-classes}
+  {:suite "exceptions / wrong-class throws" :label "unary + and * pass nil through and cast anything else" :cause :exceptions/erlang-classes}
   {:suite "fn / kwargs trailing map" :label "(f :k v {map}) and (f {map}) both bind & {:as m}" :cause :pending/triage}
   {:suite "fn / pre-post" :label ":pre + :post pass" :cause :pending/reader}
   {:suite "fn / pre-post" :label ":pre failure throws" :cause :pending/triage}
-  {:suite "fn / pre-post" :label ":pre failure throws AssertionError" :cause :pending/jvm-exception-classes}
+  {:suite "fn / pre-post" :label ":pre failure throws AssertionError" :cause :exceptions/erlang-classes}
   {:suite "fn identity / capturing fn" :label "captures are distinct whether or not the captured values match" :cause :fn/structural-identity}
   {:suite "fn identity / non-capturing fn" :label "and two distinct map keys" :cause :fn/structural-identity}
   {:suite "fn identity / non-capturing fn" :label "distinct keeps all three" :cause :fn/structural-identity}
@@ -800,7 +798,7 @@
   {:suite "format / precision on the general conversions" :label "precision on %c is refused" :cause :pending/host-types}
   {:suite "format / precision on the general conversions" :label "precision on %d is refused" :cause :pending/host-types}
   {:suite "format / precision on the general conversions" :label "precision on %x is refused" :cause :pending/host-types}
-  {:suite "format / precision on the general conversions" :label "which is an IllegalFormatException" :cause :pending/jvm-exception-classes}
+  {:suite "format / precision on the general conversions" :label "which is an IllegalFormatException" :cause :exceptions/erlang-classes}
   {:suite "format / rounding and flags" :label "% d" :cause :pending/triage}
   {:suite "format / rounding and flags" :label "%(e parenthesizes a negative" :cause :pending/triage}
   {:suite "format / rounding and flags" :label "%+d" :cause :pending/triage}
@@ -875,7 +873,7 @@
   {:suite "forms / loop" :label "init sees prior" :cause :pending/compiler}
   {:suite "forms / try" :label "finally runs" :cause :pending/ref-types}
   {:suite "functions / combinators" :label "memoize" :cause :pending/ref-types}
-  {:suite "hierarchy / derive asserts" :label "tag and parent must be namespaced Named (or a class)" :cause :pending/jvm-exception-classes}
+  {:suite "hierarchy / derive asserts" :label "tag and parent must be namespaced Named (or a class)" :cause :exceptions/erlang-classes}
   {:suite "hierarchy / derive throws" :label "redundant ancestor and cyclic derivation throw" :cause :pending/multimethods}
   {:suite "hierarchy / global + multimethod dispatch" :label "dispatch custom hierarchy" :cause :pending/ref-types}
   {:suite "hierarchy / global + multimethod dispatch" :label "dispatch exact beats isa" :cause :pending/multimethods}
@@ -907,7 +905,7 @@
   {:suite "host-interop / Var surface" :label "Thread.start conveys no bindings" :cause :pending/ref-types}
   {:suite "host-interop / Var surface" :label "Var.set from a non-binding thread is refused" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "Var/find" :cause :pending/special-forms}
-  {:suite "host-interop / Var surface" :label "Var/find on a missing namespace / an unqualified symbol" :cause :pending/jvm-exception-classes}
+  {:suite "host-interop / Var surface" :label "Var/find on a missing namespace / an unqualified symbol" :cause :exceptions/erlang-classes}
   {:suite "host-interop / Var surface" :label "Var/intern by symbols, and by Namespace with a root" :cause :pending/host-types}
   {:suite "host-interop / Var surface" :label "Var/intern creates the namespace, unlike clojure.core/intern" :cause :pending/runtime-eval}
   {:suite "host-interop / Var surface" :label "a Thread body's set! has no binding to write" :cause :pending/special-forms}
@@ -934,7 +932,7 @@
   {:suite "host-interop / Var surface" :label "name is not a member of Var" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "ns / sym read as fields and as no-arg members" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "one box per binding frame, inner frames get their own" :cause :pending/special-forms}
-  {:suite "host-interop / Var surface" :label "only the Namespace overload of Var/intern takes a root" :cause :pending/jvm-exception-classes}
+  {:suite "host-interop / Var surface" :label "only the Namespace overload of Var/intern takes a root" :cause :exceptions/erlang-classes}
   {:suite "host-interop / Var surface" :label "pmap conveys the binding" :cause :pending/ref-types}
   {:suite "host-interop / Var surface" :label "set with no thread binding refuses the root" :cause :pending/special-forms}
   {:suite "host-interop / Var surface" :label "set writes the thread binding" :cause :pending/special-forms}
@@ -954,8 +952,8 @@
   {:suite "host-interop / class tokens & readers" :label "dispatch-only class name" :cause :pending/missing-core-var}
   {:suite "host-interop / class tokens & readers" :label "replace fn gets group vector" :cause :pending/strings-io}
   {:suite "host-interop / class tokens & readers" :label "replace with fn replacement is literal" :cause :pending/strings-io}
-  {:suite "host-interop / exception + HashMap shims" :label "calling a non-fn throws ClassCastException" :cause :pending/jvm-exception-classes}
-  {:suite "host-interop / exception + HashMap shims" :label "non-fn cast is a RuntimeException too" :cause :pending/jvm-exception-classes}
+  {:suite "host-interop / exception + HashMap shims" :label "calling a non-fn throws ClassCastException" :cause :exceptions/erlang-classes}
+  {:suite "host-interop / exception + HashMap shims" :label "non-fn cast is a RuntimeException too" :cause :exceptions/erlang-classes}
   {:suite "host-interop / instance? Object" :label "every non-nil value is an Object" :cause :pending/missing-core-var}
   {:suite "host-interop / instance? Object" :label "nil is not an instance of Object" :cause :pending/missing-core-var}
   {:suite "host-interop / instance? hierarchy" :label "ExceptionInfo is a RuntimeException" :cause :pending/missing-core-var}
@@ -1049,36 +1047,36 @@
   {:suite "interop / java.lang integer parsing" :label "BigInteger takes the same grammar" :cause :pending/host-types}
   {:suite "interop / java.lang integer parsing" :label "Long/decode max long" :cause :pending/triage}
   {:suite "interop / java.lang integer parsing" :label "Short/decode max short" :cause :pending/triage}
-  {:suite "interop / java.lang integer parsing" :label "a non-ten radix is named in the message" :cause :pending/jvm-exception-classes}
+  {:suite "interop / java.lang integer parsing" :label "a non-ten radix is named in the message" :cause :exceptions/erlang-classes}
   {:suite "interop / java.lang integer parsing" :label "bigint is not width-checked" :cause :pending/missing-core-var}
-  {:suite "interop / java.lang integer parsing" :label "byte range message names the value" :cause :pending/jvm-exception-classes}
+  {:suite "interop / java.lang integer parsing" :label "byte range message names the value" :cause :exceptions/erlang-classes}
   {:suite "interop / java.lang integer parsing" :label "decode decimal" :cause :pending/triage}
   {:suite "interop / java.lang integer parsing" :label "decode hex #" :cause :pending/triage}
   {:suite "interop / java.lang integer parsing" :label "decode hex 0X" :cause :pending/triage}
   {:suite "interop / java.lang integer parsing" :label "decode hex 0x" :cause :pending/triage}
-  {:suite "interop / java.lang integer parsing" :label "decode names the post-prefix digits and radix" :cause :pending/jvm-exception-classes}
+  {:suite "interop / java.lang integer parsing" :label "decode names the post-prefix digits and radix" :cause :exceptions/erlang-classes}
   {:suite "interop / java.lang integer parsing" :label "decode octal" :cause :pending/triage}
-  {:suite "interop / java.lang integer parsing" :label "decode of the empty string says so" :cause :pending/jvm-exception-classes}
+  {:suite "interop / java.lang integer parsing" :label "decode of the empty string says so" :cause :exceptions/erlang-classes}
   {:suite "interop / java.lang integer parsing" :label "decode signs the prefixed value" :cause :pending/triage}
   {:suite "interop / java.lang integer parsing" :label "decode takes a leading plus" :cause :pending/triage}
   {:suite "interop / java.lang integer parsing" :label "decode zero" :cause :pending/triage}
-  {:suite "interop / java.lang integer parsing" :label "long range message is the input-string one" :cause :pending/jvm-exception-classes}
-  {:suite "interop / java.lang integer parsing" :label "narrow decode range message quotes the input" :cause :pending/jvm-exception-classes}
+  {:suite "interop / java.lang integer parsing" :label "long range message is the input-string one" :cause :exceptions/erlang-classes}
+  {:suite "interop / java.lang integer parsing" :label "narrow decode range message quotes the input" :cause :exceptions/erlang-classes}
   {:suite "interop / java.lang integer parsing" :label "parseByte min byte" :cause :pending/triage}
   {:suite "interop / java.lang integer parsing" :label "parseInt max int" :cause :pending/triage}
-  {:suite "interop / java.lang integer parsing" :label "parseInt rejects a #o radix prefix" :cause :pending/jvm-exception-classes}
+  {:suite "interop / java.lang integer parsing" :label "parseInt rejects a #o radix prefix" :cause :exceptions/erlang-classes}
   {:suite "interop / java.lang integer parsing" :label "parseLong max long" :cause :pending/triage}
   {:suite "interop / java.lang integer parsing" :label "parseLong radix 16" :cause :pending/triage}
   {:suite "interop / java.lang integer parsing" :label "parseLong radix 36 is case-blind" :cause :pending/triage}
-  {:suite "interop / java.lang integer parsing" :label "parseLong rejects a #x radix prefix" :cause :pending/jvm-exception-classes}
-  {:suite "interop / java.lang integer parsing" :label "parseLong rejects a decimal point" :cause :pending/jvm-exception-classes}
-  {:suite "interop / java.lang integer parsing" :label "parseLong rejects an exponent" :cause :pending/jvm-exception-classes}
-  {:suite "interop / java.lang integer parsing" :label "parseLong rejects leading space" :cause :pending/jvm-exception-classes}
-  {:suite "interop / java.lang integer parsing" :label "parseLong rejects trailing space" :cause :pending/jvm-exception-classes}
+  {:suite "interop / java.lang integer parsing" :label "parseLong rejects a #x radix prefix" :cause :exceptions/erlang-classes}
+  {:suite "interop / java.lang integer parsing" :label "parseLong rejects a decimal point" :cause :exceptions/erlang-classes}
+  {:suite "interop / java.lang integer parsing" :label "parseLong rejects an exponent" :cause :exceptions/erlang-classes}
+  {:suite "interop / java.lang integer parsing" :label "parseLong rejects leading space" :cause :exceptions/erlang-classes}
+  {:suite "interop / java.lang integer parsing" :label "parseLong rejects trailing space" :cause :exceptions/erlang-classes}
   {:suite "interop / java.lang integer parsing" :label "parseLong takes a leading plus" :cause :pending/triage}
   {:suite "interop / java.lang integer parsing" :label "parseShort max short" :cause :pending/triage}
-  {:suite "interop / java.lang integer parsing" :label "radix 1 is named as below MIN_RADIX" :cause :pending/jvm-exception-classes}
-  {:suite "interop / java.lang integer parsing" :label "short range message names the value" :cause :pending/jvm-exception-classes}
+  {:suite "interop / java.lang integer parsing" :label "radix 1 is named as below MIN_RADIX" :cause :exceptions/erlang-classes}
+  {:suite "interop / java.lang integer parsing" :label "short range message names the value" :cause :exceptions/erlang-classes}
   {:suite "interop / java.util.Random seeded LCG" :label "nextBoolean matches Java" :cause :pending/host-types}
   {:suite "interop / java.util.Random seeded LCG" :label "nextDouble matches Java" :cause :pending/host-types}
   {:suite "interop / java.util.Random seeded LCG" :label "nextInt bound matches Java" :cause :pending/host-types}
@@ -1162,15 +1160,15 @@
   {:suite "io / reader mark and reset" :label "a fresh mark after an invalidated one works again" :cause :pending/strings-io}
   {:suite "io / reader mark and reset" :label "a peek loop (mark, read, reset before every char) terminates at EOF" :cause :pending/strings-io}
   {:suite "io / reader mark and reset" :label "markSupported on the file reader" :cause :pending/strings-io}
-  {:suite "io / reader mark and reset" :label "reading past what a mark keeps drops the mark, and the reader keeps going" :cause :pending/jvm-exception-classes}
+  {:suite "io / reader mark and reset" :label "reading past what a mark keeps drops the mark, and the reader keeps going" :cause :exceptions/erlang-classes}
   {:suite "io / reader mark and reset" :label "reset replays what was read since the mark, twice over" :cause :pending/strings-io}
-  {:suite "io / reader mark and reset" :label "reset with no mark is the JVM's IOException" :cause :pending/jvm-exception-classes}
+  {:suite "io / reader mark and reset" :label "reset with no mark is the JVM's IOException" :cause :exceptions/erlang-classes}
   {:suite "io / reader mark and reset" :label "the LF owed to a CR-ended readLine is saved with the mark" :cause :pending/strings-io}
   {:suite "io / reader mark and reset" :label "the same over a StringReader" :cause :pending/missing-core-var}
-  {:suite "io / slurp open failures" :label "io/input-stream reports a missing path the way FileInputStream does" :cause :pending/jvm-exception-classes}
-  {:suite "io / slurp open failures" :label "slurp and io/reader fail a directory the same way" :cause :pending/jvm-exception-classes}
-  {:suite "io / slurp open failures" :label "slurp of a directory is a FileNotFoundException, not a read error" :cause :pending/jvm-exception-classes}
-  {:suite "io / slurp open failures" :label "slurp of a missing path is a FileNotFoundException that says so" :cause :pending/jvm-exception-classes}
+  {:suite "io / slurp open failures" :label "io/input-stream reports a missing path the way FileInputStream does" :cause :exceptions/erlang-classes}
+  {:suite "io / slurp open failures" :label "slurp and io/reader fail a directory the same way" :cause :exceptions/erlang-classes}
+  {:suite "io / slurp open failures" :label "slurp of a directory is a FileNotFoundException, not a read error" :cause :exceptions/erlang-classes}
+  {:suite "io / slurp open failures" :label "slurp of a missing path is a FileNotFoundException that says so" :cause :exceptions/erlang-classes}
   {:suite "io / slurp, spit, printf, flush (host-classified)" :label "file-seq finds files" :cause :pending/missing-core-var}
   {:suite "io / slurp, spit, printf, flush (host-classified)" :label "printf formats" :cause :pending/strings-io}
   {:suite "io / slurp, spit, printf, flush (host-classified)" :label "printf no newline" :cause :pending/strings-io}
@@ -1178,29 +1176,29 @@
   {:suite "io / slurp, spit, printf, flush (host-classified)" :label "slurp returns string" :cause :pending/strings-io}
   {:suite "io / slurp, spit, printf, flush (host-classified)" :label "spit + slurp round" :cause :pending/strings-io}
   {:suite "io / slurp, spit, printf, flush (host-classified)" :label "spit append" :cause :pending/strings-io}
-  {:suite "io / spit and writer on a URL" :label "a non-file URL is refused with the JVM's message" :cause :pending/jvm-exception-classes}
+  {:suite "io / spit and writer on a URL" :label "a non-file URL is refused with the JVM's message" :cause :exceptions/erlang-classes}
   {:suite "io / spit and writer on a URL" :label "io/writer and io/output-stream through a file: URL" :cause :pending/host-types}
   {:suite "io / spit and writer on a URL" :label "spit :append through a URL" :cause :pending/host-types}
   {:suite "io / spit and writer on a URL" :label "spit through a file: URL writes its path" :cause :pending/host-types}
-  {:suite "io / write open failures" :label "io/output-stream into a missing directory names the target" :cause :pending/jvm-exception-classes}
-  {:suite "io / write open failures" :label "io/output-stream on a directory refuses the way FileOutputStream does" :cause :pending/jvm-exception-classes}
-  {:suite "io / write open failures" :label "io/writer on a directory refuses at construction, not at close" :cause :pending/jvm-exception-classes}
-  {:suite "io / write open failures" :label "spit to a directory is a FileNotFoundException, not a rename error" :cause :pending/jvm-exception-classes}
+  {:suite "io / write open failures" :label "io/output-stream into a missing directory names the target" :cause :exceptions/erlang-classes}
+  {:suite "io / write open failures" :label "io/output-stream on a directory refuses the way FileOutputStream does" :cause :exceptions/erlang-classes}
+  {:suite "io / write open failures" :label "io/writer on a directory refuses at construction, not at close" :cause :exceptions/erlang-classes}
+  {:suite "io / write open failures" :label "spit to a directory is a FileNotFoundException, not a rename error" :cause :exceptions/erlang-classes}
   {:suite "iref / atom ctor options" :label ":meta attaches, :validator gates the initial value" :cause :pending/ref-types}
-  {:suite "iref / atom ctor options" :label "an invalid initial value never constructs" :cause :pending/jvm-exception-classes}
-  {:suite "iref / atom ctor options" :label "non-map :meta is a ClassCastException" :cause :pending/jvm-exception-classes}
-  {:suite "iref / atom ctor options" :label "validator still gates swap!/reset!" :cause :pending/jvm-exception-classes}
+  {:suite "iref / atom ctor options" :label "an invalid initial value never constructs" :cause :exceptions/erlang-classes}
+  {:suite "iref / atom ctor options" :label "non-map :meta is a ClassCastException" :cause :exceptions/erlang-classes}
+  {:suite "iref / atom ctor options" :label "validator still gates swap!/reset!" :cause :exceptions/erlang-classes}
   {:suite "iref / meta" :label "alter-meta! works on atoms" :cause :pending/ref-types}
   {:suite "iref / watches" :label "add-watch returns the var; a validator gates the var root" :cause :pending/special-forms}
   {:suite "iref / watches" :label "agent watches fire on state change" :cause :pending/ref-types}
   {:suite "iref / watches" :label "an atom watch gets key, the ref, old and new" :cause :pending/ref-types}
   {:suite "iref / watches" :label "vars are watchable: root changes notify (alter-var-root, def)" :cause :pending/special-forms}
-  {:suite "lazy / chunking" :label "(seq (range 1 50)) is a chunked-seq" :cause :pending/missing-core-var}
+  {:suite "lazy / chunking" :label "(seq (range 1 50)) is a chunked-seq" :cause :lazy-seq/no-chunking}
   {:suite "lazy / chunking" :label "a plain lazy seq (not chunked) realizes one element at a time" :cause :pending/ref-types}
-  {:suite "lazy / chunking" :label "chained maps each batch by 32 (result is itself chunked)" :cause :pending/ref-types}
-  {:suite "lazy / chunking" :label "crossing a chunk boundary realizes the next 32-block" :cause :pending/ref-types}
-  {:suite "lazy / chunking" :label "filter over a chunked range applies pred to the whole first block" :cause :pending/ref-types}
-  {:suite "lazy / chunking" :label "map over a chunked range realizes a whole 32-block on first" :cause :pending/ref-types}
+  {:suite "lazy / chunking" :label "chained maps each batch by 32 (result is itself chunked)" :cause :lazy-seq/no-chunking}
+  {:suite "lazy / chunking" :label "crossing a chunk boundary realizes the next 32-block" :cause :lazy-seq/no-chunking}
+  {:suite "lazy / chunking" :label "filter over a chunked range applies pred to the whole first block" :cause :lazy-seq/no-chunking}
+  {:suite "lazy / chunking" :label "map over a chunked range realizes a whole 32-block on first" :cause :lazy-seq/no-chunking}
   {:suite "lazy / construction & laziness" :label "not eagerly evaluated" :cause :pending/ref-types}
   {:suite "lazy / construction & laziness" :label "realized on demand" :cause :pending/ref-types}
   {:suite "lazy / family is lazy at construction (no side effect)" :label "distinct" :cause :pending/ref-types}
@@ -1252,7 +1250,7 @@
   {:suite "macros / cond-> expands like the reference" :label "a list step keeps its extra args" :cause :pending/strings-io}
   {:suite "macros / cond-> expands like the reference" :label "no clauses is the value in a let" :cause :pending/strings-io}
   {:suite "macros / cond-> expands like the reference" :label "one let, a step per pair, threading through ->" :cause :pending/strings-io}
-  {:suite "macros / core-overlay" :label "assert message" :cause :pending/jvm-exception-classes}
+  {:suite "macros / core-overlay" :label "assert message" :cause :exceptions/erlang-classes}
   {:suite "macros / core-overlay" :label "binding rebinds" :cause :pending/ref-types}
   {:suite "macros / core-overlay" :label "binding restores" :cause :pending/ref-types}
   {:suite "macros / core-overlay" :label "binding seen by fn" :cause :pending/ref-types}
@@ -1291,11 +1289,11 @@
   {:suite "map / bulk build boundaries" :label "transient nil get" :cause :pending/transients}
   {:suite "map / bulk build boundaries" :label "transient nil key" :cause :pending/transients}
   {:suite "map / find's accepted types" :label "a record and a vector are associative" :cause :pending/runtime-eval}
-  {:suite "map / find's accepted types" :label "a set is not associative" :cause :pending/jvm-exception-classes}
-  {:suite "map / find's accepted types" :label "a transient map and vector are, a transient set is not" :cause :pending/jvm-exception-classes}
-  {:suite "map / find's accepted types" :label "and neither is a sorted set" :cause :pending/jvm-exception-classes}
-  {:suite "map / find's accepted types" :label "nor a string, keyword or list" :cause :pending/jvm-exception-classes}
-  {:suite "map / find's accepted types" :label "select-keys inherits find's type check" :cause :pending/jvm-exception-classes}
+  {:suite "map / find's accepted types" :label "a set is not associative" :cause :exceptions/erlang-classes}
+  {:suite "map / find's accepted types" :label "a transient map and vector are, a transient set is not" :cause :exceptions/erlang-classes}
+  {:suite "map / find's accepted types" :label "and neither is a sorted set" :cause :exceptions/erlang-classes}
+  {:suite "map / find's accepted types" :label "nor a string, keyword or list" :cause :exceptions/erlang-classes}
+  {:suite "map / find's accepted types" :label "select-keys inherits find's type check" :cause :exceptions/erlang-classes}
   {:suite "map / iteration & entries" :label "map-entry?" :cause :pending/missing-core-var}
   {:suite "map / map-entry & key ordering" :label "key rejects vector" :cause :pending/triage}
   {:suite "map / map-entry & key ordering" :label "map-entry? entry" :cause :pending/missing-core-var}
@@ -1347,7 +1345,7 @@
   {:suite "maps / insertion order" :label "reduce-kv stops at reduced" :cause :pending/triage}
   {:suite "maps / insertion order" :label "select-keys follows keyseq" :cause :pending/triage}
   {:suite "maps / insertion order" :label "seq follows keys" :cause :pending/triage}
-  {:suite "maps / insertion order" :label "seq view counts and orders" :cause :pending/missing-core-var}
+  {:suite "maps / insertion order" :label "seq view counts and orders" :cause :pending/triage}
   {:suite "maps / insertion order" :label "small literal keys" :cause :pending/triage}
   {:suite "maps / insertion order" :label "small literal vals" :cause :pending/triage}
   {:suite "maps / insertion order" :label "stored key survives find and replace" :cause :pending/triage}
@@ -1356,7 +1354,7 @@
   {:suite "maps / insertion order" :label "transient round trip keeps order" :cause :pending/transients}
   {:suite "maps / insertion order" :label "update-keys preserves order" :cause :pending/triage}
   {:suite "maps / insertion order" :label "zipmap from ordered keys/vals" :cause :pending/triage}
-  {:suite "maps / keys-vals-empty? as overlay fns" :label "a non-entry element is a ClassCastException" :cause :pending/jvm-exception-classes}
+  {:suite "maps / keys-vals-empty? as overlay fns" :label "a non-entry element is a ClassCastException" :cause :exceptions/erlang-classes}
   {:suite "maps / keys-vals-empty? as overlay fns" :label "empty? sorted" :cause :pending/sorted-colls}
   {:suite "maps / keys-vals-empty? as overlay fns" :label "keys sorted order" :cause :pending/sorted-colls}
   {:suite "maps / keys-vals-empty? as overlay fns" :label "keys/vals walk a seq of map entries" :cause :pending/triage}
@@ -1366,7 +1364,7 @@
   {:suite "maps / literal construction" :label "keys evaluate before their values, pairwise" :cause :pending/ref-types}
   {:suite "maps / literal construction" :label "source order with a nil value (phm form)" :cause :pending/ref-types}
   {:suite "maps / literal construction" :label "values evaluate in source order" :cause :pending/ref-types}
-  {:suite "meta / with-meta identity" :label "a non-IObj still throws" :cause :pending/jvm-exception-classes}
+  {:suite "meta / with-meta identity" :label "a non-IObj still throws" :cause :exceptions/erlang-classes}
   {:suite "meta / with-meta identity" :label "equal but distinct metadata still allocates" :cause :pending/metadata}
   {:suite "meta / with-meta identity" :label "nil meta onto a value with none" :cause :pending/metadata}
   {:suite "meta / with-meta identity" :label "stripping real metadata allocates" :cause :pending/metadata}
@@ -1496,8 +1494,8 @@
   {:suite "namespaces / def & vars" :label "var sugar #'" :cause :pending/compiler}
   {:suite "namespaces / def & vars" :label "var-get" :cause :pending/compiler}
   {:suite "namespaces / def & vars" :label "var-set in binding" :cause :pending/special-forms}
-  {:suite "namespaces / designators" :label "a designator that is not a symbol is a failed cast to Symbol" :cause :pending/jvm-exception-classes}
-  {:suite "namespaces / designators" :label "a nil namespace designator is a NullPointerException, as on the JVM" :cause :pending/jvm-exception-classes}
+  {:suite "namespaces / designators" :label "a designator that is not a symbol is a failed cast to Symbol" :cause :exceptions/erlang-classes}
+  {:suite "namespaces / designators" :label "a nil namespace designator is a NullPointerException, as on the JVM" :cause :exceptions/erlang-classes}
   {:suite "namespaces / error inside a fn must not leak its defining ns" :label "*ns* restored after throw" :cause :pending/stdlib-namespaces}
   {:suite "namespaces / error inside a fn must not leak its defining ns" :label "alias survives a throwing stdlib call" :cause :pending/stdlib-namespaces}
   {:suite "namespaces / ns operations" :label "alter-meta! :macro makes a macro" :cause :pending/compiler}
@@ -1567,14 +1565,14 @@
   {:suite "ns / refer name checks" :label "refer without :only skips private vars" :cause :pending/triage}
   {:suite "ns / refer name checks" :label "require :refer a missing name throws" :cause :pending/host-types}
   {:suite "ns / refer-all in ns-refers" :label ":refer :all names appear in ns-refers" :cause :pending/runtime-eval}
-  {:suite "ns / requiring-resolve" :label "loads the namespace then resolves; unqualified throws" :cause :pending/jvm-exception-classes}
+  {:suite "ns / requiring-resolve" :label "loads the namespace then resolves; unqualified throws" :cause :exceptions/erlang-classes}
   {:suite "ns / resolve with an env" :label "ns-resolve and resolve answer nil for a symbol the env binds" :cause :pending/runtime-eval}
   {:suite "ns / resolve-class" :label "a deftype's class maps only where it is defined" :cause :pending/runtime-eval}
-  {:suite "nth / bounds" :label "nth past a seq end throws IndexOutOfBoundsException" :cause :pending/jvm-exception-classes}
-  {:suite "nth / bounds" :label "nth past a vector end throws IndexOutOfBoundsException" :cause :pending/jvm-exception-classes}
-  {:suite "nth / unsupported type" :label "a set has no nth, with or without a not-found" :cause :pending/jvm-exception-classes}
-  {:suite "nth / unsupported type" :label "nor do a map, a keyword, a number or a fn" :cause :pending/jvm-exception-classes}
-  {:suite "nth / unsupported type" :label "vector destructuring of a set raises rather than binding nil" :cause :pending/jvm-exception-classes}
+  {:suite "nth / bounds" :label "nth past a seq end throws IndexOutOfBoundsException" :cause :exceptions/erlang-classes}
+  {:suite "nth / bounds" :label "nth past a vector end throws IndexOutOfBoundsException" :cause :exceptions/erlang-classes}
+  {:suite "nth / unsupported type" :label "a set has no nth, with or without a not-found" :cause :exceptions/erlang-classes}
+  {:suite "nth / unsupported type" :label "nor do a map, a keyword, a number or a fn" :cause :exceptions/erlang-classes}
+  {:suite "nth / unsupported type" :label "vector destructuring of a set raises rather than binding nil" :cause :exceptions/erlang-classes}
   {:suite "numbers / == numeric equality" :label "== throws on non-number" :cause :number/beam-semantics}
   {:suite "numbers / == numeric equality" :label "== throws on two keywords" :cause :number/beam-semantics}
   {:suite "numbers / BigDecimal x Double contagion" :label "+ of BigDecimal and double is a Double" :cause :pending/numbers}
@@ -1621,19 +1619,19 @@
   {:suite "numbers / bigdec call position" :label "subtract" :cause :pending/numbers}
   {:suite "numbers / bigdec call position" :label "zero?" :cause :pending/numbers}
   {:suite "numbers / bit-op operand contract" :label "Long/MIN_VALUE and Long/MAX_VALUE are in range" :cause :pending/compiler}
-  {:suite "numbers / bit-op operand contract" :label "a double is not an integer operand" :cause :pending/jvm-exception-classes}
-  {:suite "numbers / bit-op operand contract" :label "a keyword operand raises IllegalArgumentException in call position" :cause :pending/jvm-exception-classes}
-  {:suite "numbers / bit-op operand contract" :label "a nil operand is an NPE, not an IllegalArgumentException" :cause :pending/jvm-exception-classes}
-  {:suite "numbers / bit-op operand contract" :label "a non-integer number names its class" :cause :pending/jvm-exception-classes}
-  {:suite "numbers / bit-op operand contract" :label "an integer past long range is a BigInt, either sign" :cause :pending/jvm-exception-classes}
-  {:suite "numbers / bit-op operand contract" :label "an operand past signed 64-bit range raises" :cause :pending/jvm-exception-classes}
-  {:suite "numbers / bit-op operand contract" :label "and in value position, through apply" :cause :pending/jvm-exception-classes}
-  {:suite "numbers / bit-op operand contract" :label "bit-not rejects a non-integer" :cause :pending/jvm-exception-classes}
-  {:suite "numbers / bit-op operand contract" :label "every non-numeric operand kind names its class" :cause :pending/jvm-exception-classes}
-  {:suite "numbers / bit-op operand contract" :label "every op rejects, at every position" :cause :pending/jvm-exception-classes}
-  {:suite "numbers / bit-op operand contract" :label "nil is an NPE at every op and position" :cause :pending/jvm-exception-classes}
-  {:suite "numbers / bit-op operand contract" :label "the message names the operand's class, not its value" :cause :pending/jvm-exception-classes}
-  {:suite "numbers / bit-op operand contract" :label "the variadic arity rejects a bad operand too" :cause :pending/jvm-exception-classes}
+  {:suite "numbers / bit-op operand contract" :label "a double is not an integer operand" :cause :exceptions/erlang-classes}
+  {:suite "numbers / bit-op operand contract" :label "a keyword operand raises IllegalArgumentException in call position" :cause :exceptions/erlang-classes}
+  {:suite "numbers / bit-op operand contract" :label "a nil operand is an NPE, not an IllegalArgumentException" :cause :exceptions/erlang-classes}
+  {:suite "numbers / bit-op operand contract" :label "a non-integer number names its class" :cause :exceptions/erlang-classes}
+  {:suite "numbers / bit-op operand contract" :label "an integer past long range is a BigInt, either sign" :cause :exceptions/erlang-classes}
+  {:suite "numbers / bit-op operand contract" :label "an operand past signed 64-bit range raises" :cause :exceptions/erlang-classes}
+  {:suite "numbers / bit-op operand contract" :label "and in value position, through apply" :cause :exceptions/erlang-classes}
+  {:suite "numbers / bit-op operand contract" :label "bit-not rejects a non-integer" :cause :exceptions/erlang-classes}
+  {:suite "numbers / bit-op operand contract" :label "every non-numeric operand kind names its class" :cause :exceptions/erlang-classes}
+  {:suite "numbers / bit-op operand contract" :label "every op rejects, at every position" :cause :exceptions/erlang-classes}
+  {:suite "numbers / bit-op operand contract" :label "nil is an NPE at every op and position" :cause :exceptions/erlang-classes}
+  {:suite "numbers / bit-op operand contract" :label "the message names the operand's class, not its value" :cause :exceptions/erlang-classes}
+  {:suite "numbers / bit-op operand contract" :label "the variadic arity rejects a bad operand too" :cause :exceptions/erlang-classes}
   {:suite "numbers / bit-ops & math" :label "bigint 64-bit" :cause :pending/missing-core-var}
   {:suite "numbers / bit-ops & math" :label "bigint bad string throws" :cause :pending/missing-core-var}
   {:suite "numbers / bit-ops & math" :label "bigint from big string" :cause :pending/missing-core-var}
@@ -1644,7 +1642,7 @@
   {:suite "numbers / bit-ops & math" :label "bit-clear" :cause :pending/missing-core-var}
   {:suite "numbers / bit-ops & math" :label "bit-set" :cause :pending/missing-core-var}
   {:suite "numbers / bit-ops & math" :label "bit-test true" :cause :pending/missing-core-var}
-  {:suite "numbers / char in a numeric cast" :label "double and float reject a char; the integer casts take its code point" :cause :pending/jvm-exception-classes}
+  {:suite "numbers / char in a numeric cast" :label "double and float reject a char; the integer casts take its code point" :cause :exceptions/erlang-classes}
   {:suite "numbers / floats & symbolic values" :label "##NaN not= itself" :cause :pending/reader}
   {:suite "numbers / floats & symbolic values" :label "NaN? ##NaN" :cause :pending/reader}
   {:suite "numbers / floats & symbolic values" :label "NaN? number" :cause :pending/missing-core-var}
@@ -1659,16 +1657,16 @@
   {:suite "numbers / floats & symbolic values" :label "read ##Inf" :cause :pending/reader}
   {:suite "numbers / literal syntax" :label "bigdec int M" :cause :pending/numbers}
   {:suite "numbers / literal syntax" :label "bigdec suffix M" :cause :pending/numbers}
-  {:suite "numbers / n-ary primitive arithmetic" :label "n-ary long + is a left fold: each step overflow-checks" :cause :pending/jvm-exception-classes}
+  {:suite "numbers / n-ary primitive arithmetic" :label "n-ary long + is a left fold: each step overflow-checks" :cause :exceptions/erlang-classes}
   {:suite "numbers / ops dispatch" :label "Inf times zero is NaN" :cause :pending/reader}
   {:suite "numbers / ops dispatch" :label "NaN wins min/max" :cause :pending/reader}
   {:suite "numbers / ops dispatch" :label "bigdec call position mixes with doubles" :cause :pending/numbers}
   {:suite "numbers / ops dispatch" :label "double division by exact zero is signed Inf" :cause :number/beam-semantics}
-  {:suite "numbers / ops dispatch" :label "exact division by zero throws ArithmeticException" :cause :pending/jvm-exception-classes}
+  {:suite "numbers / ops dispatch" :label "exact division by zero throws ArithmeticException" :cause :exceptions/erlang-classes}
   {:suite "numbers / ops dispatch" :label "inc/dec on bigdec" :cause :pending/numbers}
   {:suite "numbers / ops dispatch" :label "min/max return the original operand" :cause :pending/numbers}
   {:suite "numbers / ops dispatch" :label "mod takes the divisor's sign on doubles" :cause :pending/triage}
-  {:suite "numbers / ops dispatch" :label "non-number operand is ClassCastException" :cause :pending/jvm-exception-classes}
+  {:suite "numbers / ops dispatch" :label "non-number operand is ClassCastException" :cause :exceptions/erlang-classes}
   {:suite "numbers / ops dispatch" :label "quot over ratios truncates" :cause :number/no-ratio-arithmetic}
   {:suite "numbers / ops dispatch" :label "quot/rem double contagion" :cause :pending/reader}
   {:suite "numbers / ops dispatch" :label "runtime bigdec reaches call-position ops" :cause :pending/missing-core-var}
@@ -1746,12 +1744,12 @@
   {:suite "numbers / strictness (throws like Clojure)" :label "zero? nil" :cause :number/beam-semantics}
   {:suite "numbers / unchecked lowering" :label "hinted char scan sums code points" :cause :pending/missing-core-var}
   {:suite "numbers / unchecked lowering" :label "unchecked-add in value position" :cause :pending/missing-core-var}
-  {:suite "numbers / unchecked lowering" :label "unchecked-add on a non-number throws" :cause :pending/jvm-exception-classes}
+  {:suite "numbers / unchecked lowering" :label "unchecked-add on a non-number throws" :cause :exceptions/erlang-classes}
   {:suite "numbers / unchecked lowering" :label "unchecked-add over doubles" :cause :pending/missing-core-var}
   {:suite "numbers / unchecked lowering" :label "unchecked-dec of a double" :cause :pending/missing-core-var}
   {:suite "numbers / unchecked lowering" :label "unchecked-inc in value position" :cause :pending/missing-core-var}
   {:suite "numbers / unchecked lowering" :label "unchecked-long of (unchecked-int char) is the idiom" :cause :pending/missing-core-var}
-  {:suite "numbers / unchecked lowering" :label "unchecked-long of a char in a let raises" :cause :pending/jvm-exception-classes}
+  {:suite "numbers / unchecked lowering" :label "unchecked-long of a char in a let raises" :cause :exceptions/erlang-classes}
   {:suite "numbers / unchecked lowering" :label "unchecked-multiply of a double and a long" :cause :pending/missing-core-var}
   {:suite "numbers / unchecked lowering" :label "unchecked-negate of a double" :cause :pending/missing-core-var}
   {:suite "numbers / unchecked on doubles" :label "unchecked-multiply of doubles is a double, not a truncated long" :cause :pending/missing-core-var}
@@ -1764,7 +1762,7 @@
   {:suite "numbers / unchecked wrap at the 64-bit boundary" :label "unchecked-inc wraps MAX" :cause :pending/missing-core-var}
   {:suite "numbers / unchecked wrap at the 64-bit boundary" :label "unchecked-int of a char" :cause :pending/missing-core-var}
   {:suite "numbers / unchecked wrap at the 64-bit boundary" :label "unchecked-int wraps a wide long" :cause :pending/missing-core-var}
-  {:suite "numbers / unchecked wrap at the 64-bit boundary" :label "unchecked-long of a char raises (only the int cast has a char overload)" :cause :pending/jvm-exception-classes}
+  {:suite "numbers / unchecked wrap at the 64-bit boundary" :label "unchecked-long of a char raises (only the int cast has a char overload)" :cause :exceptions/erlang-classes}
   {:suite "numbers / unchecked wrap at the 64-bit boundary" :label "unchecked-long of a negative double truncates" :cause :pending/missing-core-var}
   {:suite "numbers / unchecked wrap at the 64-bit boundary" :label "unchecked-multiply wraps" :cause :pending/missing-core-var}
   {:suite "numbers / unchecked wrap at the 64-bit boundary" :label "unchecked-negate of MIN is MIN" :cause :pending/missing-core-var}
@@ -1778,14 +1776,14 @@
   {:suite "numbers / unsigned string conversions" :label "a value needing 64 bits still gets them" :cause :number/beam-semantics}
   {:suite "numbers / unsigned-bit-shift-right is logical over 64 bits" :label "a zero shift (or a multiple of 64) leaves a negative long unchanged" :cause :pending/missing-core-var}
   {:suite "numbers / unsigned-bit-shift-right is logical over 64 bits" :label "shift of a negative shifts in zeros" :cause :pending/missing-core-var}
-  {:suite "numbers / variadic bit ops" :label "bit-and 3" :cause :pending/compiler}
-  {:suite "numbers / variadic bit ops" :label "bit-and 4" :cause :pending/compiler}
+  {:suite "numbers / variadic bit ops" :label "bit-and 3" :cause :pending/missing-core-var}
+  {:suite "numbers / variadic bit ops" :label "bit-and 4" :cause :pending/missing-core-var}
   {:suite "numbers / variadic bit ops" :label "bit-and-not 2" :cause :pending/missing-core-var}
   {:suite "numbers / variadic bit ops" :label "bit-and-not 3" :cause :pending/missing-core-var}
-  {:suite "numbers / variadic bit ops" :label "bit-or 3" :cause :pending/compiler}
+  {:suite "numbers / variadic bit ops" :label "bit-or 3" :cause :pending/missing-core-var}
   {:suite "numbers / variadic bit ops" :label "bit-or via apply" :cause :pending/triage}
-  {:suite "numbers / variadic bit ops" :label "bit-xor 3" :cause :pending/compiler}
-  {:suite "numbers / variadic bit ops" :label "bit-xor folds left" :cause :pending/compiler}
+  {:suite "numbers / variadic bit ops" :label "bit-xor 3" :cause :pending/missing-core-var}
+  {:suite "numbers / variadic bit ops" :label "bit-xor folds left" :cause :pending/missing-core-var}
   {:suite "numbers / variadic bit ops" :label "unsigned-shift over a full 64-bit value" :cause :pending/missing-core-var}
   {:suite "numbers / with-precision" :label "UNNECESSARY throws when rounding needed, passes exact" :cause :pending/numbers}
   {:suite "numbers / with-precision" :label "division rounds to precision (default HALF_UP)" :cause :pending/numbers}
@@ -1847,7 +1845,7 @@
   {:suite "predicates / seqable, reduced & emptiness" :label "deref reduced" :cause :pending/triage}
   {:suite "predicates / tagged-value" :label "atom? no" :cause :pending/missing-core-var}
   {:suite "predicates / tagged-value" :label "atom? yes" :cause :pending/missing-core-var}
-  {:suite "predicates / tagged-value" :label "chunked-seq? true for a vector seq" :cause :pending/missing-core-var}
+  {:suite "predicates / tagged-value" :label "chunked-seq? true for a vector seq" :cause :lazy-seq/no-chunking}
   {:suite "predicates / tagged-value" :label "reader-conditional? no" :cause :pending/missing-core-var}
   {:suite "predicates / tagged-value" :label "tagged-literal? no" :cause :pending/missing-core-var}
   {:suite "predicates / tagged-value" :label "tagged-literal? yes" :cause :pending/missing-core-var}
@@ -1885,8 +1883,6 @@
   {:suite "printer / print-level" :label "scalars print regardless of level" :cause :pending/ref-types}
   {:suite "printer / print-vars" :label "print-length / print-level / default-data-reader-fn default to nil" :cause :pending/missing-core-var}
   {:suite "printer / str vs print" :label "infinity inside a collection prints readably in str" :cause :pending/reader}
-  {:suite "printer / str vs print" :label "print-str of a map leaves strings raw" :cause :pending/triage}
-  {:suite "printer / str vs print" :label "print-str of a vector leaves strings raw" :cause :pending/triage}
   {:suite "printing / *print-readably*" :label "it applies at every nesting level" :cause :pending/ref-types}
   {:suite "printing / *print-readably*" :label "nil makes pr print a string bare, like print" :cause :pending/ref-types}
   {:suite "printing / doubles" :label "a 17-digit tie rounds its last digit to even" :cause :pending/triage}
@@ -1897,27 +1893,27 @@
   {:suite "protocols / defprotocol & dispatch" :label "extend-type" :cause :pending/triage}
   {:suite "protocols / defprotocol options" :label "docstring + option + method" :cause :pending/compiler}
   {:suite "protocols / defprotocol options" :label "option only" :cause :pending/compiler}
-  {:suite "protocols / dispatch miss message" :label "a boxed number" :cause :pending/jvm-exception-classes}
-  {:suite "protocols / dispatch miss message" :label "a miss on a method whose other receivers are extended" :cause :pending/jvm-exception-classes}
-  {:suite "protocols / dispatch miss message" :label "a receiver whose class has no implementation" :cause :pending/jvm-exception-classes}
-  {:suite "protocols / dispatch miss message" :label "a record of another type, on a method with arguments" :cause :pending/jvm-exception-classes}
+  {:suite "protocols / dispatch miss message" :label "a boxed number" :cause :exceptions/erlang-classes}
+  {:suite "protocols / dispatch miss message" :label "a miss on a method whose other receivers are extended" :cause :exceptions/erlang-classes}
+  {:suite "protocols / dispatch miss message" :label "a receiver whose class has no implementation" :cause :exceptions/erlang-classes}
+  {:suite "protocols / dispatch miss message" :label "a record of another type, on a method with arguments" :cause :exceptions/erlang-classes}
   {:suite "protocols / dispatch miss message" :label "a reify of some other protocol is a miss like any other (its class name is host-minted)" :cause :pending/strings-io}
-  {:suite "protocols / dispatch miss message" :label "nil names its class as nil" :cause :pending/jvm-exception-classes}
+  {:suite "protocols / dispatch miss message" :label "nil names its class as nil" :cause :exceptions/erlang-classes}
   {:suite "protocols / extend & extends? on nil" :label "extend nil dispatches" :cause :pending/missing-core-var}
   {:suite "protocols / extend & extends? on nil" :label "extends? nil when extended" :cause :pending/missing-core-var}
   {:suite "protocols / interface tags" :label "IRecord extension: dispatch and satisfies? agree on a record" :cause :pending/triage}
   {:suite "protocols / interface tags" :label "a declared interface's ANCESTORS dispatch too (IPersistentVector is an Associative)" :cause :pending/compiler}
   {:suite "protocols / interface tags" :label "a defrecord's EXTRA declared interface dispatches alongside the map set" :cause :pending/compiler}
-  {:suite "protocols / interface tags" :label "an Object extension still catches a reify declaring interfaces" :cause :pending/missing-core-var}
+  {:suite "protocols / interface tags" :label "an Object extension still catches a reify declaring interfaces" :cause :protocols/type-designators}
   {:suite "protocols / interface tags" :label "an extension on the type's own tag beats an interface extension" :cause :pending/compiler}
   {:suite "protocols / interface tags" :label "extend-protocol under an interface reaches a deftype declaring it" :cause :pending/compiler}
-  {:suite "protocols / interface tags" :label "extend-protocol under an interface reaches a reify declaring it" :cause :pending/missing-core-var}
-  {:suite "protocols / interface tags" :label "satisfies? sees an interface extension for reify, deftype, and not others" :cause :pending/missing-core-var}
-  {:suite "protocols / reify & satisfies" :label "reify dispatch" :cause :pending/missing-core-var}
-  {:suite "protocols / reify & satisfies" :label "reify multi-method" :cause :pending/missing-core-var}
-  {:suite "protocols / reify & satisfies" :label "satisfies? reify" :cause :pending/missing-core-var}
-  {:suite "protocols / reify & satisfies" :label "satisfies? reify multi-protocol" :cause :pending/missing-core-var}
-  {:suite "protocols / reify & satisfies" :label "satisfies? reify other proto" :cause :pending/missing-core-var}
+  {:suite "protocols / interface tags" :label "extend-protocol under an interface reaches a reify declaring it" :cause :protocols/type-designators}
+  {:suite "protocols / interface tags" :label "satisfies? sees an interface extension for reify, deftype, and not others" :cause :protocols/type-designators}
+  {:suite "protocols / reify & satisfies" :label "reify dispatch" :cause :protocols/type-designators}
+  {:suite "protocols / reify & satisfies" :label "reify multi-method" :cause :protocols/type-designators}
+  {:suite "protocols / reify & satisfies" :label "satisfies? reify" :cause :protocols/type-designators}
+  {:suite "protocols / reify & satisfies" :label "satisfies? reify multi-protocol" :cause :protocols/type-designators}
+  {:suite "protocols / reify & satisfies" :label "satisfies? reify other proto" :cause :protocols/type-designators}
   {:suite "protocols / satisfies?" :label "an extension after a memoized miss is seen" :cause :pending/compiler}
   {:suite "protocols / satisfies?" :label "satisfies? on a class or interface answers instance?" :cause :pending/host-types}
   {:suite "protocols / specificity" :label "a more specific class beats the Object default (Throwable)" :cause :pending/triage}
@@ -1926,10 +1922,10 @@
   {:suite "quoted-literal constants" :label "a literal with a LOCAL element still constructs per call" :cause :pending/triage}
   {:suite "quoted-literal constants" :label "reader meta on a quoted symbol survives hoisting" :cause :pending/metadata}
   {:suite "quoted-literal constants" :label "with-meta on a shared constant copies, never mutates the site" :cause :pending/metadata}
-  {:suite "read-string / opts arity" :label ":eof is the end-of-input value" :cause :pending/compiler}
-  {:suite "read-string / opts arity" :label "no :eof key makes end of input an error" :cause :pending/compiler}
-  {:suite "read-string / opts arity" :label "reader conditionals read through the opts arity" :cause :pending/compiler}
-  {:suite "read-string / opts arity" :label "the opts arity reads a form" :cause :pending/compiler}
+  {:suite "read-string / opts arity" :label ":eof is the end-of-input value" :cause :pending/missing-core-var}
+  {:suite "read-string / opts arity" :label "no :eof key makes end of input an error" :cause :pending/missing-core-var}
+  {:suite "read-string / opts arity" :label "reader conditionals read through the opts arity" :cause :pending/missing-core-var}
+  {:suite "read-string / opts arity" :label "the opts arity reads a form" :cause :pending/missing-core-var}
   {:suite "reader / EOF errors" :label "trailing backslash in string is a positioned EOF error" :cause :pending/strings-io}
   {:suite "reader / anonymous fn #()" :label "%2 + rest" :cause :pending/triage}
   {:suite "reader / anonymous fn #()" :label "fixed + rest" :cause :pending/triage}
@@ -2031,7 +2027,7 @@
   {:suite "reader / scalar literals" :label "symbolic NaN" :cause :pending/reader}
   {:suite "reader / set literals reach a macro as sets" :label "the literal's metadata comes with it" :cause :pending/metadata}
   {:suite "reader / shebang line" :label "and it comments to end of line anywhere, not only at the start of input" :cause :pending/compiler}
-  {:suite "reader / strict tokens" :label "the core reader rejects invalid numbers and duplicate keys too" :cause :pending/jvm-exception-classes}
+  {:suite "reader / strict tokens" :label "the core reader rejects invalid numbers and duplicate keys too" :cause :exceptions/erlang-classes}
   {:suite "reader / surrogate in string" :label "\\ud800 in string throws Invalid character constant" :cause :pending/compiler}
   {:suite "reader / syntax-quote" :label "qualifies unresolved" :cause :pending/triage}
   {:suite "reader / syntax-quote is not a reserved name" :label "`syntax-quote qualifies to the current ns like any other symbol" :cause :pending/runtime-eval}
@@ -2062,7 +2058,7 @@
   {:suite "records / class constructor" :label "a record exposes __extmap and __meta as fields" :cause :pending/special-forms}
   {:suite "records / class constructor" :label "deftype and defrecord skip leading option pairs" :cause :pending/host-types}
   {:suite "records / conj" :label "conj of a map into a defrecord folds its entries" :cause :pending/triage}
-  {:suite "records / ctor-arity" :label "positional ctor throws on 1 arg for 2-field record" :cause :pending/compiler}
+  {:suite "records / ctor-arity" :label "positional ctor throws on 1 arg for 2-field record" :cause :fn/arity-at-compile-time}
   {:suite "records / deftype is not a map" :label "a bare deftype is neither map? nor record?, a defrecord is both" :cause :pending/triage}
   {:suite "records / literal data" :label "a data list of strings is a list, not a call" :cause :pending/reader}
   {:suite "records / literal data" :label "a list value is data, not code" :cause :pending/reader}
@@ -2080,46 +2076,46 @@
   {:suite "reflect / AFunction supers" :label "AFunction's direct supers" :cause :pending/host-types}
   {:suite "reflect / AFunction supers" :label "a fn is an IObj, an IMeta and Serializable, by supers and by instance?" :cause :pending/host-types}
   {:suite "reflect / AFunction supers" :label "a protocol extended to IMeta dispatches on a fn" :cause :pending/triage}
-  {:suite "reflect / RT statics" :label "RT/classForName resolves like Class/forName" :cause :pending/jvm-exception-classes}
+  {:suite "reflect / RT statics" :label "RT/classForName resolves like Class/forName" :cause :exceptions/erlang-classes}
   {:suite "reflection / supers" :label "supers of Object is nil" :cause :pending/host-types}
   {:suite "refs / agent-send-commit" :label "agent action dispatched after commit" :cause :pending/ref-types}
   {:suite "refs / agent-send-rollback" :label "agent action discarded on txn rollback" :cause :pending/ref-types}
-  {:suite "refs / alter" :label "alter inside dosync applies the fn" :cause :pending/ref-types}
+  {:suite "refs / alter" :label "alter inside dosync applies the fn" :cause :refs/no-stm}
   {:suite "refs / alter-throws" :label "alter outside dosync throws" :cause :pending/compiler}
-  {:suite "refs / commute" :label "commute inside dosync applies the fn" :cause :pending/ref-types}
-  {:suite "refs / commute-read" :label "in-txn deref sees commute value" :cause :pending/ref-types}
+  {:suite "refs / commute" :label "commute inside dosync applies the fn" :cause :refs/no-stm}
+  {:suite "refs / commute-read" :label "in-txn deref sees commute value" :cause :refs/no-stm}
   {:suite "refs / commute-throws" :label "commute outside dosync throws" :cause :pending/compiler}
-  {:suite "refs / ensure" :label "ensure inside dosync returns the ref value" :cause :pending/ref-types}
-  {:suite "refs / ensure-read" :label "ensure inside dosync returns current in-txn value" :cause :pending/ref-types}
+  {:suite "refs / ensure" :label "ensure inside dosync returns the ref value" :cause :refs/no-stm}
+  {:suite "refs / ensure-read" :label "ensure inside dosync returns current in-txn value" :cause :refs/no-stm}
   {:suite "refs / ensure-throws" :label "ensure outside dosync throws" :cause :pending/compiler}
   {:suite "refs / io!" :label "io! runs body outside a transaction" :cause :pending/ref-types}
-  {:suite "refs / io!-in-future" :label "io! inside future inside dosync runs normally" :cause :pending/ref-types}
-  {:suite "refs / io!-lazy" :label "io! body does not evaluate when it throws" :cause :pending/jvm-exception-classes}
-  {:suite "refs / io!-message" :label "a leading literal string is the io! exception message" :cause :pending/jvm-exception-classes}
-  {:suite "refs / io!-throws" :label "io! throws inside a transaction" :cause :pending/jvm-exception-classes}
+  {:suite "refs / io!-in-future" :label "io! inside future inside dosync runs normally" :cause :refs/no-stm}
+  {:suite "refs / io!-lazy" :label "io! body does not evaluate when it throws" :cause :exceptions/erlang-classes}
+  {:suite "refs / io!-message" :label "a leading literal string is the io! exception message" :cause :exceptions/erlang-classes}
+  {:suite "refs / io!-throws" :label "io! throws inside a transaction" :cause :exceptions/erlang-classes}
   {:suite "refs / loaded-libs" :label "*loaded-libs* is a ref" :cause :pending/special-forms}
-  {:suite "refs / loaded-libs-dosync" :label "*loaded-libs* can be altered inside dosync" :cause :pending/special-forms}
-  {:suite "refs / nested-dosync" :label "nested dosync joins outer transaction" :cause :pending/ref-types}
-  {:suite "refs / read-your-writes-alter" :label "in-txn deref sees alter value" :cause :pending/ref-types}
-  {:suite "refs / read-your-writes-ref-set" :label "in-txn deref sees ref-set value" :cause :pending/ref-types}
-  {:suite "refs / ref" :label "ref creates a ref" :cause :pending/ref-types}
-  {:suite "refs / ref-history-arity-0" :label "no args is an ArityException" :cause :pending/jvm-exception-classes}
-  {:suite "refs / ref-history-arity-3" :label "three args is an ArityException" :cause :pending/jvm-exception-classes}
-  {:suite "refs / ref-history-count" :label "ref-history-count works outside a transaction" :cause :pending/ref-types}
-  {:suite "refs / ref-history-max-arity-0" :label "ref-max-history no args is an ArityException" :cause :pending/jvm-exception-classes}
-  {:suite "refs / ref-history-nil" :label "a nil target is a NullPointerException" :cause :pending/jvm-exception-classes}
-  {:suite "refs / ref-history-non-ref" :label "a non-ref target is a ClassCastException" :cause :pending/jvm-exception-classes}
+  {:suite "refs / loaded-libs-dosync" :label "*loaded-libs* can be altered inside dosync" :cause :refs/no-stm}
+  {:suite "refs / nested-dosync" :label "nested dosync joins outer transaction" :cause :refs/no-stm}
+  {:suite "refs / read-your-writes-alter" :label "in-txn deref sees alter value" :cause :refs/no-stm}
+  {:suite "refs / read-your-writes-ref-set" :label "in-txn deref sees ref-set value" :cause :refs/no-stm}
+  {:suite "refs / ref" :label "ref creates a ref" :cause :pending/missing-core-var}
+  {:suite "refs / ref-history-arity-0" :label "no args is an ArityException" :cause :exceptions/erlang-classes}
+  {:suite "refs / ref-history-arity-3" :label "three args is an ArityException" :cause :exceptions/erlang-classes}
+  {:suite "refs / ref-history-count" :label "ref-history-count works outside a transaction" :cause :pending/missing-core-var}
+  {:suite "refs / ref-history-max-arity-0" :label "ref-max-history no args is an ArityException" :cause :exceptions/erlang-classes}
+  {:suite "refs / ref-history-nil" :label "a nil target is a NullPointerException" :cause :exceptions/erlang-classes}
+  {:suite "refs / ref-history-non-ref" :label "a non-ref target is a ClassCastException" :cause :exceptions/erlang-classes}
   {:suite "refs / ref-max-history-reader" :label "ref-max-history reader returns stored default" :cause :pending/missing-core-var}
   {:suite "refs / ref-min-history-reader" :label "ref-min-history reader returns stored default" :cause :pending/missing-core-var}
-  {:suite "refs / ref-min-history-setter" :label "ref-min-history setter stores value and returns ref" :cause :pending/ref-types}
-  {:suite "refs / ref-set" :label "ref-set inside dosync sets the value" :cause :pending/ref-types}
+  {:suite "refs / ref-min-history-setter" :label "ref-min-history setter stores value and returns ref" :cause :pending/missing-core-var}
+  {:suite "refs / ref-set" :label "ref-set inside dosync sets the value" :cause :refs/no-stm}
   {:suite "refs / ref-set-throws" :label "ref-set outside dosync throws" :cause :pending/compiler}
   {:suite "refs / ref-set-validator" :label "ref-set rejects bad value through validator" :cause :pending/compiler}
-  {:suite "refs / ref-validator" :label "ref validator rejects bad init" :cause :pending/jvm-exception-classes}
-  {:suite "refs / rollback" :label "ref-set rolls back on exception" :cause :pending/ref-types}
-  {:suite "refs / rollback-alter" :label "alter rolls back on exception" :cause :pending/ref-types}
-  {:suite "refs / sync" :label "sync has the (sync flags & body) shape" :cause :pending/ref-types}
-  {:suite "refs / txn-leak" :label "future spawned in txn does not inherit *txn*" :cause :pending/jvm-exception-classes}
+  {:suite "refs / ref-validator" :label "ref validator rejects bad init" :cause :exceptions/erlang-classes}
+  {:suite "refs / rollback" :label "ref-set rolls back on exception" :cause :refs/no-stm}
+  {:suite "refs / rollback-alter" :label "alter rolls back on exception" :cause :refs/no-stm}
+  {:suite "refs / sync" :label "sync has the (sync flags & body) shape" :cause :refs/no-stm}
+  {:suite "refs / txn-leak" :label "future spawned in txn does not inherit *txn*" :cause :refs/no-stm}
   {:suite "refs / watch-after-commit" :label "watch fires once after commit with (pre-txn, committed)" :cause :pending/ref-types}
   {:suite "refs / watch-no-fire-on-rollback" :label "no watch notification on rolled-back txn" :cause :pending/ref-types}
   {:suite "regex / V2 sre-parser" :label "$ before final newline" :cause :pending/strings-io}
@@ -2216,7 +2212,7 @@
   {:suite "regex / inline flag groups" :label "COMMENTS is scoped: (?x:...) to its own group, an unscoped (?x) to the enclosing one" :cause :pending/strings-io}
   {:suite "regex / inline flag groups" :label "COMMENTS reaches inside a braced escape argument and a bound" :cause :pending/strings-io}
   {:suite "regex / inline flag groups" :label "COMMENTS skips after \\c too, so the control letter is the next unit that survives" :cause :pending/strings-io}
-  {:suite "regex / inline flag groups" :label "a \\c left with nothing after the run it skipped is refused, with or without one" :cause :pending/jvm-exception-classes}
+  {:suite "regex / inline flag groups" :label "a \\c left with nothing after the run it skipped is refused, with or without one" :cause :exceptions/erlang-classes}
   {:suite "regex / inline flag groups" :label "an x in the ON set turns COMMENTS on whatever else the group names" :cause :pending/strings-io}
   {:suite "regex / inline flag groups" :label "the OFF set is applied over the ON set, not before it" :cause :pending/strings-io}
   {:suite "regex / inline flags" :label "(?i)a(?-i)b toggles case off again — \"Ab\" matches" :cause :pending/strings-io}
@@ -2240,7 +2236,7 @@
   {:suite "regex / literals & predicate" :label "replacement backslash escape" :cause :pending/strings-io}
   {:suite "regex / literals & predicate" :label "replacement escaped dollar" :cause :pending/strings-io}
   {:suite "regex / literals & predicate" :label "scoped combined modifiers (?si:...)" :cause :pending/strings-io}
-  {:suite "regex / look-behind bounds" :label "an unbounded possessive or lazy repetition with something ahead of it cannot be measured" :cause :pending/jvm-exception-classes}
+  {:suite "regex / look-behind bounds" :label "an unbounded possessive or lazy repetition with something ahead of it cannot be measured" :cause :exceptions/erlang-classes}
   {:suite "regex / matcher" :label "re-find over a matcher" :cause :pending/strings-io}
   {:suite "regex / matcher" :label "re-groups before a match throws" :cause :pending/strings-io}
   {:suite "regex / matcher" :label "stateful step + re-groups" :cause :pending/strings-io}
@@ -2270,9 +2266,9 @@
   {:suite "regex / redundant-escapes" :label "backslash-< is a literal <" :cause :pending/strings-io}
   {:suite "regex / redundant-escapes" :label "backslash-> is a literal >" :cause :pending/strings-io}
   {:suite "regex / redundant-escapes" :label "escaped backslash before > keeps both chars" :cause :pending/strings-io}
-  {:suite "regex-parity / class escapes" :label "empty quote escape [\\Q\\E] is rejected in a class" :cause :pending/jvm-exception-classes}
-  {:suite "regex-parity / class escapes" :label "linebreak escape [\\R] is rejected in a class" :cause :pending/jvm-exception-classes}
-  {:suite "regex-parity / flag groups" :label "dangling ? after a body-less flag group is rejected" :cause :pending/jvm-exception-classes}
+  {:suite "regex-parity / class escapes" :label "empty quote escape [\\Q\\E] is rejected in a class" :cause :exceptions/erlang-classes}
+  {:suite "regex-parity / class escapes" :label "linebreak escape [\\R] is rejected in a class" :cause :exceptions/erlang-classes}
+  {:suite "regex-parity / flag groups" :label "dangling ? after a body-less flag group is rejected" :cause :exceptions/erlang-classes}
   {:suite "regex-parity / flag groups" :label "empty flag group (?) matches empty" :cause :pending/strings-io}
   {:suite "regex-parity / flag groups" :label "empty flag group quantified {0,0} inside a capture" :cause :pending/strings-io}
   {:suite "regex-parity / flag groups" :label "unknown flag c is a no-op flag char" :cause :pending/strings-io}
@@ -2283,16 +2279,16 @@
   {:suite "regex-parity / intersection" :label "[x&&&&] repeated intersection keeps just x" :cause :pending/strings-io}
   {:suite "regex-parity / intersection" :label "[x&&] empty right side intersects to just x" :cause :pending/strings-io}
   {:suite "regex-parity / intersection" :label "[x&&y] disjoint intersection matches nothing" :cause :pending/strings-io}
-  {:suite "regex-parity / quantifiers" :label "quantifier min greater than max {1,0} is rejected" :cause :pending/jvm-exception-classes}
-  {:suite "regex-parity / ranges" :label "inverted range [b-a] is rejected" :cause :pending/jvm-exception-classes}
-  {:suite "regex-parity / ranges" :label "inverted range inside nested classes [[[[{-\\c}]]]] is rejected" :cause :pending/jvm-exception-classes}
-  {:suite "regex-parity / ranges" :label "inverted range quantified [b-a]?? is rejected" :cause :pending/jvm-exception-classes}
-  {:suite "regex-parity / ranges" :label "leading ] then inverted range []-X] is rejected" :cause :pending/jvm-exception-classes}
-  {:suite "regex-parity / ranges" :label "range ending in a control escape below start [x-\\cx] is rejected" :cause :pending/jvm-exception-classes}
-  {:suite "regex-parity / ranges" :label "range from an astral codepoint down [{\\x{10000}-}] is rejected" :cause :pending/jvm-exception-classes}
+  {:suite "regex-parity / quantifiers" :label "quantifier min greater than max {1,0} is rejected" :cause :exceptions/erlang-classes}
+  {:suite "regex-parity / ranges" :label "inverted range [b-a] is rejected" :cause :exceptions/erlang-classes}
+  {:suite "regex-parity / ranges" :label "inverted range inside nested classes [[[[{-\\c}]]]] is rejected" :cause :exceptions/erlang-classes}
+  {:suite "regex-parity / ranges" :label "inverted range quantified [b-a]?? is rejected" :cause :exceptions/erlang-classes}
+  {:suite "regex-parity / ranges" :label "leading ] then inverted range []-X] is rejected" :cause :exceptions/erlang-classes}
+  {:suite "regex-parity / ranges" :label "range ending in a control escape below start [x-\\cx] is rejected" :cause :exceptions/erlang-classes}
+  {:suite "regex-parity / ranges" :label "range from an astral codepoint down [{\\x{10000}-}] is rejected" :cause :exceptions/erlang-classes}
   {:suite "resolution / file load" :label "loading file with unresolved symbol throws" :cause :pending/triage}
-  {:suite "seq / IFn values as functions" :label "interpose transducer" :cause :pending/compiler}
-  {:suite "seq / IFn values as functions" :label "take-nth transducer" :cause :pending/compiler}
+  {:suite "seq / IFn values as functions" :label "interpose transducer" :cause :pending/missing-core-var}
+  {:suite "seq / IFn values as functions" :label "take-nth transducer" :cause :pending/missing-core-var}
   {:suite "seq / access" :label "fnext" :cause :pending/missing-core-var}
   {:suite "seq / accessor strictness" :label "peek on set" :cause :pending/triage}
   {:suite "seq / apply variadic rest is lazy" :label "a defn is lazy in its rest" :cause :pending/compiler}
@@ -2303,14 +2299,14 @@
   {:suite "seq / apply variadic rest is lazy" :label "infinite tail with a leading fixed arg" :cause :pending/compiler}
   {:suite "seq / apply variadic rest is lazy" :label "rest of an infinite tail is not realized" :cause :pending/compiler}
   {:suite "seq / apply variadic rest is lazy" :label "several leading fixed args then an infinite tail" :cause :pending/compiler}
-  {:suite "seq / apply variadic rest is lazy" :label "too few args still throws ArityException" :cause :pending/jvm-exception-classes}
-  {:suite "seq / eager argument checks" :label "mapcat of a non-fn throws at the call" :cause :pending/jvm-exception-classes}
-  {:suite "seq / eager argument checks" :label "mapcat over a non-seqable throws at the call" :cause :pending/jvm-exception-classes}
+  {:suite "seq / apply variadic rest is lazy" :label "too few args still throws ArityException" :cause :exceptions/erlang-classes}
+  {:suite "seq / eager argument checks" :label "mapcat of a non-fn throws at the call" :cause :exceptions/erlang-classes}
+  {:suite "seq / eager argument checks" :label "mapcat over a non-seqable throws at the call" :cause :exceptions/erlang-classes}
   {:suite "seq / eager argument checks" :label "mapcat realizes a short source whole" :cause :pending/ref-types}
   {:suite "seq / eager argument checks" :label "mapcat realizes four of an unchunked source" :cause :pending/ref-types}
   {:suite "seq / eager argument checks" :label "repeat truncates a fractional count" :cause :pending/triage}
-  {:suite "seq / eager argument checks" :label "repeat with a nil count throws at the call" :cause :pending/jvm-exception-classes}
-  {:suite "seq / eager argument checks" :label "repeat with a non-number count throws at the call" :cause :pending/jvm-exception-classes}
+  {:suite "seq / eager argument checks" :label "repeat with a nil count throws at the call" :cause :exceptions/erlang-classes}
+  {:suite "seq / eager argument checks" :label "repeat with a non-number count throws at the call" :cause :exceptions/erlang-classes}
   {:suite "seq / lazy over infinite" :label "apply concat fixed + infinite tail" :cause :pending/compiler}
   {:suite "seq / lazy over infinite" :label "apply concat lazy over infinite" :cause :pending/compiler}
   {:suite "seq / lazy over infinite" :label "eduction into" :cause :pending/missing-core-var}
@@ -2319,15 +2315,15 @@
   {:suite "seq / lazy over infinite" :label "eduction reduces" :cause :pending/missing-core-var}
   {:suite "seq / lazy over infinite" :label "sequence first of infinite" :cause :pending/triage}
   {:suite "seq / lazy over infinite" :label "sequence is lazy over an infinite source" :cause :pending/triage}
-  {:suite "seq / lazy over infinite" :label "sequence stateful xform lazy" :cause :pending/compiler}
-  {:suite "seq / lazy over infinite" :label "sequence value + completion flush" :cause :pending/compiler}
-  {:suite "seq / map filter reduce" :label "map 3 colls" :cause :pending/compiler}
-  {:suite "seq / map filter reduce" :label "map 3 colls nils" :cause :pending/compiler}
-  {:suite "seq / map filter reduce" :label "map 3 colls shortest" :cause :pending/compiler}
-  {:suite "seq / map filter reduce" :label "map 4 colls" :cause :pending/compiler}
-  {:suite "seq / map filter reduce" :label "map empty coll" :cause :pending/compiler}
-  {:suite "seq / map filter reduce" :label "mapcat empty coll" :cause :pending/compiler}
-  {:suite "seq / map filter reduce" :label "mapcat three colls" :cause :pending/compiler}
+  {:suite "seq / lazy over infinite" :label "sequence stateful xform lazy" :cause :pending/missing-core-var}
+  {:suite "seq / lazy over infinite" :label "sequence value + completion flush" :cause :pending/missing-core-var}
+  {:suite "seq / map filter reduce" :label "map 3 colls" :cause :pending/missing-core-var}
+  {:suite "seq / map filter reduce" :label "map 3 colls nils" :cause :pending/missing-core-var}
+  {:suite "seq / map filter reduce" :label "map 3 colls shortest" :cause :pending/missing-core-var}
+  {:suite "seq / map filter reduce" :label "map 4 colls" :cause :pending/missing-core-var}
+  {:suite "seq / map filter reduce" :label "map empty coll" :cause :pending/missing-core-var}
+  {:suite "seq / map filter reduce" :label "mapcat empty coll" :cause :pending/missing-core-var}
+  {:suite "seq / map filter reduce" :label "mapcat three colls" :cause :pending/missing-core-var}
   {:suite "seq / more strictness" :label "assoc on set" :cause :pending/triage}
   {:suite "seq / more strictness" :label "rseq on map" :cause :pending/triage}
   {:suite "seq / more strictness" :label "rseq on string" :cause :pending/triage}
@@ -2381,7 +2377,7 @@
   {:suite "seq-type-model / cons" :label "only the nil case is list?" :cause :pending/triage}
   {:suite "seq-type-model / cons" :label "the tail is handed back untouched" :cause :pending/host-types}
   {:suite "seq-type-model / remaining class collapse" :label "cycle" :cause :pending/host-types}
-  {:suite "seq-type-model / specialized seq classes" :label "a Range chunks like a LongRange" :cause :pending/missing-core-var}
+  {:suite "seq-type-model / specialized seq classes" :label "a Range chunks like a LongRange" :cause :lazy-seq/no-chunking}
   {:suite "seq-type-model / specialized seq classes" :label "a list is a PersistentList" :cause :pending/host-types}
   {:suite "seq-type-model / specialized seq classes" :label "a vector seq is counted" :cause :pending/missing-core-var}
   {:suite "seq-type-model / specialized seq classes" :label "a vector seq is not a list" :cause :pending/triage}
@@ -2571,7 +2567,7 @@
   {:suite "streams / pipes and stream targets" :label "a pipe connects through the constructor" :cause :pending/host-types}
   {:suite "streams / pipes and stream targets" :label "a piped pair streams from another thread" :cause :pending/host-types}
   {:suite "streams / pipes and stream targets" :label "a thread finds itself in getAllStackTraces" :cause :pending/triage}
-  {:suite "streams / pipes and stream targets" :label "reading a closed pipe is an IOException" :cause :pending/jvm-exception-classes}
+  {:suite "streams / pipes and stream targets" :label "reading a closed pipe is an IOException" :cause :exceptions/erlang-classes}
   {:suite "streams / pipes and stream targets" :label "spit writes into a writer" :cause :pending/host-types}
   {:suite "streams / pipes and stream targets" :label "spit writes into an output stream" :cause :pending/host-types}
   {:suite "string / index-of clamps" :label "from past end -> nil" :cause :pending/stdlib-namespaces}
@@ -2608,13 +2604,13 @@
   {:suite "string-model / codepoint strings" :label "subs across astral boundary" :cause :pending/triage}
   {:suite "strings / get indexes a string" :label "get first char" :cause :char/integer}
   {:suite "strings / get indexes a string" :label "get returns the char" :cause :pending/triage}
-  {:suite "strings / nil arguments" :label "String methods refuse a nil argument with NullPointerException" :cause :pending/jvm-exception-classes}
-  {:suite "strings / nil arguments" :label "a StringBuilder over nil" :cause :pending/jvm-exception-classes}
-  {:suite "strings / nil arguments" :label "a method on a nil receiver" :cause :pending/jvm-exception-classes}
-  {:suite "strings / nil arguments" :label "alength of nil" :cause :pending/jvm-exception-classes}
-  {:suite "strings / nil arguments" :label "clojure.string/replace refuses a nil match" :cause :pending/jvm-exception-classes}
+  {:suite "strings / nil arguments" :label "String methods refuse a nil argument with NullPointerException" :cause :exceptions/erlang-classes}
+  {:suite "strings / nil arguments" :label "a StringBuilder over nil" :cause :exceptions/erlang-classes}
+  {:suite "strings / nil arguments" :label "a method on a nil receiver" :cause :exceptions/erlang-classes}
+  {:suite "strings / nil arguments" :label "alength of nil" :cause :exceptions/erlang-classes}
+  {:suite "strings / nil arguments" :label "clojure.string/replace refuses a nil match" :cause :exceptions/erlang-classes}
   {:suite "strings / nil arguments" :label "clojure.string/replace with a nil replacement or a non-string one" :cause :pending/strings-io}
-  {:suite "strings / nil arguments" :label "trim-newline and re-quote-replacement of nil" :cause :pending/jvm-exception-classes}
+  {:suite "strings / nil arguments" :label "trim-newline and re-quote-replacement of nil" :cause :exceptions/erlang-classes}
   {:suite "strings / str small arities" :label "char and string" :cause :pending/triage}
   {:suite "structmaps" :label "defstruct / struct-map / struct" :cause :pending/missing-core-var}
   {:suite "syntax-quote / catch bare" :label "`catch stays bare (special form)" :cause :pending/compiler}
@@ -2623,18 +2619,18 @@
   {:suite "syntax-quote / expanded before anything sees the form" :label "in quoted data, beside an unquote" :cause :pending/compiler}
   {:suite "syntax-quote / expanded before anything sees the form" :label "the compiler and read-string agree on a bare symbol" :cause :pending/compiler}
   {:suite "syntax-quote / in a deftype method body" :label "a mutable field's live-read rewrite still leaves the template's unquotes alone" :cause :pending/special-forms}
-  {:suite "syntax-quote / in a deftype method body" :label "defrecord and reify method templates agree with deftype's" :cause :pending/missing-core-var}
-  {:suite "syntax-quote / in a deftype method body" :label "~@unquote-splicing in a deftype method's template splices its items" :cause :pending/missing-core-var}
+  {:suite "syntax-quote / in a deftype method body" :label "defrecord and reify method templates agree with deftype's" :cause :protocols/type-designators}
+  {:suite "syntax-quote / in a deftype method body" :label "~@unquote-splicing in a deftype method's template splices its items" :cause :pending/triage}
   {:suite "syntax-quote / reify* bare" :label "`reify* stays bare (special form)" :cause :pending/compiler}
   {:suite "syntax-quote / ~@ is lazy" :label "a set template is eager" :cause :pending/ref-types}
-  {:suite "syntax-quote / ~@ is lazy" :label "a splice in head position realizes its first chunk to produce the head, as seq does" :cause :pending/ref-types}
-  {:suite "syntax-quote / ~@ is lazy" :label "a spliced lazy seq is not realized by building the template, only by walking to it" :cause :pending/missing-core-var}
-  {:suite "syntax-quote / ~@ is lazy" :label "a template that splices only empties is nil, and an empty template is ()" :cause :pending/missing-core-var}
+  {:suite "syntax-quote / ~@ is lazy" :label "a splice in head position realizes its first chunk to produce the head, as seq does" :cause :lazy-seq/no-chunking}
+  {:suite "syntax-quote / ~@ is lazy" :label "a spliced lazy seq is not realized by building the template, only by walking to it" :cause :pending/ref-types}
+  {:suite "syntax-quote / ~@ is lazy" :label "a template that splices only empties is nil, and an empty template is ()" :cause :pending/triage}
   {:suite "syntax-quote / ~@ is lazy" :label "a top-level do evaluates the forms ahead of a splice before the splice is realized" :cause :pending/runtime-eval}
   {:suite "syntax-quote / ~@ is lazy" :label "a vector template is eager" :cause :pending/ref-types}
-  {:suite "syntax-quote / ~@ is lazy" :label "taking from a long splice realizes one chunk, not the splice" :cause :pending/missing-core-var}
-  {:suite "syntax-quote / ~@ is lazy" :label "two splices realize in walk order, each only when reached" :cause :pending/missing-core-var}
-  {:suite "syntax-quote / ~@ is lazy" :label "walking the whole form realizes everything, in order" :cause :pending/missing-core-var}
+  {:suite "syntax-quote / ~@ is lazy" :label "taking from a long splice realizes one chunk, not the splice" :cause :lazy-seq/no-chunking}
+  {:suite "syntax-quote / ~@ is lazy" :label "two splices realize in walk order, each only when reached" :cause :pending/ref-types}
+  {:suite "syntax-quote / ~@ is lazy" :label "walking the whole form realizes everything, in order" :cause :pending/ref-types}
   {:suite "tagged literals / value equality" :label "different tag is not =" :cause :pending/missing-core-var}
   {:suite "tagged literals / value equality" :label "duplicate literal keys throw at read (same form twice)" :cause :pending/missing-core-var}
   {:suite "tagged literals / value equality" :label "equal tag+form are =" :cause :pending/missing-core-var}
@@ -2648,17 +2644,17 @@
   {:suite "time / default zone" :label "SimpleDateFormat parses in the zone it was given" :cause :pending/host-types}
   {:suite "time / default zone" :label "TimeZones with one id are equal and hash alike" :cause :pending/host-types}
   {:suite "time / default zone" :label "the default zone is one zone everywhere" :cause :pending/host-types}
-  {:suite "transducers / compose" :label "comp three" :cause :pending/compiler}
+  {:suite "transducers / compose" :label "comp three" :cause :pending/missing-core-var}
   {:suite "transducers / halt-when" :label "halt returns the halting input" :cause :pending/missing-core-var}
   {:suite "transducers / halt-when" :label "halt-when through into" :cause :pending/missing-core-var}
   {:suite "transducers / halt-when" :label "no halt is a plain reduction" :cause :pending/missing-core-var}
   {:suite "transducers / halt-when" :label "retf combines acc and input" :cause :pending/missing-core-var}
-  {:suite "transducers / into" :label "drop xform" :cause :pending/compiler}
-  {:suite "transducers / into" :label "map-indexed xform" :cause :pending/compiler}
-  {:suite "transducers / into" :label "take xform" :cause :pending/compiler}
+  {:suite "transducers / into" :label "drop xform" :cause :pending/missing-core-var}
+  {:suite "transducers / into" :label "map-indexed xform" :cause :pending/missing-core-var}
+  {:suite "transducers / into" :label "take xform" :cause :pending/missing-core-var}
   {:suite "transducers / into & eduction (overlay)" :label "->Eduction" :cause :pending/missing-core-var}
   {:suite "transducers / into & eduction (overlay)" :label "count of an eduction's seq works" :cause :pending/missing-core-var}
-  {:suite "transducers / into & eduction (overlay)" :label "count on an eduction throws (JVM parity)" :cause :pending/jvm-exception-classes}
+  {:suite "transducers / into & eduction (overlay)" :label "count on an eduction throws (JVM parity)" :cause :exceptions/erlang-classes}
   {:suite "transducers / into & eduction (overlay)" :label "eduction is = to a vector of its elements" :cause :pending/missing-core-var}
   {:suite "transducers / into & eduction (overlay)" :label "eduction is not a seq and not a coll" :cause :pending/missing-core-var}
   {:suite "transducers / into & eduction (overlay)" :label "eduction is reducible and reusable" :cause :pending/missing-core-var}
@@ -2666,11 +2662,11 @@
   {:suite "transducers / into & eduction (overlay)" :label "eduction prints as its seq" :cause :pending/missing-core-var}
   {:suite "transducers / into & eduction (overlay)" :label "into sorted-map" :cause :pending/sorted-colls}
   {:suite "transducers / map multi-input" :label "the map transducer applies f across all inputs" :cause :pending/triage}
-  {:suite "transducers / short-circuit over infinite seqs" :label "comp take over (range)" :cause :pending/compiler}
-  {:suite "transducers / short-circuit over infinite seqs" :label "into take (range)" :cause :pending/compiler}
-  {:suite "transducers / short-circuit over infinite seqs" :label "into take iterate" :cause :pending/compiler}
-  {:suite "transducers / short-circuit over infinite seqs" :label "sequence take (range)" :cause :pending/compiler}
-  {:suite "transducers / short-circuit over infinite seqs" :label "transduce take (range)" :cause :pending/compiler}
+  {:suite "transducers / short-circuit over infinite seqs" :label "comp take over (range)" :cause :pending/missing-core-var}
+  {:suite "transducers / short-circuit over infinite seqs" :label "into take (range)" :cause :pending/missing-core-var}
+  {:suite "transducers / short-circuit over infinite seqs" :label "into take iterate" :cause :pending/missing-core-var}
+  {:suite "transducers / short-circuit over infinite seqs" :label "sequence take (range)" :cause :pending/missing-core-var}
+  {:suite "transducers / short-circuit over infinite seqs" :label "transduce take (range)" :cause :pending/missing-core-var}
   {:suite "transducers / transduce & sequence" :label "eduction" :cause :pending/missing-core-var}
   {:suite "transient / assoc! bounds" :label "assoc! at count grows" :cause :pending/transients}
   {:suite "transient / assoc! bounds" :label "assoc! existing idx" :cause :pending/transients}
@@ -2735,17 +2731,17 @@
   {:suite "transient / vector" :label "reduce conj!" :cause :pending/transients}
   {:suite "transient / vector" :label "transient? false" :cause :pending/missing-core-var}
   {:suite "transient / vector" :label "transient? true" :cause :pending/missing-core-var}
-  {:suite "try / multi-catch" :label "a host condition is caught by its RuntimeException subclass" :cause :pending/jvm-exception-classes}
-  {:suite "typed-throws / collections" :label "iterator past end throws NoSuchElementException" :cause :pending/jvm-exception-classes}
-  {:suite "typed-throws / conversions" :label "compare across types throws ClassCastException" :cause :pending/jvm-exception-classes}
+  {:suite "try / multi-catch" :label "a host condition is caught by its RuntimeException subclass" :cause :exceptions/erlang-classes}
+  {:suite "typed-throws / collections" :label "iterator past end throws NoSuchElementException" :cause :exceptions/erlang-classes}
+  {:suite "typed-throws / conversions" :label "compare across types throws ClassCastException" :cause :exceptions/erlang-classes}
   {:suite "typed-throws / conversions" :label "keyword of a number returns nil" :cause :pending/triage}
-  {:suite "typed-throws / conversions" :label "name of a number throws ClassCastException" :cause :pending/jvm-exception-classes}
-  {:suite "typed-throws / meta" :label "with-meta on a number throws ClassCastException" :cause :pending/jvm-exception-classes}
-  {:suite "typed-throws / numerics" :label "bigdec of a bad string throws NumberFormatException" :cause :pending/jvm-exception-classes}
-  {:suite "typed-throws / refs" :label "deref of a non-reference throws ClassCastException" :cause :pending/jvm-exception-classes}
-  {:suite "typed-throws / transients" :label "assoc! out of bounds throws IndexOutOfBoundsException" :cause :pending/jvm-exception-classes}
-  {:suite "typed-throws / transients" :label "persistent! of a non-transient throws ClassCastException" :cause :pending/jvm-exception-classes}
-  {:suite "typed-throws / transients" :label "pop! of empty transient vector throws IllegalStateException" :cause :pending/jvm-exception-classes}
+  {:suite "typed-throws / conversions" :label "name of a number throws ClassCastException" :cause :exceptions/erlang-classes}
+  {:suite "typed-throws / meta" :label "with-meta on a number throws ClassCastException" :cause :exceptions/erlang-classes}
+  {:suite "typed-throws / numerics" :label "bigdec of a bad string throws NumberFormatException" :cause :exceptions/erlang-classes}
+  {:suite "typed-throws / refs" :label "deref of a non-reference throws ClassCastException" :cause :exceptions/erlang-classes}
+  {:suite "typed-throws / transients" :label "assoc! out of bounds throws IndexOutOfBoundsException" :cause :exceptions/erlang-classes}
+  {:suite "typed-throws / transients" :label "persistent! of a non-transient throws ClassCastException" :cause :exceptions/erlang-classes}
+  {:suite "typed-throws / transients" :label "pop! of empty transient vector throws IllegalStateException" :cause :exceptions/erlang-classes}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label ".. threads members" :cause :pending/host-types}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "biginteger" :cause :pending/missing-core-var}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "class keyword" :cause :pending/host-types}
@@ -2769,10 +2765,10 @@
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "uri? nil" :cause :pending/missing-core-var}
   {:suite "untested / JVM-shape stubs (documented jolt behavior)" :label "uri? string" :cause :pending/missing-core-var}
   {:suite "untested / array stubs (vectors + host buffers)" :label "bytes? not vec" :cause :pending/missing-core-var}
-  {:suite "untested / chunk family (eager equivalents) + cat" :label "chunk round-trip" :cause :pending/missing-core-var}
-  {:suite "untested / chunk family (eager equivalents) + cat" :label "chunk-next exhausted" :cause :pending/missing-core-var}
-  {:suite "untested / chunk family (eager equivalents) + cat" :label "chunk-rest seqable" :cause :pending/missing-core-var}
-  {:suite "untested / chunk family (eager equivalents) + cat" :label "halt-when" :cause :pending/missing-core-var}
+  {:suite "untested / chunk family (eager equivalents) + cat" :label "chunk round-trip" :cause :lazy-seq/no-chunking}
+  {:suite "untested / chunk family (eager equivalents) + cat" :label "chunk-next exhausted" :cause :lazy-seq/no-chunking}
+  {:suite "untested / chunk family (eager equivalents) + cat" :label "chunk-rest seqable" :cause :lazy-seq/no-chunking}
+  {:suite "untested / chunk family (eager equivalents) + cat" :label "halt-when" :cause :lazy-seq/no-chunking}
   {:suite "untested / hash family" :label "hash-combine" :cause :pending/missing-core-var}
   {:suite "untested / hash family" :label "hash-combine hashes its second argument" :cause :pending/missing-core-var}
   {:suite "untested / hash family" :label "hash-combine over a keyword" :cause :pending/missing-core-var}
@@ -2908,7 +2904,7 @@
   {:suite "vars / var-set targets the thread binding" :label "and on the value a bound set! writes" :cause :pending/special-forms}
   {:suite "vars / var-set targets the thread binding" :label "and restores the root the binding was hiding" :cause :pending/ref-types}
   {:suite "vars / var-set targets the thread binding" :label "no thread binding is an IllegalStateException" :cause :pending/special-forms}
-  {:suite "vars / var-set targets the thread binding" :label "set! and var-set report identically" :cause :pending/jvm-exception-classes}
+  {:suite "vars / var-set targets the thread binding" :label "set! and var-set report identically" :cause :exceptions/erlang-classes}
   {:suite "vars / var-set targets the thread binding" :label "the validator runs before the binding check" :cause :pending/special-forms}
   {:suite "vars / var-set targets the thread binding" :label "with-redefs writes the root, so a binding still wins" :cause :pending/ref-types}
   {:suite "vector / access" :label "meta vector as fn" :cause :pending/metadata}

@@ -132,7 +132,7 @@ corpus 按 §6 的 core 分层打标签;CI 先跑 kernel 层语料(M3 起),全�
 | `03-print` | `pr`/`print-method`/`prn` | 否 |
 | `04-repl` | REPL 支持函数 | 否 |
 
-> **2026-10-11 实测回填(clojerl2-014,O2 关闭)**。编译器是 Erlang([09](09-erlang-hosted-compiler.md)),"编译器依赖它要编译的库"的循环不存在,kernel 的定位改为:**clojure.core 的最底层,只用特殊形式、内核形式 `defmacro` 与 Erlang 调用写成**(lint:`:allowed-ns []`,即不得引用任何 Clojure 命名空间)。落地于 `clojerl2/src/clj2/core/00-kernel.clj`,加载器 `clj2_core`,层序 `core/boot-order.edn`。实测清单:
+> **2026-10-11 实测回填(clojerl2-014,O2 关闭)**。编译器是 Erlang([09](09-erlang-hosted-compiler.md)),"编译器依赖它要编译的库"的循环不存在,kernel 的定位改为:**clojure.core 的最底层,只用特殊形式、内核形式 `defmacro` 与 Erlang 调用写成**(lint:`:allowed-ns []`,即不得引用任何 Clojure 命名空间)。落地于 `clojerl2/priv/clj2/core/00-kernel.clj`(2026-10-11 由 src/ 移到 priv/,clojerl2-024),加载器 `clj2_core`,层序 `core/boot-order.edn`。实测清单:
 >
 > | 类别 | 函数 / 宏 |
 > |---|---|
