@@ -2,6 +2,8 @@
 
 状态:设计提案。覆盖 [00](00-overview.md) §4 的 D2(编译器自寄宿 + 入库种子)与 D12(语料库门控一致性)。自举方法照搬 jolt 的 checked-in seed + 字节级不动点模式;一致性照搬 jolt 的 corpus.edn + known-divergences 门控。本文的核心决策是 **stage0 的来源**(§2)。
 
+> **(2026-10-11)本节 stage0 决策已修订**:clojerl 1.0 种子模型废除,stage0 = 自研 Scheme 金属层([07](07-scheme-layer.md) §5),Clojure 层自举梯子见 [07](07-scheme-layer.md) §6。以下原文保留作历史记录。
+
 > 结论先行:**stage0 采用 clojerl 1.0 作为种子宿主(方案 b),Erlang 直译编译器(方案 a)作为回退**。理由:clojerl 1.0 已经是一个能编译 defrecord/deftype/协议/多值函数到 beam 的完整实现,用它一次性生成首枚种子,省掉一个一次性 Erlang 编译器的全部工作量;代价是种子血统耦合于 clojerl 1.0 的方言怪癖——用"编译器源码子集纪律"(§2.4)+ 不动点门控(§4)把耦合封死在种子生成这一步,之后 clojerl 1.0 永久退场。种子提交入库,fresh clone 即可构建;`make selfhost` 门控字节级不动点,`make remint` 收敛重铸种子。
 
 ## 1. 自举链总览

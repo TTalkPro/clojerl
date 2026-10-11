@@ -1,12 +1,12 @@
 # clojerl2-012 首枚种子生成与入库
 
-状态:未开始
+状态:未开始(2026-10-11 修订:stage0 宿主由 clojerl 1.0 改为自研 Scheme 金属层——Clojure 层自举梯子见 [designs/07](../designs/07-scheme-layer.md) §6:Scheme 写最小 Clojure 展开器 → clojure.core 用 Clojure 写、金属层编译 → 展开器自举;clojerl 1.0 降级为行为参考)
 里程碑:M3
 依赖:clojerl2-011, clojerl2-014
 
 ## 目标
 
-用 clojerl 1.0 作 stage0 宿主编译编译器源码 + 00-kernel,产出 `bootstrap/seed/beam/*.beam` + `manifest.edn` 并提交入库,fresh clone 即可启动。
+(修订后)在自研 Scheme 金属层上自举 Clojure 前端:Scheme 写最小 Clojure 展开器(special forms,无用户宏)→ clojure.core 用 Clojure 写、金属层编译 → 编译器源码自编译,产出 `bootstrap/seed/beam/*.beam` + `manifest.edn` 并提交入库,fresh clone 即可启动。
 
 ## 设计依据
 

@@ -8,7 +8,7 @@
 
 | | clojerl 1.0 | 本项目(clojerl2) |
 |---|---|---|
-| 编译器语言 | Erlang | Clojure(自寄宿,种子见 [04](04-bootstrap-and-conformance.md)) |
+| 编译器语言 | Erlang | Clojure(自寄宿,宿主 = 自研 Scheme 金属层,见 [07](07-scheme-layer.md)) |
 | 管线形态 | reader → 3080 行分析器巨石 → 2262 行发射器巨石 | nanopass:形式化语言链 + 小 pass 组合([01](01-nanopass-pipeline.md)) |
 | 目标格式 | Core Erlang(cerl 树) | **Erlang abstract forms**([02](02-beam-backend.md)) |
 | 顶层求值 | core_eval(839 行 erl_eval fork)+ 编译双轨 | 一律编译执行,废除解释器 |
@@ -43,7 +43,7 @@ Gleam 从生成 Erlang 源码改为生成 **abstract forms**,经 external term f
 
 ### 3.3 cleat(设计词汇与决策框架来源)
 
-cleat 是"Clojure on CLR",已完成自举不动点。可沿用:D 编号决策体例、L0-L3 宿主无关 IR + 目标分裂、**targets.edn 机器描述表**(我们加 `:beam` 表项)、primitives 表即数据、编译器纯函数化(D5)、core 分层加载、语料库门控。注意:cleat 的"vendor Scheme metalayer"路线(其 15 号文)在 BEAM 上**没有可 vendor 的对象**——nanopass 框架需在 Clojure 内重实现(见 D3),这恰好复活了 cleat 已废弃的 07 号文路线,因为约束不同。
+cleat 是"Clojure on CLR",已完成自举不动点。可沿用:D 编号决策体例、L0-L3 宿主无关 IR + 目标分裂、**targets.edn 机器描述表**(我们加 `:beam` 表项)、primitives 表即数据、编译器纯函数化(D5)、core 分层加载、语料库门控。注意(2026-10-11 修订):下文"BEAM 上无可 vendor 的 Scheme"的否决**已被推翻**——否决的前提是 R6RS 全量 call/cc;改用逃逸续延(call-with-return)后障碍消除。现按 cleat 路线自研 Scheme 金属层并复用 skeg 的 RNRS 代码,见 [07](07-scheme-layer.md)。nanopass 不再在 Clojure 内重实现,而是标准框架跑在金属层上(见 D3)。
 
 ### 3.4 jolt(最接近的姊妹项目:Clojure → Scheme → Chez)
 
@@ -62,8 +62,8 @@ cleat 是"Clojure on CLR",已完成自举不动点。可沿用:D 编号决策体
 | 编号 | 决策 | 要点 | 详述 |
 |---|---|---|---|
 | D1 | 方言定位 | 新方言,非 clojerl 1.0 升级、非 Clojure JVM 克隆;分歧诚实登记 | §1 |
-| D2 | 编译器语言 | **Clojure 自寄宿**;stage0 的逻辑角色是"一次性子集宿主",首选以 clojerl 1.0 充当(Erlang 直译子集编译器为等价回退),种子生成并提交入库(jolt seed 模式),此后自我再生、stage0 退场 | [04](04-bootstrap-and-conformance.md) §2 |
-| D3 | nanopass 实现 | 在 Clojure 内实现 define-language/define-pass(IR = map 节点 + spec 校验 + 模板宏);不复用 Scheme 框架(BEAM 上无宿主 Scheme) | [01](01-nanopass-pipeline.md) §2 |
+| D2 | 编译器语言 | **Clojure 自寄宿,宿主 = 自研 Scheme 金属层**(2026-10-11 修订,原 clojerl 1.0 种子模型废除):Clojure 前端/宏展开跑在自研 Scheme-on-BEAM 上,自举梯子见 [07](07-scheme-layer.md) §5/§6;clojerl 1.0 降级为 core.clj 移植参考 | [07](07-scheme-layer.md) §0/§5/§6 |
+| D3 | nanopass 实现 | **复用 nanopass-framework-scheme**(skeg 子模块,MIT),跑在自研 Scheme 金属层上;[01](01-nanopass-pipeline.md) 的语言定义与 pass 链不变(2026-10-11 修订,原"Clojure 内自实现"废弃) | [07](07-scheme-layer.md) §0/§7 |
 | D4 | 目标格式 | **Erlang abstract forms** + `compile:forms/2`;不产文本源码、不产 Core Erlang、v1 不碰 BEAM 汇编码 | [02](02-beam-backend.md) |
 | D5 | 编译器纯函数 | pass 链不读全局运行时状态;NS/Var 解析结果作为显式环境参数穿线(cleat D5 沿用) | [01](01-nanopass-pipeline.md) §4 |
 | D6 | 尾调用与闭包红利 | recur → 本地尾调用(BEAM PTC 原生);fn → Erlang fun 原生闭包,**免 closure conversion pass** | [01](01-nanopass-pipeline.md) §3 |
@@ -110,16 +110,16 @@ emitter(纯序列化器:Labs → absform 项 → compile:forms/2 → beam)
 ## 7. 落地顺序
 
 1. **M0 spike**:值表示 + 协议 impl 模块分派基准 + lazy-seq thunk(风险 2/4)。
-2. **M1**:reader(Erlang)+ Lcore 文法 + nanopass 框架骨架(D3 的 define-language/define-pass 最小版)。
+2. **M1**:reader(Erlang)+ **M0.5:Scheme 金属层**(自研 Scheme-on-BEAM + skeg RNRS 代码复用,[07](07-scheme-layer.md))。原"Clojure 内 nanopass 骨架"由金属层上的标准 nanopass 取代。
 3. **M2**:pass 链核心(parse/resolve/ANF/emit)打通 `(fn [x] (+ x 1))` 级程序 → absform → beam → 执行。
-4. **M3**:stage0(clojerl 1.0 宿主,回退为 Erlang 直译子集,见 [04](04-bootstrap-and-conformance.md) §2)+ core kernel 层 → 首枚种子 → 编译器自编译不动点。
+4. **M3**:Clojure 层自举( Scheme 写最小展开器 → clojure.core 自举,见 [07](07-scheme-layer.md) §6)→ 编译器自编译不动点(确定性构建比对,[07](07-scheme-layer.md) §5)。
 5. **M4**:协议/多方法/引用类型/惰性 + core 全层 + corpus 门控接入 CI。
 6. **M5**:REPL、编译缓存、rebar3 插件、`clojerl2` CLI。
 
 ## 8. 与其他文档的关系
 
 - [05](05-erts-target.md):ERTS 契合点分析沿用;其"生成 Erlang 源码是唯一正道"的结论被 Gleam/Elixir 实践更新为 abstract forms(D4);其最大风险(可变对/`eq?`)对本项目不适用(§6)。
-- [06](06-scheme-on-erts.md):runtime=进程、pdict 动态环境、诚实降级的设计哲学继承到 [03](03-runtime-model.md);其"先自举 Scheme metalayer"路线被 D2/D3 取代(直接在 Clojure 自寄宿,不绕行 Scheme)。
+- [06](06-scheme-on-erts.md):runtime=进程、pdict 动态环境、诚实降级的设计哲学继承到 [03](03-runtime-model.md);其"先自举 Scheme metalayer"路线原被 D2/D3 取代,**2026-10-11 起以修正后的形式(逃逸续延)重新采纳**,见 [07](07-scheme-layer.md)。
 - [01](01-nanopass-pipeline.md):pass 链与语言定义(D2/D3/D5/D6)。
 - [02](02-beam-backend.md):目标格式与发射器(D4/D11)。
 - [03](03-runtime-model.md):运行时模型(D7/D8/D9/D10)。

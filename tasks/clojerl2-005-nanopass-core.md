@@ -1,6 +1,6 @@
 # clojerl2-005 nanopass 框架最小版
 
-状态:未开始
+状态:已废弃(2026-10-11)——按 cleat 路线改为自研 Scheme 金属层 + 复用 nanopass-framework-scheme,本任务由 [clojerl2-031](clojerl2-031-nanopass-beam.md) 取代。设计变更见 [designs/07](../designs/07-scheme-layer.md) §0。
 里程碑:M1
 依赖:无
 

@@ -2,6 +2,8 @@
 
 
 > 编号说明:本文原属 IronScheme 设计文档序列(原编号 15),重排为本库 06;文中对 05/10/11/12/13 等编号文档的引用均指向 `IronScheme/designs/`(不在本库)。
+状态：**已废**(2026-10-11)——本提案被 [07](07-scheme-layer.md) 以修正后的形式重新采纳(cleat 路线 + skeg RNRS 代码复用 + 逃逸续延);本文关于"为何不先建 Scheme 层"的论证前提(R6RS 全量 call/cc)已不成立,原文保留作历史记录。
+
 状态：设计提案（未立项）。方向：不依赖 .NET 实现，借鉴 IronScheme 的经验，在 Erlang/ERTS 上独立自举一个 Scheme 方言。每个 Scheme runtime 是一个 BEAM 轻量进程（gen_server），与 Erlang 原生互操作，编译器沿用 nanopass 管线。
 
 > 与 [05](05-erts-target.md) 的关系：05 号文评估"ERTS 作为 IronScheme 的目标"，结论是不塞进托管机抽象。本文是更彻底的方向——独立方言，以 BEAM 母语建模，并通过三项删减换取架构简化。

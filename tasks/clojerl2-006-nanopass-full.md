@@ -1,6 +1,6 @@
 # clojerl2-006 nanopass 框架完整版
 
-状态:未开始
+状态:已废弃(2026-10-11)——同 005,由 [clojerl2-031](clojerl2-031-nanopass-beam.md) 取代。见 [designs/07](../designs/07-scheme-layer.md) §0。
 里程碑:M1
 依赖:clojerl2-005
 
