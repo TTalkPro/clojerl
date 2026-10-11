@@ -1,6 +1,6 @@
 # clojerl2-002 协议分派基准
 
-状态:未开始
+状态:已完成
 里程碑:M0
 依赖:无
 
@@ -29,4 +29,8 @@
 
 ## 结论
 
-(完成后填写)
+已完成(OTP 28)。S2(impl 模块 + ETS 存在性缓存 + apply/3)/ S1(直接远程调用) = 0.607,
+远超 03 §4.2 阈值 0.333 → **采纳 S2,不退回 ETS fun 表**。S3 最快形态(零环境外部 fun)虽快 ~21%,
+但闭包 fun 形态反而比 S2 慢,且判据允许该档差距。复现验证:1M/3/100K 参数下 S2/S1=0.6073,
+与报告 0.6082 一致(噪声内)。
+报告:[../clojerl2/notes/spike-002-protocol-dispatch.md](../clojerl2/notes/spike-002-protocol-dispatch.md)。

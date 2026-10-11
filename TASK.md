@@ -8,15 +8,15 @@ clojerl2:基于 nanopass 的 Clojure on ERTS 全新实现。设计文档见 [des
 
 | 任务 | 标题 | 依赖 | 状态 |
 |---|---|---|---|
-| [clojerl2-001](tasks/clojerl2-001-value-repr-spike.md) | 值表示 spike(打标元组 vs map+?TYPE) | 无 | 未开始 |
-| [clojerl2-002](tasks/clojerl2-002-protocol-dispatch-bench.md) | 协议分派三方案基准 | 无 | 未开始 |
-| [clojerl2-003](tasks/clojerl2-003-lazy-memo-spike.md) | lazy-seq/delay 记忆化 spike | 无 | 未开始 |
+| [clojerl2-001](tasks/clojerl2-001-value-repr-spike.md) | 值表示 spike(打标元组 vs map+?TYPE) | 无 | 已完成 |
+| [clojerl2-002](tasks/clojerl2-002-protocol-dispatch-bench.md) | 协议分派三方案基准 | 无 | 已完成 |
+| [clojerl2-003](tasks/clojerl2-003-lazy-memo-spike.md) | lazy-seq/delay 记忆化 spike | 无 | 已完成 |
 
 ## M1 — reader 与 nanopass 框架
 
 | 任务 | 标题 | 依赖 | 状态 |
 |---|---|---|---|
-| [clojerl2-004](tasks/clojerl2-004-reader.md) | Erlang Clojure reader(Lcore 契约) | 无 | 未开始 |
+| [clojerl2-004](tasks/clojerl2-004-reader.md) | Erlang Clojure reader(Lcore 契约) | 无 | 已完成 |
 | [clojerl2-005](tasks/clojerl2-005-nanopass-core.md) | nanopass 框架最小版 | 无 | 未开始 |
 | [clojerl2-006](tasks/clojerl2-006-nanopass-full.md) | 框架补齐(extends/穿通/trace/fixpoint) | 005 | 未开始 |
 

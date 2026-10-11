@@ -1,6 +1,6 @@
 # clojerl2-003 lazy 记忆化 spike
 
-状态:未开始
+状态:已完成
 里程碑:M0
 依赖:无
 
@@ -30,4 +30,9 @@
 
 ## 结论
 
-(完成后填写)
+已完成(OTP 28)。维持 03 §5.3 原判:**v1 默认 pdict,ETS 为开关备选(默认关)**。
+链式场景 pdict 快 12-27 倍;跨进程语义实测:pdict 纯 thunk 分歧不可观察(值一致,仅执行次数不同);
+naive lookup+insert 无 realize-once 保证(并发下观察者看到不同值),ETS 版必须用 claim 形态;
+claim 原语选定 `ets:update_counter/4`(57ns,恰好一次),优于 select_replace(469ns,OTP28 拒绝预编译
+match spec 是主因)。03 §6 的 select_replace 表述应改为 update_counter。
+报告:[../clojerl2/notes/spike-003-lazy-memo.md](../clojerl2/notes/spike-003-lazy-memo.md)。

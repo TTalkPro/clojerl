@@ -134,7 +134,7 @@ v1 选 pdict + 文档化分歧,ETS 开关留位。**Spike(M0)**:量化 pdict 版
 
 - `lazy-seq` = `{lazy_seq, Meta, ThunkOrCell}`:未实现时槽位是 fun,实现后按 §5.3 的机制改写为缓存的 seq。
 - chunking:v1 不做 JVM 的 chunked-seq(buffered 32),逐元素实现——分歧登记;chunked-seq 是优化而非语义,后续可作为纯性能工作补回。
-- 与进程调度交互:惰性链在 pdict 版下不跨进程,无"谁持有锁"问题(JVM 的 realizing 锁在 BEAM 无对应物);ETS 开关版用 `ets:select_replace` 做 realize-once CAS,并发重复实现退化为"最多算两次",对纯 thunk 无害。
+- 与进程调度交互:惰性链在 pdict 版下不跨进程,无"谁持有锁"问题(JVM 的 realizing 锁在 BEAM 无对应物);ETS 开关版用 `ets:update_counter/4` 占位计数做 realize-once(clojerl2-003 实测:同为恰好一次,比 `ets:select_replace` 便宜约 8 倍;OTP 28 的 select_replace 拒绝预编译 match spec 且 replacement 不能直接放元组值);并发重复实现退化为"最多算两次",对纯 thunk 无害。
 
 ## 7. 字符串与字符
 

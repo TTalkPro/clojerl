@@ -1,6 +1,6 @@
 # clojerl2-001 值表示 spike
 
-状态:未开始
+状态:已完成
 里程碑:M0
 依赖:无
 
@@ -30,4 +30,9 @@
 
 ## 结论
 
-(完成后填写)
+已完成(OTP 28,i9-13900H)。采纳 A=`{Tag,Meta,Data}`(D8 维持):dispatch 1.31x、tag 1.51x、
+get 1.36x、with-meta 净值 2.71x、construct 净值 1.89x;唯一回退 `=` 0.86-0.92x(非热路径,可接受)。
+keyword 原型确认 `{kw_dyn,Bin}` 与 atom 形态 map key 不互通 → reader 改为 keyword=冒号前缀 atom
+(见 notes/reader-format.md),`binary_to_existing_atom` 回退方案放弃。agent 初版 escript 有 4 类 bug
+(空输入死循环、refs 列表不复位、eq 循环第二列表覆盖、~s 打中文崩溃)已修复;迭代量下调 20x。
+报告:[../clojerl2/notes/spike-001-value-repr.md](../clojerl2/notes/spike-001-value-repr.md)。

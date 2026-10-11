@@ -1,6 +1,6 @@
 # clojerl2-004 reader
 
-状态:未开始
+状态:已完成
 里程碑:M1
 依赖:无
 
@@ -32,4 +32,10 @@ Erlang 实现的 Clojure reader,产出 Lcore([01](../designs/01-nanopass-pipelin
 
 ## 结论
 
-(完成后填写)
+已完成。`clj2_reader.erl`(293 eunit 全绿,0 警告),导出 read/1,2、read_all/1,2、strip/1、loc/1。
+产出契约见 [../clojerl2/notes/reader-format.md](../clojerl2/notes/spike-001-value-repr.md 已关联):
+keyword=冒号前缀 atom(':a'/'::a');meta 恒为 map 或 nil(JVM 风格规范化,外层合并优先);
+read 返回位置恒等于 loc(Form);EOF 位置 one-past-end;#() 对齐 JVM(裸 % 恒 %1、%foo 报错);
+嵌套 #() 允许(遮蔽语义,known-divergence);bigradix 2r1010N 支持。
+agent 初版有 ~8 个 reader bug + ~15 处测试契约错误,已全部修复。
+契约文档:[../clojerl2/notes/reader-format.md](../clojerl2/notes/reader-format.md)。
