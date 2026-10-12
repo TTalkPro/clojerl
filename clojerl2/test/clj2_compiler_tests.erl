@@ -196,7 +196,7 @@ errors_test_() ->
     , ?_assertEqual({recur, recur_across_try}, cerr("(loop* [i 0] (try (recur i)))"))
     , ?_assertEqual({syntax, duplicate_fn_arity}, cerr("(fn* ([x] 1) ([y] 2))"))
     , ?_assertEqual({syntax, {bad_catch_class, 'Foo'}}, cerr("(try 1 (catch Foo e e))"))
-    , ?_assertEqual({syntax, {not_at_top_level, def}}, cerr("(let* [a 1] (def x a))"))
+    , ?_assertEqual({syntax, {not_at_top_level, ns}}, cerr("(let* [a 1] (ns t.nope))"))
       %% a tagged literal with no reader function compiles, and raises when
       %% evaluated (so a file that mentions one still loads)
     , ?_assertEqual(<<"No reader function for tag inst">>,

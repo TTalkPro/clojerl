@@ -241,8 +241,8 @@ errors_test_() ->
                             cerr("(ns t.e) (def h (fn* [] (t.basic/nope)))"))
             , ?_assertEqual({ns_not_found, 't.nowhere'},
                             cerr("(ns t.e (:require [t.nowhere :as n]))"))
-            , ?_assertEqual({declare, {duplicate_def, h}},
-                            cerr("(ns t.e) (def h 1) (def h 2)"))
+            %% a second top-level def of a name replaces the value (clojerl2-032)
+            , ?_assertEqual(no_error, cerr("(ns t.e) (def h 1) (def h 2)"))
             , ?_assertEqual({declare, {reserved_var_name, module_info}},
                             cerr("(ns t.e) (def module_info 1)"))
             , ?_assertEqual({syntax, ns_must_be_first_form},

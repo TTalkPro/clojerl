@@ -76,7 +76,8 @@ run(Forms, St) when is_list(Forms) ->
            ns => maps:get(ns, St, user),
            aliases => maps:get(aliases, St, #{}),
            refers => maps:get(refers, St, #{}),
-           own_names => maps:get(own_names, St, #{})},
+           own_names => maps:get(own_names, St, #{}),
+           file_unit => maps:get(file_unit, St, false)},
     A0 = erl_anno:new(0),
     {RevTops, _} = lists:foldl(fun(F, {Acc, E}) ->
                                        Ts = top(F, A0, E),
@@ -101,12 +102,31 @@ ns_env(Tops, E) ->
 %% Top level
 %%====================================================================
 
+%% A def inside an expression ((let [c (atom 0)] (defn f [] ...)), (when
+%% x (def y 1))) is interned when the form compiles, as on the JVM: its
+%% unbound declaration is hoisted ahead of the top-level form, and the def
+%% itself becomes a run-time assignment of the var's root (nested_def/3).
+-define(HOIST_KEY, {?MODULE, hoisted}).
+
 top(F, A0, E) ->
+    Saved = get(?HOIST_KEY),
+    put(?HOIST_KEY, []),
+    try
+        Tops = top1(F, A0, E),
+        lists:reverse(get(?HOIST_KEY)) ++ Tops
+    after
+        case Saved of
+            undefined -> erase(?HOIST_KEY);
+            _ -> put(?HOIST_KEY, Saved)
+        end
+    end.
+
+top1(F, A0, E) ->
     A = pos(F, A0),
     case unwrap(F) of
         [H | Rest] ->
             case unwrap(H) of
-                do -> lists:append([top(X, A, E) || X <- Rest]);
+                do -> lists:append([top1(X, A, E) || X <- Rest]);
                 def -> def_form(Rest, A, E);
                 ns -> [ns_form(Rest, A)];
                 S when is_atom(S) ->
@@ -119,7 +139,7 @@ top(F, A0, E) ->
                         defrecord -> deftype_form(defrecord, Rest, A, E);
                         none ->
                             case macroexpand(S, F, A, E) of
-                                {ok, X} -> top(X, A, E);
+                                {ok, X} -> top1(X, A, E);
                                 none -> [{eval, A, form(F, A0, E)}]
                             end
                     end;
@@ -166,6 +186,33 @@ def_form(Name, Meta00, Rest, A, E) ->
             [Def, {eval, A, call(A, clj2_rt, merge_var_meta,
                                  [{the_var, A, Name}, call(A, clj2_coll, hash_map_kv, [{list, A, Kvs}])])}]
     end.
+
+%% (def name init) inside an expression: the var exists from compile time
+%% (its declaration is hoisted, unless the namespace has the var already),
+%% the root is set when the def runs, and the value is the var.
+nested_def([N | Rest], A, E) ->
+    Name = binder(N, A),
+    [{def, _, Name, Static, Init} | MetaSteps] = def_form(Name, name_meta(N), Rest, A, E),
+    %% a var the namespace has already keeps its value until the def runs:
+    %% at the REPL it is not declared again; in a namespace file the
+    %% declaration meets the earlier def in the same module, which then
+    %% keeps its value where this def can set it (clj2_p_declare:hoisted/1)
+    Own = case maps:get(file_unit, E, false) of
+              true -> #{};
+              false -> maps:get(own_names, E, #{})
+          end,
+    Hoisted = get(?HOIST_KEY),
+    case is_map_key(Name, Own) orelse lists:keymember(Name, 3, Hoisted) orelse Hoisted =:= undefined of
+        true -> ok;
+        false -> put(?HOIST_KEY, [{def, A, Name, Static#{'$hoisted' => true}, nil} | Hoisted])
+    end,
+    Var = {the_var, A, Name},
+    Steps = [call(A, clj2_rt, def_root, [Var, Init]) || Init =/= nil] ++ [X || {eval, _, X} <- MetaSteps],
+    case Steps of
+        [] -> Var;
+        _ -> {do, A, Steps, Var}
+    end;
+nested_def([], A, _E) -> syntax(A, bad_def).
 
 %% a metadata value that evaluates to itself (a quoted form: its data);
 %% a :tag stays the symbol it names
@@ -380,9 +427,10 @@ form({tagged, [], uuid, S}, A, _E) when is_binary(S) ->
 %% rest of a file that mentions one still compiles
 form({tagged, [], T, nil}, A, E) when T =:= 'NaN'; T =:= 'Inf'; T =:= '-Inf' ->
     form(['clj2_rt/unsupported_float', list_to_atom(":" ++ atom_to_list(T))], A, E);
-%% 1.5M: no BigDecimal yet (:pending/numbers); raises when evaluated, likewise
-form({bigdec, [], B}, A, E) when is_binary(B) ->
-    form(['clj2_rt/unsupported_bigdec', B], A, E);
+%% 1.5M: a BigDecimal constant (clj2_decimal)
+form({bigdec, [], B}, A, _E) when is_binary(B) ->
+    {const, A, clj2_decimal:parse(B)};
+form({decimal, U, S} = D, A, _E) when is_integer(U), is_integer(S) -> {const, A, D};   % from a macro
 %% any other tagged literal (#inst ...): no reader function for the tag;
 %% raises when evaluated (the JVM reader rejects the file)
 form({tagged, [], Tag, _}, A, E) when is_atom(Tag) ->
@@ -463,12 +511,20 @@ list_form(Special, _, Args, _F, A, _E) when Special =:= quote; Special =:= 'if';
                                             Special =:= throw; Special =:= 'let*';
                                             Special =:= 'loop*'; Special =:= 'letfn*' ->
     syntax(A, {bad_special_form, Special, length(Args)});
-list_form(Def, _, _Args, _F, A, _E) when Def =:= def; Def =:= ns ->
-    syntax(A, {not_at_top_level, Def});
+list_form(def, _, Args, _F, A, E) -> nested_def(Args, A, E);
+list_form(ns, _, _Args, _F, A, _E) ->
+    syntax(A, {not_at_top_level, ns});
 list_form(var, _, [S0], _F, A, _E) ->
     case clj2_form:to_data(S0) of
         S when is_atom(S), S =/= nil, S =/= true, S =/= false -> {the_var, A, S};
         _ -> syntax(A, {bad_special_form, var, 1})
+    end;
+%% (set! v x) of a var: its binding in this process (var-set)
+list_form('set!', _, [S0, X], _F, A, E = #{locals := Ls}) ->
+    case clj2_form:to_data(S0) of
+        S when is_atom(S), S =/= nil, S =/= true, S =/= false, not is_map_key(S, Ls) ->
+            call(A, clj2_var, var_set, [{the_var, A, S}, form(X, A, E)]);
+        _ -> unsupported(A, {special_form, 'set!'})
     end;
 list_form('.', _, [Target, Member | Rest], _F, A, E) -> dot(Target, Member, Rest, A, E);
 list_form('..', _, [X, M | Ms], _F, A, E) ->
@@ -547,7 +603,7 @@ macroexpand(S, F, A, E = #{locals := Ls, expand := Expand}) ->
             Env = clj2_coll:hash_map_kv(lists:append([[L, nil] || L <- maps:keys(Ls)])),
             case Expand(S, form_data(F, A, E), Env) of
                 none -> none;
-                {ok, X} -> {ok, X};
+                {ok, X} -> {ok, carry_name_meta(F, X)};
                 {error, {not_public, _} = NP} ->
                     erlang:error({clj2_compile, erl_anno:location(A), {resolve, NP}});
                 {error, Why} -> erlang:error({clj2_compile, erl_anno:location(A),
@@ -555,6 +611,20 @@ macroexpand(S, F, A, E = #{locals := Ls, expand := Expand}) ->
             end
     end;
 macroexpand(_, _, _, _) -> none.
+
+%% Metadata the reader put on a defining macro's name ((defn ^:private f
+%% ...), (defmulti ^:dynamic m ...)) does not survive the macro, since a
+%% symbol value carries none (:symbol/no-metadata): it is put back on the
+%% same name in the expansion -- (def f ...), or the next macro call.
+carry_name_meta(F, X) ->
+    case unwrap(F) of
+        [_, {clj2_loc, L, C, Sym, M} | _] when is_atom(Sym), is_map(M), map_size(M) > 0 ->
+            case X of
+                [H, Sym | Rest] when is_atom(H) -> [H, {clj2_loc, L, C, Sym, M} | Rest];
+                _ -> X
+            end;
+        _ -> X
+    end.
 
 %% A form as the value a macro receives. Clojure's reader has already
 %% expanded `#(...)' and syntax-quote by then, so they are expanded

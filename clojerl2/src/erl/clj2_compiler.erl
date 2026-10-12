@@ -182,6 +182,8 @@ load_module(Ns, M, Bin, File) ->
     case code:soft_purge(M) of
         false -> {error, {old_code_in_use, M}};
         true ->
+            clj2_ns:ensure_started(),
+            true = ets:insert(clj2_beam, {M, Bin}),
             case code:load_binary(M, File, Bin) of
                 {module, M} -> {ok, Ns};
                 {error, on_load_failure} ->
@@ -299,7 +301,25 @@ eval_top(T, Ns, Opts) ->
 %% namespace's registry entry with that module. Redefinition reloads the
 %% same module: closures made by the old version keep running it, new
 %% calls go to the new one (designs/02 §5). → the var, #'ns/name.
-define_var({def, _, Name, _, _} = T, Ns, Opts) ->
+define_var({def, A, Name, Meta, Init} = T, Ns, Opts) ->
+    case clj2_ns:info(Ns) of
+        %% a var whose value moved into the var table (clj2_rt_eval:redirect/3)
+        %% stays there: a new def is an assignment, no code is loaded
+        %% a watched or validated var too: the def is a change of its root
+        {ok, #{vars := #{Name := I}}}
+          when (is_map_key(redirected, I) orelse is_map_key(watches, I) orelse is_map_key(validator, I)),
+               not is_map_key(module_def, Opts),
+               Init =/= nil, not is_map_key(':dynamic', Meta), not is_map_key(':macro', Meta) ->
+            Set = {invoke, A, {sym, A, 'clj2_rt/def_root'}, [{the_var, A, Name}, Init]},
+            {V, _} = eval_top({eval, A, Set}, Ns, Opts),
+            {ok, #{vars := #{Name := I1}}} = clj2_ns:info(Ns),
+            Keep = maps:with([module, kind, redirected, dynamic, macro, validator, watches, arities, variadic], I1),
+            clj2_ns:put_var(Ns, Name, maps:merge(clj2_p_declare:var_info(Meta, nil), Keep)),
+            V;
+        _ -> define_var_module(T, Ns, Opts)
+    end.
+
+define_var_module({def, _, Name, _, _} = T, Ns, Opts) ->
     Ctx = ns_ctx(Ns, Opts),
     M = var_module(Ns, Name),
     {Forms, St} = compile_tops([T], Ns, M, maps:get(own, Ctx), false, Ctx#{unit => ns}, Opts),
@@ -559,7 +579,11 @@ is_core_target(_) -> false.
 
 parse_state(Ctx = #{ns := Ns, aliases := Al, refers := Rf}) ->
     #{ns => Ns, aliases => Al, refers => Rf, expand => expander(Ctx),
-      own_names => maps:get(defined, Ctx, #{})}.
+      own_names => maps:get(defined, Ctx, #{}),
+      %% a namespace file compiles all its forms into one module (its
+      %% compile-time segments are recompiled with it); the REPL defines
+      %% each var on its own
+      file_unit => is_map_key(pending, Ctx)}.
 
 read(Src) when is_binary(Src) ->
     case clj2_reader:read_all(Src) of
@@ -583,10 +607,7 @@ expander(Ctx) ->
                     try
                         %% a fn var links directly; a var made a macro by
                         %% its metadata ((def m @#'other) + :macro) holds it
-                        F = case Info of
-                                #{kind := fn} -> clj2_rt:var_fn(M, Name, Info);
-                                _ -> M:Name()
-                            end,
+                        F = clj2_rt:var_value(M, Name, Info),
                         {ok, clj2_form:from_value(clj2_rt:invoke(F, [Form, Env | tl(Form)]))}
                     catch
                         C:R -> {error, {C, R}}
@@ -647,7 +668,7 @@ ext_macro(Ns, Name) ->
 %% segment and an eval unit.
 compile_tops(Tops, Ns, M, Prior, Register, Ctx, Opts) ->
     Unit = maps:get(unit, Ctx, ns),
-    St0 = (maps:with([file], Opts))#{next_uid => 1, ns => Ns},
+    St0 = (maps:with([file], Opts))#{next_uid => 1, ns => Ns, prior => Prior},
     {Tops1, St1} = clj2_np:run([clj2_p_declare], Tops, pass_opts(Opts, St0)),
     #{vars := Declared} = St1,
     Vars = maps:merge(Prior, Declared),

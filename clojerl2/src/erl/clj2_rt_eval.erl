@@ -22,7 +22,7 @@
 -export([req_refers/1, refer/2, refer_clojure/1]).
 -export([resolve/2, ns_publics/1, ns_interns/1, ns_map/1, ns_aliases/1, ns_refers/1,
          find_var/1, intern/2, intern/3, intern_value/2, ns_unmap/2, remove_ns/1,
-         requiring_resolve/1]).
+         requiring_resolve/1, redirect/3, root_value/3]).
 -export([require/1, load_specs/2, ensure_loaded/1, load_file/1, load_ns_file/1,
          source_path/0, set_source_path/1, find_source/1]).
 
@@ -65,6 +65,9 @@ restore_ns(Saved) -> put(?NS_KEY, Saved), ok.
 %%====================================================================
 
 %% @doc (eval form), in the current namespace.
+%% a fn value (no data form) evaluates to itself, as on the JVM
+eval(F) when is_function(F) -> F;
+eval({Tag, _, _} = F) when Tag =:= clj2_fn; Tag =:= fnmeta -> F;
 eval(Form) -> clj2_compiler:eval({forms, [clj2_form:from_value(Form)]}).
 
 %% @doc (read-string s): the first form of `s' as data.
@@ -393,3 +396,181 @@ requiring_resolve(Sym) when is_atom(Sym) ->
             end;
         _ -> illegal_argument(<<"Not a qualified symbol: ", (atom_to_binary(Sym))/binary>>)
     end.
+
+%% @doc A fn or constant var given a new value at run time (a def inside
+%% an expression, alter-var-root, with-redefs): its value moves into the
+%% var table, once. The var becomes a cell, so everything compiled from
+%% now on reads the table, and every later change is one table write
+%% (no code is loaded again). The code already linked to it keeps
+%% working: a fn var's module is replaced by one whose Name/N, for each
+%% arity the callers may use, call the value in the table; a constant's
+%% accessor reads the table. A value taken before (fn values are funs of
+%% the module's first version) keeps the old fn, as on the JVM.
+redirect(Ns, Name, Info) ->
+    {ok, #{module := NsMod}} = clj2_ns:info(Ns),
+    M = maps:get(module, Info, NsMod),
+    case M =:= clj2_compiler:var_module(Ns, Name) of
+        true -> redirect_var(Ns, Name, M, Info);
+        false -> redirect_module(Ns, M)
+    end,
+    M.
+
+%% a var defined at the REPL, alone in its module: the module is compiled
+%% again, as a cell var (a constant) or with Name/N calling the value in
+%% the table (a fn: its first version's fn is the value, and stays as the
+%% old code)
+redirect_var(Ns, Name, M, OldInfo = #{kind := const}) ->
+    clj2_var:set_root(M, Name, M:Name()),
+    Q = fun(X) -> [quote, X] end,
+    redefine(Ns, Name, M, ['clj2_var/root', Q(M), Q(Name)], OldInfo);
+redirect_var(Ns, Name, M, OldInfo = #{kind := fn}) ->
+    V1 = M:'__fn__'(Name),
+    clj2_var:set_root({orig, M}, Name, V1),
+    clj2_var:set_root(M, Name, V1),
+    Fixed = maps:get(arities, OldInfo, []),
+    Min = maps:get(variadic, OldInfo, nil),
+    Q = fun(X) -> [quote, X] end,
+    Params = fun(N) -> [list_to_atom("a" ++ integer_to_list(I)) || I <- lists:seq(1, N)] end,
+    Call = fun(Ps, Rest) -> ['clj2_rt/invoke_root', Q(M), Q(Name), clj2_coll:vector(Ps), Rest] end,
+    Clauses = [[clj2_coll:vector(Params(N)), Call(Params(N), nil)] || N <- Fixed]
+              ++ [[clj2_coll:vector(Params(Min) ++ ['&', rest]), Call(Params(Min), rest)] || Min =/= nil],
+    redefine(Ns, Name, M, ['fn*' | Clauses], OldInfo).
+
+%% the var's metadata, watches and validator stay
+redefine(Ns, Name, M, Init, OldInfo) ->
+    _ = clj2_compiler:eval({forms, [[def, Name, Init]]}, #{ns => Ns, module_def => true}),
+    {ok, #{vars := #{Name := I}}} = clj2_ns:info(Ns),
+    Kept = maps:with([meta, doc, private, watches, validator], OldInfo),
+    Info = maps:merge(maps:without([arities, variadic], I), Kept),
+    clj2_ns:put_var(Ns, Name, Info#{kind => cell, module => M, redirected => true}),
+    ok.
+
+%% @doc A value about to become the root of var Name (in module M): a
+%% fun of the var's own module function is a call of the var itself once
+%% its value is in the table, so it stands for the fn the var had
+%% (what with-redefs saved before the var moved its value).
+root_value(M, Name, V) ->
+    case is_self(M, Name, V) of
+        true -> try clj2_var:root({orig, M}, Name) catch error:_ -> V end;
+        false -> V
+    end.
+
+is_self(M, Name, F) when is_function(F) ->
+    erlang:fun_info(F, type) =:= {type, external} andalso
+        erlang:fun_info(F, module) =:= {module, M} andalso erlang:fun_info(F, name) =:= {name, Name};
+is_self(M, Name, {clj2_fn, Fixed, Rest}) ->
+    lists:any(fun(F) -> is_self(M, Name, F) end,
+              maps:values(Fixed) ++ [F || {_, F} <- [Rest]]);
+is_self(_, _, _) -> false.
+
+%% A var of a namespace module (several vars, linked to each other by
+%% local calls): the module gets a second version, once, in which every
+%% fn and constant var of it takes its value from the var table. A fn
+%% var's functions keep their bodies as `Name$orig'/N (its own calls
+%% stay inside them, as recur does), and Name/N call the value in the
+%% table, so the calls between the vars of the module reach it too; a
+%% constant's accessor reads the table; '__fn__'/1 gives the table's
+%% value; the on_load does nothing (the namespace is loaded already).
+%% A value taken before is a fun of the first version, which stays
+%% loaded as the old code.
+redirect_module(Ns, M) ->
+    global:trans({{?MODULE, redirect, M}, self()}, fun() -> redirect_module_locked(Ns, M) end).
+
+redirect_module_locked(Ns, M) ->
+    {ok, #{module := NsMod, vars := Vars}} = clj2_ns:info(Ns),
+    Targets = [{N, I} || {N, #{kind := K} = I} <- maps:to_list(Vars),
+                         K =:= fn orelse K =:= const, maps:get(module, I, NsMod) =:= M],
+    case Targets of
+        [] -> ok;                                   % done by another process meanwhile
+        _ ->
+            Forms = case module_forms(M) of
+                        {ok, Fs} -> Fs;
+                        error -> erlang:error(clj2_rt:ex_info(
+                                                iolist_to_binary(["Can't change a var of ", atom_to_binary(Ns),
+                                                                  ": its module has no debug info"]),
+                                                clj2_coll:hash_map_kv([':type', ':IllegalStateException']), nil))
+                    end,
+            [begin
+                 V = case I of
+                         #{kind := fn} -> clj2_rt:var_fn(M, orig_name(N), I);
+                         _ -> M:N()
+                     end,
+                 clj2_var:set_root({orig, M}, N, V),
+                 clj2_var:set_root(M, N, V)
+             end || {N, I} <- Targets],
+            Patch = maps:from_list(lists:append([patch_arities(N, I) || {N, I} <- Targets])),
+            Origs = [{orig_name(F), A} || {{F, A}, How} <- maps:to_list(Patch), How =/= accessor],
+            Forms1 = lists:append([patch_form(F, M, Patch, Origs) || F <- Forms]),
+            {ok, M, Bin} = compile:forms(Forms1, [binary, return_errors, debug_info]),
+            case code:soft_purge(M) of
+                true -> {module, M} = code:load_binary(M, code:which(M), Bin);
+                false -> erlang:error({clj2_redefine, {old_code_in_use, Ns}})
+            end,
+            ets:insert(clj2_beam, {M, Bin}),
+            [clj2_ns:put_var(Ns, N, (maps:without([arities, variadic], I))#{kind => cell, module => M,
+                                                                           redirected => true})
+             || {N, I} <- Targets],
+            ok
+    end.
+
+orig_name(N) -> list_to_atom(atom_to_list(N) ++ "$orig").
+
+%% {Name, Arity} => fixed | rest | accessor
+patch_arities(N, #{kind := const}) -> [{{N, 0}, accessor}];
+patch_arities(N, I = #{kind := fn}) ->
+    [{{N, A}, fixed} || A <- maps:get(arities, I, [])]
+    ++ [{{N, Min + 1}, rest} || Min <- [maps:get(variadic, I, nil)], Min =/= nil].
+
+patch_form({attribute, L, export, Es}, _M, _Patch, Origs) ->
+    [{attribute, L, export, Es ++ Origs}];
+patch_form({function, L, '__ns_init__', 0, _}, _M, _Patch, _Origs) ->
+    [{function, L, '__ns_init__', 0, [{clause, L, [], [], [{atom, L, ok}]}]}];
+patch_form({function, L, '__fn__', 1, _}, M, _Patch, _Origs) ->
+    N = {var, L, 'N'},
+    [{function, L, '__fn__', 1, [{clause, L, [N], [], [remote(L, clj2_var, root, [{atom, L, M}, N])]}]}];
+patch_form({function, L, F, A, Clauses} = Fun, M, Patch, _Origs) ->
+    case Patch of
+        #{{F, A} := accessor} ->
+            [{function, L, F, 0, [{clause, L, [], [], [remote(L, clj2_var, root, [{atom, L, M}, {atom, L, F}])]}]}];
+        #{{F, A} := How} ->
+            Ps = [{var, L, list_to_atom("A" ++ integer_to_list(I))} || I <- lists:seq(1, A)],
+            {Req, Rest} = case How of
+                              fixed -> {Ps, {atom, L, nil}};
+                              rest -> {lists:droplast(Ps), lists:last(Ps)}
+                          end,
+            ReqList = lists:foldr(fun(P, Acc) -> {cons, L, P, Acc} end, {nil, L}, Req),
+            Body = remote(L, clj2_rt, invoke_root, [{atom, L, M}, {atom, L, F}, ReqList, Rest]),
+            [{function, L, orig_name(F), A, self_calls(Clauses, F)},
+             {function, L, F, A, [{clause, L, Ps, [], [Body]}]}];
+        _ -> [Fun]
+    end;
+patch_form(Form, _M, _Patch, _Origs) -> [Form].
+
+%% a fn's calls of itself (its name, or recur) stay in its own body
+self_calls({call, L, {atom, LF, F}, Args}, F) -> {call, L, {atom, LF, orig_name(F)}, self_calls(Args, F)};
+self_calls({'fun', L, {function, F, A}}, F) -> {'fun', L, {function, orig_name(F), A}};
+self_calls(T, F) when is_tuple(T) -> list_to_tuple(self_calls(tuple_to_list(T), F));
+self_calls(L, F) when is_list(L) -> [self_calls(X, F) || X <- L];
+self_calls(X, _F) -> X.
+
+remote(L, M, F, Args) -> {call, L, {remote, L, {atom, L, M}, {atom, L, F}}, Args}.
+
+%% the abstract code of a loaded namespace module, from the beam it was
+%% loaded from (memory, or its file), when that is the running version
+module_forms(M) ->
+    Bin = case ets:lookup(clj2_beam, M) of
+              [{_, B}] -> B;
+              [] -> case code:get_object_code(M) of
+                        {M, B, _} -> B;
+                        error -> none
+                    end
+          end,
+    try
+        {ok, {M, [{debug_info, {debug_info_v1, Backend, Data}}]}} = beam_lib:chunks(Bin, [debug_info]),
+        {ok, {M, MD5}} = beam_lib:md5(Bin),
+        MD5 = M:module_info(md5),
+        {ok, Forms} = Backend:debug_info(erlang_v1, M, Data, []),
+        {ok, Forms}
+    catch _:_ -> error
+    end.
+

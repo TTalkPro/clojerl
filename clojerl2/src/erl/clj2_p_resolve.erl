@@ -84,6 +84,21 @@ expr({the_var, A, S}, _Env, _L, St) ->
         {var, {varref, _, _, Name, _}} -> {{const, A, {var, nil, {var_ns(S, St), Name}}}, St};
         _ -> fail(A, {unresolved_var, S})
     end;
+%% a nested def's assignment (clj2_p_parse:nested_def/3): a var whose root
+%% lives in the var table is set there (clj2_rt:assign_root/3) -- its module
+%% is known now, and the var need not be registered yet (a compile-time
+%% segment); a var linked to module functions moves its value there at run
+%% time (clj2_rt:def_root/2)
+expr({invoke, A, {sym, _, 'clj2_rt/def_root'}, [{the_var, VA, S} = TV, Val]}, Env, L, St) ->
+    {Val1, St1} = expr(Val, Env, L, St),
+    case global(VA, S, St1, private_ok) of
+        {var, {varref, _, M, _, #{kind := K}}} when K =/= fn, K =/= const ->
+            {VarC, St2} = expr(TV, Env, L, St1),
+            {{erl_call, A, clj2_rt, assign_root, [VarC, {const, A, M}, Val1]}, St2};
+        _ ->
+            {VarC, St2} = expr(TV, Env, L, St1),
+            {{erl_call, A, clj2_rt, def_root, [VarC, Val1]}, St2}
+    end;
 expr({invoke, A, {sym, _, S} = H, Args}, Env, L, St) when not is_map_key(S, Env) ->
     case ctor_sugar(A, S, St) of
         {ok, {jvm, C}} ->

@@ -6,6 +6,7 @@
 %%%   (f a b)  f a fn var with arity 2      ⇒ M:f(a, b)        direct call
 %%%   (f a b c) f variadic, min 1          ⇒ M:f(a, [b, c])    rest packed
 %%%   f        fn var used as a value       ⇒ fun M:f/N  (or a clj2_fn tuple)
+%%%   x        a cell var (value in the var table) ⇒ clj2_var:root(M, x)
 %%%   x        any other var                ⇒ M:x()            accessor
 %%%
 %%% Calls are local when M is the unit's own module (emit decides).
@@ -39,6 +40,12 @@ expr({invoke, A, {varref, _, M, Name, #{kind := fn} = Info}, Args}, L) ->
     end;
 expr({varref, A, M, Name, #{kind := fn, arities := Fixed, variadic := Min}}, _L) ->
     {fn_var, A, M, Name, Fixed, Min};
+%% a cell var's value is read from the var table, not through its
+%% accessor: a fn var given a new value at run time keeps its Name/N
+%% functions for the callers linked to them (clj2_rt_eval:redirect/3),
+%% and Name/0 may be one of those
+expr({varref, A, M, Name, #{kind := cell}}, _L) ->
+    {erl_call, A, clj2_var, root, [{const, A, M}, {const, A, Name}]};
 expr({varref, A, M, Name, _Info}, _L) ->
     {call_var, A, M, Name, []};
 expr(Node, L) ->

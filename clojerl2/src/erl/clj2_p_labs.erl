@@ -65,13 +65,15 @@ ns_unit(Tops, A0, St = #{module := M, ns := Ns, vars := Vars}) ->
     {Parts, St1} = lists:mapfoldl(fun top/2, St, Tops),
     Funs = lists:append([with_doc(F, Vars) || {F, _} <- Parts]),
     Steps = lists:append([S || {_, S} <- Parts]),
-    {Init, St2} = init_fun(Ns, M, Vars, Steps, A0, maps:get(register, St, true), St1),
+    {VarValues, St1a} = var_values(Funs, Vars, M, A0, St1),
+    {Init, St2} = init_fun(Ns, M, Vars, Steps, A0, maps:get(register, St, true),
+                           St1a#{has_var_values => VarValues =/= []}),
     {FnValues, St3} = fn_values(Funs, Vars, M, A0, St2),
     ModuleDoc = case maps:get(ns_doc, St, nil) of
                     nil -> [];
                     D -> [{eattr, A0, moduledoc, D}]
                 end,
-    {ModuleDoc ++ module_body(Funs ++ FnValues, Init, A0), St3}.
+    {ModuleDoc ++ module_body(Funs ++ FnValues ++ VarValues, Init, A0), maps:remove(has_var_values, St3)}.
 
 %% `'__fn__'(Name)': the value of each fn var of this module, built here
 %% so it is a local fun, bound to this version of the module. Other
@@ -90,6 +92,30 @@ fn_values(Funs, Vars, M, A0, St) ->
                                        {{eclause, A0, [{elit, A0, N}], [], [V]}, S1}
                                end, St, Fns),
             {[{eattr, A0, doc, false}, {efunction, A0, '__fn__', 1, Clauses}], St1}
+    end.
+
+%% `'__var__'(Name)': the value of each var of this module, by local
+%% calls only. While the module's on_load runs, calls through its exports
+%% are undef, so its init puts a local fun of this in the process
+%% dictionary, where clj2_rt:var_value/3 finds it: a var object of this
+%% namespace can be deref'd or called while the namespace loads.
+var_values(Funs, Vars, M, A0, St) ->
+    Defined = [{N, Ar} || {efunction, _, N, Ar, _} <- Funs],
+    Own = [{N, I} || {N, I} <- lists:sort(maps:to_list(Vars)), maps:get(module, I, M) =:= M],
+    {Clauses, St1} =
+        lists:mapfoldl(
+          fun({N, #{kind := fn, arities := F, variadic := Min}}, S) ->
+                  {V, S1} = expr({fn_var, A0, M, N, F, Min}, S),
+                  {[{eclause, A0, [{elit, A0, N}], [], [V]}], S1};
+             ({N, _}, S) ->
+                  case lists:member({N, 0}, Defined) of
+                      true -> {[{eclause, A0, [{elit, A0, N}], [], [{ecall, A0, N, []}]}], S};
+                      false -> {[], S}
+                  end
+          end, St, [{N, I} || {N, I} <- Own, lists:keymember(N, 1, Defined)]),
+    case lists:append(Clauses) of
+        [] -> {[], St1};
+        Cs -> {[{eattr, A0, doc, false}, {efunction, A0, '__var__', 1, Cs}], St1}
     end.
 
 %% Docstrings become EEP-48 docs (OTP 27+ `-doc', a wild attribute in
@@ -187,7 +213,16 @@ init_fun(Ns, M, Vars, Steps, A, Register, St) ->
                end,
     Exc = {etuple, A, [{evar, A, C}, {evar, A, R}, {evar, A, S}]},
     Fail = {eremote, A, clj2_ns, init_failed, [{elit, A, FailName}, Exc]},
-    Try = {etry, A, [Reg | Steps] ++ [{elit, A, ok}],
+    %% the vars' values by local calls while this init runs (var_values/5)
+    Loading = case maps:get(has_var_values, St, false) of
+                  true -> [{eremote, A, erlang, put, [{etuple, A, [{elit, A, clj2_loading}, {elit, A, M}]},
+                                                      {efunref, A, '__var__', 1}]}];
+                  false -> []
+              end,
+    %% *ns* is the namespace while its forms run, as when the JVM loads a
+    %% file (the init runs in a process of its own)
+    InNs = {eremote, A, clj2_rt_eval, set_current_ns, [{elit, A, Ns}]},
+    Try = {etry, A, [Reg, InNs | Loading ++ Steps] ++ [{elit, A, ok}],
            [{eclause, A, [Exc], [], [Fail, {elit, A, {error, init_failed}}]}],
            []},
     {{efunction, A, '__ns_init__', 0, [{eclause, A, [], [], [Try]}]}, St1}.
@@ -404,9 +439,14 @@ try_erlang_classes(A, Body, Catches, Fin, St) ->
 %% when none applies the exception goes on as it came
 try_by_class(A, Body, Catches, Fin, St) ->
     {B, St1} = expr(Body, St),
-    {[C, R, S], St2} = fresh_n(['C', 'R', 'S'], St1),
-    {Dispatch, St3} = dispatch_catches(Catches, C, R, S, A, St2),
-    Pat = {etuple, A, [{evar, A, C}, {evar, A, R}, {evar, A, S}]},
+    {[C, R0, S, R], St2} = fresh_n(['C', 'R0', 'S', 'R'], St1),
+    {Dispatch0, St3} = dispatch_catches(Catches, C, R, S, A, St2),
+    %% an Erlang error is given its JVM class from the failing call too
+    %% (clj2_rt:refine_error/3: arithmetic on nil is a NullPointerException)
+    Dispatch = {eblock, A, [{ematch, A, {evar, A, R},
+                             {eremote, A, clj2_rt, refine_error, [{evar, A, C}, {evar, A, R0}, {evar, A, S}]}},
+                            Dispatch0]},
+    Pat = {etuple, A, [{evar, A, C}, {evar, A, R0}, {evar, A, S}]},
     {After, St4} = case Fin of
                        nil -> {[], St3};
                        _ -> {FE, S4} = expr(Fin, St3), {[FE], S4}
@@ -414,6 +454,8 @@ try_by_class(A, Body, Catches, Fin, St) ->
     {{etry, A, [B], [{eclause, A, [Pat], [], [Dispatch]}], After}, St4}.
 
 dispatch_catches([], C, R, S, A, St) ->
+    %% no catch applies: on as it came (a refined error is raised refined,
+    %% so an outer catch sees the same class)
     {{eremote, A, erlang, raise, [{evar, A, C}, {evar, A, R}, {evar, A, S}]}, St};
 dispatch_catches([{'catch', CA, Class, U, CB} | Rest], C, R, S, A, St) ->
     {Handler, St1} = expr(CB, St),
