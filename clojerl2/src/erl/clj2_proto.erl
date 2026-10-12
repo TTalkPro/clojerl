@@ -26,7 +26,7 @@
 %%%-------------------------------------------------------------------
 -module(clj2_proto).
 
--export([ new_table/0
+-export([extend_tag/1, new_table/0
         , type_tag/1
         , designator/2
         , impl_module/2
@@ -168,10 +168,19 @@ extend_fns(TypeVal, ProtoVal, MethodMap) ->
     Protocol = clj2_coll:get(ProtoVal, ':name'),
     Fns = maps:from_list([{binary_to_atom(clj2_rt:name(K)), F}
                           || {vector, _, {K, F}} <- clj2_coll:to_list(MethodMap)]),
-    Tag = tag_of_class(TypeVal),
+    Tag = extend_tag(TypeVal),
     true = ets:insert(?TAB, {{Protocol, Tag}, {ok, {fns, Fns}}}),
     true = ets:match_delete(?TAB, {{via, Protocol, '_'}, '_'}),
     nil.
+
+%% @doc The dispatch tag of a type value as extend and extends? take it:
+%% a class, or its simple name ((extend 'String P {...}))
+extend_tag(TypeVal) ->
+    Class = case is_atom(TypeVal) andalso TypeVal =/= nil andalso clj2_class:resolve(TypeVal) of
+                {ok, C} -> C;
+                _ -> TypeVal
+            end,
+    tag_of_class(Class).
 
 %% @doc (extenders P): the types with an impl of P, as classes
 extenders(ProtoVal) ->

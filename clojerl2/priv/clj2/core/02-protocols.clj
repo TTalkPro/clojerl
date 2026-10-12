@@ -44,7 +44,7 @@
 (defn extends?
   "True when type tag t extends protocol p."
   [p t]
-  (not= (clj2_proto/impl (get p :name) t) 'error))
+  (not= (clj2_proto/impl (get p :name) (clj2_proto/extend_tag t)) 'error))
 
 (defn record?
   [x]
@@ -57,3 +57,8 @@
     (clj2_proto/extend_fns atype proto mmap)))
 
 (defn extenders [p] (seq (clj2_proto/extenders p)))
+
+;; Inst: what inst-ms reads (no #inst type of its own here; a type extends it)
+(defprotocol Inst (inst-ms* [inst]))
+(defn inst-ms [inst] (inst-ms* inst))
+(defn inst? [x] (satisfies? Inst x))

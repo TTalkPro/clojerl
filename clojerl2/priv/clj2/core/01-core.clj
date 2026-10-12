@@ -21,7 +21,22 @@
 
 (defn sequence
   ([coll] (if (seq? coll) coll (or (seq coll) '())))
-  ([xform coll] (or (seq (transduce xform (completing conj) [] coll)) '())))
+  ([xform coll]
+   ;; lazy, one source element at a time: each step runs the xform into an
+   ;; empty buffer; the completion (stateful xforms flush there) runs once,
+   ;; when the source ends or a step is reduced. The xform is instantiated
+   ;; when the seq is first realized, so its state (volatiles live in a
+   ;; process) belongs to the process that walks it.
+   (let [step (fn step [rf s]
+                (lazy-seq
+                  (loop [s s]
+                    (if-let [xs (seq s)]
+                      (let [buf (rf [] (first xs))]
+                        (cond (reduced? buf) (seq (rf @buf))
+                              (zero? (count buf)) (recur (rest xs))
+                              :else (concat buf (step rf (rest xs)))))
+                      (seq (rf []))))))]
+     (lazy-seq (step (xform (fn ([acc] acc) ([acc x] (conj acc x)))) coll)))))
 
 (defn cat [rf]
   (fn ([] (rf))
@@ -199,7 +214,7 @@
               (if (reduced? sepr) sepr (rf sepr input)))
             (do (vreset! started true) (rf result input))))))))
   ([sep coll]
-   (drop 1 (mapcat (fn [x] (list sep x)) coll))))
+   (drop 1 (interleave (repeat sep) coll))))
 
 (defn interleave
   ([] '())
@@ -221,7 +236,14 @@
 (defn flatten [x]
   (filter (complement sequential?) (rest (tree-seq sequential? seq x))))
 
-(defn nthrest [coll n] (or (nthnext coll n) '()))
+(defn nthrest [coll n]
+  ;; as clojure 1.12: n <= 0 is coll itself; past the end is ()
+  (if (pos? n)
+    (loop [n n xs coll]
+      (if (pos? n)
+        (if-let [s (seq xs)] (recur (dec n) (rest s)) ())
+        xs))
+    coll))
 
 (defn take-last [n coll]
   (let [v (vec coll) c (count v)]
@@ -254,9 +276,13 @@
 
 (defn not-any? [pred coll] (not (some pred coll)))
 (defn not-every? [pred coll] (not (every? pred coll)))
-(defn run! [f coll] (reduce (fn [_ x] (f x) nil) nil coll) nil)
+(defn run! [f coll] (reduce (fn [_ x] (f x)) nil coll) nil)
 
-(defn rseq [v] (if (clj2_sorted/is_sorted v) (clj2_sorted/rseq v) (seq (reverse v))))
+(defn rseq [v]
+  (cond (clj2_sorted/is_sorted v) (clj2_sorted/rseq v)
+        (vector? v) (seq (reverse v))
+        :else (throw (new ClassCastException (str "class " (clj2_class/class_of v)
+                                                  " cannot be cast to class clojure.lang.Reversible")))))
 
 (defn max-key
   ([k x] x)
@@ -278,11 +304,15 @@
 
 (defn peek [coll]
   (cond (vector? coll) (when (pos? (count coll)) (nth coll (dec (count coll))))
-        :else (first coll)))
+        (or (nil? coll) (list? coll)) (first coll)
+        :else (throw (new ClassCastException (str "class " (clj2_class/class_of coll)
+                                                  " cannot be cast to class clojure.lang.IPersistentStack")))))
 
 (defn pop [coll]
   (cond (vector? coll) (clj2_coll/pop_vector coll)
         (nil? coll) nil
+        (and (list? coll) (empty? coll))
+        (throw (ex-info "Can't pop empty list" {:type :IllegalStateException}))
         :else (rest coll)))
 
 (defn subvec
@@ -315,9 +345,18 @@
 
 (defn distinct? [& xs] (= (count xs) (count (set xs))))
 
-(defn find [m k] (when (contains? m k) [k (get m k)]))
-(defn key [e] (nth e 0))
-(defn val [e] (nth e 1))
+(defn find [m k]
+  ;; maps, records and vectors are associative (and transients of them);
+  ;; sets, strings, lists ... are not
+  (cond (nil? m) nil
+        (or (map? m) (vector? m)
+            (and (clj2_proto/is_type_value m) (erlang/is_map (erlang/element 3 m)))
+            (and (clj2_rt/is_transient m) (let [c (clj2_rt/persistent m)] (or (map? c) (vector? c)))))
+        (when (contains? m k) [k (get m k)])
+        :else (throw (ex-info (str "find not supported on type: " (clj2_class/class_of m))
+                              {:type :IllegalArgumentException}))))
+(defn key [e] (clj2_coll/entry_part e 1))
+(defn val [e] (clj2_coll/entry_part e 2))
 
 (defn zipmap [ks vs]
   (loop [m {} ks (seq ks) vs (seq vs)]
@@ -362,7 +401,7 @@
     (assoc m k (apply f (get m k) args))))
 
 (defn select-keys [m ks]
-  (reduce (fn [acc k] (if (contains? m k) (assoc acc k (get m k)) acc)) {} ks))
+  (clj2_rt/with_meta (reduce (fn [acc k] (if-let [e (find m k)] (conj acc e) acc)) {} ks) (clj2_rt/meta m)))
 
 (defn update-vals [m f] (reduce (fn [acc [k v]] (assoc acc k (f v))) {} m))
 (defn update-keys [m f] (reduce (fn [acc [k v]] (assoc acc (f k) v)) {} m))
@@ -402,9 +441,13 @@
   ([keyfn coll] (sort-by keyfn compare coll))
   ([keyfn cmp coll] (sort (fn [a b] (cmp (keyfn a) (keyfn b))) coll)))
 
-(defn shuffle [coll] (vec (map second (sort-by first (map (fn [x] [(rand/uniform) x]) coll)))))
+(defn shuffle [coll]
+  (when (or (string? coll) (not (or (nil? coll) (coll? coll))))
+    (throw (new ClassCastException (str "class " (clj2_class/class_of coll)
+                                        " cannot be cast to class java.util.Collection"))))
+  (vec (map second (sort-by first (map (fn [x] [(rand/uniform) x]) coll)))))
 (defn rand ([] (rand/uniform_real)) ([n] (* n (rand/uniform_real))))
-(defn rand-int [n] (dec (rand/uniform n)))
+(defn rand-int [n] (if (pos? n) (dec (rand/uniform n)) 0))
 (defn rand-nth [coll] (nth coll (rand-int (count coll))))
 
 (defn boolean [x] (if x true false))
@@ -414,7 +457,7 @@
 (defn nat-int? [x] (and (integer? x) (not (neg? x))))
 (defn double? [x] (float? x))
 (defn any? [_] true)
-(defn abs [x] (erlang/abs x))
+(defn abs [x] (if (clj2_decimal/is_decimal x) (clj2_decimal/abs x) (erlang/abs x)))
 (defn bit-and ([x y] (erlang/band x y)) ([x y & more] (reduce bit-and (bit-and x y) more)))
 (defn bit-or ([x y] (erlang/bor x y)) ([x y & more] (reduce bit-or (bit-or x y) more)))
 (defn bit-xor ([x y] (erlang/bxor x y)) ([x y & more] (reduce bit-xor (bit-xor x y) more)))
@@ -428,7 +471,11 @@
   s)
 (defn parse-long [s] (let [s (parse-arg s)] (try (erlang/binary_to_integer s) (catch :error _ nil))))
 (defn parse-double [s] (clj2_jvm/parse_double_or_nil (parse-arg s)))
-(defn parse-boolean [s] (case s "true" true "false" false nil))
+(defn parse-boolean [s]
+  (if (string? s)
+    (case s "true" true "false" false nil)
+    (throw (ex-info (str "Expected string, got " (if (nil? s) "nil" (clj2_class/class_of s)))
+                    {:type :IllegalArgumentException}))))
 
 ;;;; ------------------------------------------------------------------
 ;;;; Strings and exceptions
@@ -558,7 +605,13 @@
 
 (defn in-ns [name] (clj2_rt_eval/in_ns name))
 (defn eval [form] (clj2_rt_eval/eval form))
-(defn read-string [s] (clj2_rt_eval/read_string s))
+(defn read-string
+  ([s] (clj2_rt_eval/read_string s))
+  ;; opts: :eof is the value at end of input (none: end of input is an error)
+  ([opts s]
+   (if (and (contains? opts :eof) (clj2_string/is_blank s))
+     (:eof opts)
+     (clj2_rt_eval/read_string s))))
 (defn load-string [s] (clj2_rt_eval/load_string s))
 (defn load-file [path] (clj2_rt_eval/load_file path))
 (defn macroexpand-1 [form] (clj2_rt_eval/macroexpand_1 form))
@@ -688,6 +741,20 @@
   (try (apply f args) (finally (pop-thread-bindings))))
 (defmacro with-bindings [binding-map & body]
   `(with-bindings* ~binding-map (fn [] ~@body)))
+
+(defn alter-var-root [v f & args] (clj2_rt/alter_var_root v f args))
+
+(defn with-redefs-fn [binding-map func]
+  (let [vars (keys binding-map)
+        old (doall (map (fn [v] (clj2_rt/table_root v)) vars))]
+    (doseq [v vars] (clj2_rt/set_var_root v (get binding-map v)))
+    (try (func)
+         (finally (doall (map (fn [v x] (clj2_rt/set_var_root v x)) vars old))))))
+
+(defmacro with-redefs [bindings & body]
+  `(with-redefs-fn ~(zipmap (map (fn [s] (list 'var s)) (take-nth 2 bindings))
+                            (take-nth 2 (next bindings)))
+     (fn [] ~@body)))
 
 (defn var-get [v] (deref v))
 (defn var-set [v val] (clj2_var/var_set v val))
@@ -937,9 +1004,15 @@
          (with-open ~(subvec bindings 2) ~@body)
          (finally (close-resource ~(bindings 0)))))))
 
-;; BEAM floats have one precision: the body runs unchanged
-(defmacro with-precision [precision & exprs]
-  `(do ~@(if (= (first exprs) :rounding) (nnext exprs) exprs)))
+(defmacro with-precision
+  "BigDecimal arithmetic in body rounds to precision significant digits
+  (:rounding a RoundingMode name, HALF_UP by default)."
+  [precision & exprs]
+  (let [[body rm] (if (= (first exprs) :rounding)
+                    [(nnext exprs) (list 'quote (second exprs))]
+                    [exprs nil])]
+    `(binding [*math-context* (clj2_decimal/math_context ~precision ~rm)]
+       ~@body)))
 
 ;; a definline is a fn here (the compiler inlines nothing it is told to)
 (defmacro definline [name & decl] `(defn ~name ~@decl))
@@ -995,6 +1068,7 @@
            (list (into [] (take n) (concat p pad)))))))))
 
 (defn partitionv-all
+  ([n] (partition-all n))
   ([n coll] (partitionv-all n n coll))
   ([n step coll]
    (lazy-seq
@@ -1047,13 +1121,12 @@
 (defn qualified-keyword? [x] (boolean (and (keyword? x) (namespace x))))
 (defn special-symbol? [s]
   (contains? '#{def if do let* loop* fn* recur quote var throw try catch finally
-                letfn* case* new . set! monitor-enter monitor-exit deftype* reify* import*} s))
-(defn inst? [x] false)
+                letfn* case* new . set! monitor-enter monitor-exit deftype* reify* import* &} s))
 (defn uri? [x] false)
-(defn bytes? [x] false)
-(defn tagged-literal? [x] false)
-(defn reader-conditional? [x] false)
-(defn decimal? [x] false)
+(defn bytes? [x] (and (clj2_array/is_array x) (= 'byte (erlang/element 2 x))))
+(defn bytes [x] (if (bytes? x) x (byte-array x)))
+(defn decimal? [x] (clj2_decimal/is_decimal x))
+(defn bigdec [x] (clj2_decimal/from x *math-context*))
 
 (defn find-keyword
   ([name] (try (clj2_rt/existing_keyword nil name) (catch Exception _ nil)))
@@ -1069,13 +1142,18 @@
     (if (symbol? s) (symbol r) r)))
 
 ;; numbers (BEAM: unbounded integers)
-(defn int [x] (if (float? x) (erlang/trunc x) x))
+(defn int [x]
+  (cond (integer? x) x
+        (float? x) (erlang/trunc x)
+        (decimal? x) (clj2_decimal/to_integer x)
+        (ratio? x) (quot (numerator x) (denominator x))
+        :else (clj2_rt/not_number x)))
 (defn long [x] (int x))
 (defn short [x] (int x))
 (defn byte [x] (int x))
-(defn double [x] (erlang/float x))
-(defn float [x] (erlang/float x))
-(defn num [x] x)
+(defn double [x] (if (decimal? x) (clj2_decimal/to_float x) (erlang/float x)))
+(defn float [x] (if (decimal? x) (clj2_decimal/to_float x) (erlang/float x)))
+(defn num [x] (if (or (number? x) (nil? x) (clj2_rt/is_ratio x)) x (clj2_rt/not_number x)))
 (defn bigint
   "x as an integer: a number truncates, a string parses (BEAM integers are
   unbounded, so a bigint is any integer)."
@@ -1121,17 +1199,23 @@
 (defn NaN? [x] (if (number? x) false (throw (ex-info "NaN? takes a number" {:type :ClassCastException}))))
 (defn infinite? [x] (if (number? x) false (throw (ex-info "infinite? takes a number" {:type :ClassCastException}))))
 (defn ratio? [x] (clj2_rt/is_ratio x))
-(defn rational? [x] (or (integer? x) (ratio? x)))
+(defn rational? [x] (or (integer? x) (ratio? x) (decimal? x)))
 (defn numerator [r] (clj2_rt/numerator r))
 (defn denominator [r] (clj2_rt/denominator r))
-(defn rationalize [x] x)
+(defn rationalize [x]
+  ;; a BigDecimal (or a double, through its shortest text) as an exact ratio
+  (let [d (cond (decimal? x) x (float? x) (bigdec x) :else nil)]
+    (if d (clj2_decimal/to_ratio d) x)))
 (defn bit-and-not ([x y] (bit-and x (bit-not y))) ([x y & more] (reduce bit-and-not (bit-and-not x y) more)))
 (defn bit-set [x n] (bit-or x (bit-shift-left 1 n)))
 (defn bit-clear [x n] (bit-and x (bit-not (bit-shift-left 1 n))))
 (defn bit-flip [x n] (bit-xor x (bit-shift-left 1 n)))
 (defn bit-test [x n] (not (zero? (bit-and x (bit-shift-left 1 n)))))
 ;; on the 64-bit two's complement of x, as the JVM's >>> on a long
-(defn unsigned-bit-shift-right [x n] (bit-shift-right (bit-and x 0xFFFFFFFFFFFFFFFF) n))
+(defn unsigned-bit-shift-right [x n]
+  ;; a logical shift of the 64-bit pattern (n mod 64), read back as a signed long
+  (let [u (bit-shift-right (bit-and x 0xFFFFFFFFFFFFFFFF) (bit-and n 63))]
+    (if (>= u 0x8000000000000000) (- u 0x10000000000000000) u)))
 
 ;; hashes: the collection mixing fns over clojure's hash
 (defn mix-collection-hash [hash-basis count] (clj2_hash/mix_coll_hash hash-basis count))
@@ -1195,10 +1279,11 @@
 (defn conj!
   ([] (transient []))
   ([t] t)
-  ([t x] (clj2_rt/transient (conj (clj2_rt/persistent t) x))))
+  ([t x] (clj2_rt/transient (conj (clj2_rt/persistent t) x)))
+  ([t x & xs] (reduce conj! (conj! t x) xs)))
 (defn assoc!
   ([t k v] (clj2_rt/transient (assoc (clj2_rt/persistent t) k v)))
-  ([t k v & kvs] (reduce (fn [t [k v]] (assoc! t k v)) (assoc! t k v) (partition 2 kvs))))
+  ([t k v & kvs] (if kvs (recur (assoc! t k v) (first kvs) (second kvs) (nnext kvs)) (assoc! t k v))))
 (defn dissoc!
   ([t k] (clj2_rt/transient (dissoc (clj2_rt/persistent t) k)))
   ([t k & ks] (reduce dissoc! (dissoc! t k) ks)))
@@ -1228,9 +1313,14 @@
 ;;;; ------------------------------------------------------------------
 ;;;; Sorted collections (clj2_sorted: an AVL tree under a comparator)
 
+(defn- check-kvs [keyvals]
+  (when (odd? (count keyvals))
+    (throw (ex-info (str "No value supplied for key: " (clj2_print/pr_str (last keyvals))) {:type :IllegalArgumentException}))))
 (defn sorted-map [& keyvals]
+  (check-kvs keyvals)
   (clj2_sorted/from_list 'sorted_map 'default (map (fn [[k v]] (erlang/list_to_tuple (list k v))) (partition 2 keyvals))))
 (defn sorted-map-by [comparator & keyvals]
+  (check-kvs keyvals)
   (clj2_sorted/from_list 'sorted_map comparator (map (fn [[k v]] (erlang/list_to_tuple (list k v))) (partition 2 keyvals))))
 (defn sorted-set [& keys]
   (clj2_sorted/from_list 'sorted_set 'default (map (fn [k] (erlang/list_to_tuple (list k nil))) keys)))
@@ -1283,7 +1373,7 @@
 (def aset-char aset) (def aset-double aset) (def aset-float aset) (def aset-boolean aset)
 (defn alength [a] (clj2_array/length a))
 (defn aclone [a] (clj2_array/clone a))
-(defn ints [xs] xs) (defn longs [xs] xs) (defn shorts [xs] xs) (defn bytes [xs] xs)
+(defn ints [xs] xs) (defn longs [xs] xs) (defn shorts [xs] xs)
 (defn chars [xs] xs) (defn doubles [xs] xs) (defn floats [xs] xs) (defn booleans [xs] xs)
 (defmacro amap [a idx ret expr]
   `(let [a# ~a ~ret (aclone a#)]
@@ -1297,7 +1387,15 @@
        (if (< ~idx (alength a#)) (recur (unchecked-inc ~idx) ~expr) ~ret))))
 
 ;; primitive vectors are vectors here
-(defn vector-of [t & elements] (vec elements))
+(defn vector-of [t & elements]
+  ;; elements are coerced to the element type (the vector stays a vector)
+  (let [c (case t
+            (:int :long :short :byte) long
+            (:double :float) double
+            :char char
+            :boolean boolean
+            (throw (ex-info (str "Unrecognized type " t) {:type :IllegalArgumentException})))]
+    (vec (map c elements))))
 
 (defmacro memfn [name & args]
   (let [t (gensym "target")]
@@ -1307,4 +1405,60 @@
 ;; so there is nothing to lock (locking runs its body)
 (defn monitor-enter [x] nil)
 (defn monitor-exit [x] nil)
-(defmacro locking [x & body] `(let [_# ~x] ~@body))
+(defmacro locking [x & body]
+  `(let [lockee# ~x]
+     (try (monitor-enter lockee#) ~@body (finally (monitor-exit lockee#)))))
+
+
+;;;; ------------------------------------------------------------------
+;;;; Smaller clojure.core vars (clojerl2-036)
+
+(defn sorted-map? [x] (and (clj2_sorted/is_sorted x) (= 'sorted_map (erlang/element 1 x))))
+(defn sorted-set? [x] (and (clj2_sorted/is_sorted x) (= 'sorted_set (erlang/element 1 x))))
+
+;; ClojureScript's names, as jolt's overlay gives them on every host
+(defn object? [x] false)
+(defn undefined? [x] false)
+(defn keyword-identical? [x y] (= x y))
+
+(defn test
+  "Runs the :test fn in v's metadata: :ok, or :no-test when there is none."
+  [v]
+  (if-let [f (:test (meta v))] (do (f) :ok) :no-test))
+
+(defn thread-bound?
+  "True when every var has a binding in this process."
+  [& vars]
+  (every? (fn [v] (clj2_var/is_thread_bound v)) vars))
+(defn get-thread-bindings [] (clj2_var/thread_bindings))
+
+(defn xml-seq [root]
+  (tree-seq (complement string?) (comp seq :content) root))
+
+(defn iterator-seq [iter] (seq iter))
+
+;; tagged literals and reader conditionals as data (the reader makes them
+;; for #tag forms it has no reader for, and for #? under :read-cond :preserve)
+(defn tagged-literal [tag form] (clj2_rt/tagged_literal tag form))
+(defn tagged-literal? [x] (clj2_rt/is_tagged_literal x))
+(defn reader-conditional [form splicing?] (clj2_rt/reader_conditional form splicing?))
+(defn reader-conditional? [x] (clj2_rt/is_reader_conditional x))
+
+;; proxies need JVM classes to subclass; the shapes jolt documents
+(defn get-proxy-class [& bases]
+  (throw (ex-info "get-proxy-class: proxies are not supported (no JVM classes)" {:type :UnsupportedOperationException})))
+(defn construct-proxy [c & args]
+  (throw (ex-info "construct-proxy: proxies are not supported (no JVM classes)" {:type :UnsupportedOperationException})))
+(defn init-proxy [proxy mappings] nil)
+(defn update-proxy [proxy mappings] nil)
+(defn print-dup [x w]
+  (throw (ex-info "print-dup is not supported" {:type :UnsupportedOperationException})))
+
+;; struct maps: maps that start with the basis keys
+(defn create-struct [& keys] (vec keys))
+(defmacro defstruct [name & keys] `(def ~name (create-struct ~@keys)))
+(defn struct-map [s & inits]
+  (merge (zipmap s (repeat nil)) (apply hash-map inits)))
+(defn struct [s & vals]
+  (merge (zipmap s (repeat nil)) (zipmap s vals)))
+(defn accessor [s key] (fn [m] (get m key)))

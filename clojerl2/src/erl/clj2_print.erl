@@ -41,6 +41,7 @@ pr(F, _) when is_float(F) -> float_str(F);
 pr(B, true) when is_binary(B) -> [$", escape(B), $"];
 pr(B, false) when is_binary(B) -> B;
 pr({ratio, N, D}, _) -> [integer_to_binary(N), $/, integer_to_binary(D)];
+pr({decimal, _, _} = D, _) -> [clj2_decimal:to_string(D), $M];        % print keeps the M too
 pr([], _) -> <<"()">>;
 pr(L, R) when is_list(L) -> seq_str(L, R);
 pr({lazy_seq, _, _} = L, R) -> seq_str(L, R);
@@ -65,6 +66,9 @@ pr({tagged, [], T, nil}, _) when T =:= 'NaN'; T =:= 'Inf'; T =:= '-Inf' -> [<<"#
 pr({tagged, [], Tag, F}, R) when is_atom(Tag) -> [$#, atom_to_binary(Tag), $\s, pr(F, R)];
 pr({bigdec, [], B}, _) when is_binary(B) -> [B, $M];
 pr({fnmeta, _, F}, R) -> pr(F, R);
+pr({tagged_literal, _, #{':tag' := T, ':form' := F}}, R) -> [$#, pr(T, R), $\s, pr(F, R)];
+pr({reader_conditional, _, #{':form' := F, ':splicing?' := S}}, R) ->
+    [case S of true -> <<"#?@">>; false -> <<"#?">> end, pr(F, R)];
 pr(F, _) when is_function(F) -> [<<"#object[">>, io_lib:format("~tp", [F]), $]];
 pr({Tag, _, _} = X, R) when Tag =:= atom; Tag =:= volatile; Tag =:= agent;
                              Tag =:= promise; Tag =:= future ->

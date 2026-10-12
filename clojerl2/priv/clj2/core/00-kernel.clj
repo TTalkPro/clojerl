@@ -70,7 +70,7 @@
 (def identical? (fn* identical? [x y] (clj2_rt/identical x y)))
 
 (def string? (fn* string? [x] (erlang/is_binary x)))
-(def number? (fn* number? [x] (erlang/is_number x)))
+(def number? (fn* number? [x] (if (erlang/is_number x) true (clj2_rt/is_boxed_number x))))
 (def integer? (fn* integer? [x] (erlang/is_integer x)))
 (def float? (fn* float? [x] (erlang/is_float x)))
 (def boolean? (fn* boolean? [x] (erlang/is_boolean x)))
@@ -161,10 +161,17 @@
                                  (let* [v (rf acc y)] (if (clj2_rt/is_reduced v) (clj2_rt/reduced v) v)))
                                r (f x))))))
     ([f coll]
-     (lazy-seq (let* [s (seq (map f coll))]
-                 (if s (concat (erlang/hd s) (mapcat identity (erlang/tl s))) nil))))
+     ;; as (apply concat (map f coll)) on the JVM: the first few results
+     ;; are made at the call (so a bad coll or f fails there), the rest lazily
+     (let* [m (map f coll)]
+       (dorun-n 4 m)
+       (mapcat* m)))
     ([f c1 c2] (mapcat identity (map f c1 c2)))
     ([f c1 c2 & colls] (mapcat identity (apply map f c1 c2 colls)))))
+(def ^:private mapcat*
+  (fn* mapcat* [m] (lazy-seq (let* [s (seq m)] (if s (concat (erlang/hd s) (mapcat* (erlang/tl s))) nil)))))
+(def ^:private dorun-n
+  (fn* dorun-n [n s] (if (erlang/> n 0) (let* [s1 (seq s)] (if s1 (dorun-n (erlang/- n 1) (erlang/tl s1)) nil)) nil)))
 (def some (fn* some [pred coll]
             (loop* [s (seq coll)]
               (if s (let* [r (pred (erlang/hd s))] (if r r (recur (next s)))) nil))))
@@ -270,7 +277,9 @@
                     (loop* [s (seq coll)]
                       (if s (if (pred (erlang/hd s)) (recur (next s)) s) nil)))))
 (def iterate (fn* iterate [f x] (lazy-seq (cons x (iterate f (f x))))))
-(def repeat (fn* repeat ([x] (lazy-seq (cons x (repeat x)))) ([n x] (take n (repeat x)))))
+(def repeat (fn* repeat ([x] (lazy-seq (cons x (repeat x))))
+              ;; the count is checked and truncated at the call (JVM: a long)
+              ([n x] (if (erlang/is_number n) (take (erlang/trunc n) (repeat x)) (clj2_rt/not_number n)))))
 (def repeatedly (fn* repeatedly ([f] (lazy-seq (cons (f) (repeatedly f)))) ([n f] (take n (repeatedly f)))))
 (def cycle (fn* cycle [coll]
              (lazy-seq (let* [s (seq coll)] (if s (concat s (cycle s)) nil)))))
@@ -280,10 +289,19 @@
     ([end] (range 0 end 1))
     ([start end] (range start end 1))
     ([start end step]
-     (lazy-seq
-       (if (if (erlang/> step 0) (erlang/< start end) (erlang/> start end))
-         (cons start (range (erlang/+ start step) end step))
-         nil)))))
+     ;; the bounds are checked at the call, as on the JVM (Erlang orders
+     ;; every number below a string, so (range "a") would never end)
+     (if (erlang/is_number start)
+       (if (erlang/is_number end)
+         (if (erlang/is_number step) (range* start end step) (clj2_rt/not_number step))
+         (clj2_rt/not_number end))
+       (clj2_rt/not_number start)))))
+(def ^:private range*
+  (fn* range* [start end step]
+    (lazy-seq
+      (if (if (erlang/> step 0) (erlang/< start end) (erlang/> start end))
+        (cons start (range* (erlang/+ start step) end step))
+        nil))))
 
 ;;;; ------------------------------------------------------------------
 ;;;; Equality and numbers
@@ -299,16 +317,22 @@
        false))))
 (def not= (fn* not= [& args] (not (apply = args))))
 
-(def + (fn* + ([] 0) ([x] x) ([x y] (erlang/+ x y)) ([x y & more] (reduce + (erlang/+ x y) more))))
-(def * (fn* * ([] 1) ([x] x) ([x y] (erlang/* x y)) ([x y & more] (reduce * (erlang/* x y) more))))
-(def - (fn* - ([x] (erlang/- 0 x)) ([x y] (erlang/- x y)) ([x y & more] (reduce - (erlang/- x y) more))))
+(def + (fn* + ([] 0) ([x] (if (erlang/is_number x) x (if (erlang/is_atom x) (if (erlang/== x nil) nil (clj2_rt/not_number x)) (clj2_rt/not_number x)))) ([x y] (if (if (erlang/is_number x) (erlang/is_number y) false) (erlang/+ x y) (clj2_rt/num_op (quote +) x y))) ([x y & more] (reduce + (+ x y) more))))
+(def * (fn* * ([] 1) ([x] (if (erlang/is_number x) x (if (erlang/is_atom x) (if (erlang/== x nil) nil (clj2_rt/not_number x)) (clj2_rt/not_number x)))) ([x y] (if (if (erlang/is_number x) (erlang/is_number y) false) (erlang/* x y) (clj2_rt/num_op (quote *) x y))) ([x y & more] (reduce * (* x y) more))))
+(def - (fn* - ([x] (if (erlang/is_number x) (erlang/- 0 x) (clj2_rt/num_op (quote -) 0 x))) ([x y] (if (if (erlang/is_number x) (erlang/is_number y) false) (erlang/- x y) (clj2_rt/num_op (quote -) x y))) ([x y & more] (reduce - (- x y) more))))
 (def / (fn* / ([x] (clj2_rt/divide 1 x)) ([x y] (clj2_rt/divide x y))
             ([x y & more] (reduce / (clj2_rt/divide x y) more))))
-(def inc (fn* inc [x] (erlang/+ x 1)))
-(def dec (fn* dec [x] (erlang/- x 1)))
-(def quot (fn* quot [n d] (erlang/div n d)))
-(def rem (fn* rem [n d] (erlang/rem n d)))
-(def mod (fn* mod [n d] (let* [m (erlang/rem n d)] (if (erlang/== m 0) 0 (if (erlang/== (erlang/< m 0) (erlang/< d 0)) m (erlang/+ m d))))))
+(def inc (fn* inc [x] (if (erlang/is_number x) (erlang/+ x 1) (clj2_rt/num_op (quote +) x 1))))
+(def dec (fn* dec [x] (if (erlang/is_number x) (erlang/- x 1) (clj2_rt/num_op (quote -) x 1))))
+(def quot (fn* quot [n d] (if (if (erlang/is_integer n) (erlang/is_integer d) false)
+                              (erlang/div n d)
+                              (clj2_rt/num_quot n d))))
+(def rem (fn* rem [n d] (if (if (erlang/is_integer n) (erlang/is_integer d) false)
+                            (erlang/rem n d)
+                            (clj2_rt/num_rem n d))))
+;; the remainder takes the divisor's sign
+(def mod (fn* mod [n d] (let* [m (rem n d)]
+                          (if (if (zero? m) true (erlang/== (neg? m) (neg? d))) m (+ m d)))))
 
 (def compare-chain
   (fn* compare-chain [op x more]
@@ -316,18 +340,21 @@
       (if s
         (if (op x (erlang/hd s)) (recur (erlang/hd s) (next s)) false)
         true))))
-(def < (fn* < ([x] true) ([x y] (erlang/< x y)) ([x y & more] (compare-chain < x (cons y more)))))
-(def > (fn* > ([x] true) ([x y] (erlang/> x y)) ([x y & more] (compare-chain > x (cons y more)))))
-(def <= (fn* <= ([x] true) ([x y] (erlang/=< x y)) ([x y & more] (compare-chain <= x (cons y more)))))
-(def >= (fn* >= ([x] true) ([x y] (erlang/>= x y)) ([x y & more] (compare-chain >= x (cons y more)))))
-(def == (fn* == ([x] true) ([x y] (erlang/== x y)) ([x y & more] (compare-chain == x (cons y more)))))
-(def zero? (fn* zero? [x] (erlang/== x 0)))
-(def pos? (fn* pos? [x] (erlang/> x 0)))
-(def neg? (fn* neg? [x] (erlang/< x 0)))
-(def even? (fn* even? [n] (erlang/== (erlang/rem n 2) 0)))
+(def < (fn* < ([x] true) ([x y] (if (if (erlang/is_number x) (erlang/is_number y) false) (erlang/< x y) (clj2_rt/num_compare (quote <) x y))) ([x y & more] (compare-chain < x (cons y more)))))
+(def > (fn* > ([x] true) ([x y] (if (if (erlang/is_number x) (erlang/is_number y) false) (erlang/> x y) (clj2_rt/num_compare (quote >) x y))) ([x y & more] (compare-chain > x (cons y more)))))
+(def <= (fn* <= ([x] true) ([x y] (if (if (erlang/is_number x) (erlang/is_number y) false) (erlang/=< x y) (clj2_rt/num_compare (quote =<) x y))) ([x y & more] (compare-chain <= x (cons y more)))))
+(def >= (fn* >= ([x] true) ([x y] (if (if (erlang/is_number x) (erlang/is_number y) false) (erlang/>= x y) (clj2_rt/num_compare (quote >=) x y))) ([x y & more] (compare-chain >= x (cons y more)))))
+(def == (fn* == ([x] true) ([x y] (if (if (erlang/is_number x) (erlang/is_number y) false) (erlang/== x y) (clj2_rt/num_compare (quote ==) x y))) ([x y & more] (compare-chain == x (cons y more)))))
+(def zero? (fn* zero? [x] (if (erlang/is_number x) (erlang/== x 0) (clj2_rt/num_compare (quote ==) x 0))))
+(def pos? (fn* pos? [x] (if (erlang/is_number x) (erlang/> x 0) (clj2_rt/num_compare (quote >) x 0))))
+(def neg? (fn* neg? [x] (if (erlang/is_number x) (erlang/< x 0) (clj2_rt/num_compare (quote <) x 0))))
+(def even? (fn* even? [n] (if (erlang/is_integer n)
+                              (erlang/== (erlang/rem n 2) 0)
+                              (throw (clj2_rt/ex_info (str "Argument must be an integer: " n)
+                                                      (clj2_coll/hash_map_kv (list :type :IllegalArgumentException)) nil)))))
 (def odd? (fn* odd? [n] (not (even? n))))
-(def max (fn* max ([x] x) ([x y] (if (erlang/> x y) x y)) ([x y & more] (reduce max (max x y) more))))
-(def min (fn* min ([x] x) ([x y] (if (erlang/< x y) x y)) ([x y & more] (reduce min (min x y) more))))
+(def max (fn* max ([x] x) ([x y] (if (> x y) x y)) ([x y & more] (reduce max (max x y) more))))
+(def min (fn* min ([x] x) ([x y] (if (< x y) x y)) ([x y & more] (reduce min (min x y) more))))
 
 ;;;; ------------------------------------------------------------------
 ;;;; Symbols, keywords, strings
@@ -535,8 +562,10 @@
                  (if s (recur (nnext s) (concat out (list (list (first s) (second s))))) out))]
     (if (every? (fn* [p] (symbol? (first p))) pairs)
       `(loop* ~bindings ~@body)
+      ;; each init is bound, then destructured, before the next one runs
+      ;; (it may use the names the earlier ones bound)
       (let* [gs (map (fn* [p] (gensym "loop__")) pairs)]
-        `(let [~@(mapcat (fn* [g p] (list g (second p))) gs pairs)]
+        `(let [~@(mapcat (fn* [g p] (list g (second p) (first p) g)) gs pairs)]
            (loop* [~@(mapcat (fn* [g] (list g g)) gs)]
              (let [~@(mapcat (fn* [g p] (list (first p) g)) gs pairs)]
                ~@body)))))))
