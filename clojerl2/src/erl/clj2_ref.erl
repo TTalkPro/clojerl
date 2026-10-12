@@ -112,19 +112,23 @@ compare_and_set(A = {atom, _, {Key, _}}, Old, New) ->
     end.
 
 %% validator and watches live in the row: make it, then change them by CAS
+set_validator(V = {var, _, _}, F) -> clj2_rt:set_var_validator(V, F);
 set_validator(A = {atom, _, _}, F) ->
     {_, Cur, _, _} = current(A),
     F =:= nil orelse validate(F, Cur),
     meta_update(A, fun({Ver, Val, _, W}) -> {Ver, Val, F, W} end),
     nil.
 
+get_validator(V = {var, _, _}) -> clj2_rt:var_validator(V);
 get_validator(A = {atom, _, _}) -> element(3, current(A)).
 
+add_watch(V = {var, _, _}, K, F) -> clj2_rt:update_var_watches(V, fun(W) -> W#{K => F} end);
 add_watch(A = {atom, _, _}, K, F) ->
     meta_update(A, fun({Ver, Val, V, W}) -> {Ver, Val, V, W#{K => F}} end), A;
 add_watch(G = {agent, _, _}, K, F) ->
     agent_update(G, fun(R = #{watches := W}) -> R#{watches := W#{K => F}} end), G.
 
+remove_watch(V = {var, _, _}, K) -> clj2_rt:update_var_watches(V, fun(W) -> maps:remove(K, W) end);
 remove_watch(A = {atom, _, _}, K) ->
     meta_update(A, fun({Ver, Val, V, W}) -> {Ver, Val, V, maps:remove(K, W)} end), A;
 remove_watch(G = {agent, _, _}, K) ->
@@ -408,11 +412,7 @@ deref(X, _, _) -> deref(X).
 
 var_value(Ns, Name) ->
     {ok, #{module := M, vars := #{Name := Info}}} = clj2_ns:info(Ns),
-    Mod = maps:get(module, Info, M),
-    case Info of
-        #{kind := fn} -> clj2_rt:var_fn(Mod, Name, Info);
-        _ -> Mod:Name()
-    end.
+    clj2_rt:var_value(maps:get(module, Info, M), Name, Info).
 
 is_realized({promise, _, Key}) -> ets:member(?PROMISE, Key);
 is_realized({future, _, {Key, _}}) -> ets:member(?PROMISE, Key);

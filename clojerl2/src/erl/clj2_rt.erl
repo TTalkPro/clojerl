@@ -9,7 +9,7 @@
 
 -export([transient/1, is_transient/1, persistent/1]).
 -export([meta/1, with_meta/2, is_var/1, merge_var_meta/2, defn_meta/3]).
--export([invoke/2, var_fn/3, var/2, is_ratio/1, numerator/1, denominator/1, existing_keyword/2]).
+-export([invoke/2, var_fn/3, var_value/3, var/2, is_ratio/1, numerator/1, denominator/1, existing_keyword/2]).
 
 %% layer-0 primitives for clojure.core (00-kernel)
 -export([str/1, keyword/1, keyword/2, symbol/1, symbol/2, name/1, namespace/1,
@@ -17,7 +17,11 @@
 
 %% layer-0 primitives for 01-core (clojerl2-021)
 -export([str_contains/2]).
--export([unsupported_float/1, unsupported_bigdec/1, unsupported_tag/1]).
+-export([unsupported_float/1, unsupported_tag/1]).
+-export([not_number/1, refine_error/3, num_compare/3, num_op/3, num_quot/2, num_rem/2, is_boxed_number/1, tagged_literal/2, is_tagged_literal/1,
+         reader_conditional/2, is_reader_conditional/1]).
+-export([def_root/2, invoke_root/4, set_var_root/2, assign_root/3, alter_var_root/3, var_root/1, table_root/1,
+         set_var_validator/2, var_validator/1, update_var_watches/2]).
 -export([reduced/1, is_reduced/1, unreduced/1, compare/2, sort/2, format/2,
          ex_info/3, throwable/2, no_matching_clause/1, is_ex_info/1, ex_message/1, ex_data/1, ex_cause/1, subs/3]).
 
@@ -66,6 +70,20 @@ var_fn(M, Name, #{kind := fn, arities := Fixed, variadic := Min}) ->
               end}
     end.
 
+%% @doc The value of a var given its module and VarInfo: a fn var's fn,
+%% a cell's root, otherwise what its accessor returns.
+var_value(M, Name, Info) ->
+    case get({clj2_loading, M}) of
+        %% this process is running M's init: M's exports are undef until
+        %% it returns, so the value comes through M's local '__var__'/1
+        F when is_function(F, 1) -> F(Name);
+        _ -> loaded_var_value(M, Name, Info)
+    end.
+
+loaded_var_value(M, Name, #{kind := fn} = Info) -> var_fn(M, Name, Info);
+loaded_var_value(M, Name, #{kind := cell}) -> clj2_var:root(M, Name);
+loaded_var_value(M, Name, _Info) -> M:Name().
+
 %% Clojure: no extra arguments → the rest param is nil.
 rest([]) -> nil;
 rest(L) -> L.
@@ -79,6 +97,7 @@ str(Xs) -> iolist_to_binary([str1(X) || X <- clj2_coll:to_list(Xs)]).
 
 str1(nil) -> <<>>;
 str1(B) when is_binary(B) -> B;
+str1({decimal, _, _} = D) -> clj2_decimal:to_string(D);
 str1(A) when is_atom(A) -> atom_to_binary(A);           % symbols, keywords (':k'), true/false
 str1(I) when is_integer(I) -> integer_to_binary(I);
 str1(F) when is_float(F) -> clj2_print:float_str(F);
@@ -87,7 +106,7 @@ str1({'java.lang.StringBuilder', _, _} = B) -> clj2_jvm:builder_text(B);
 str1(X) -> clj2_print:pr_str(X).                         % collections, records, ...
 
 is_keyword(X) -> is_atom(X) andalso X =/= nil andalso X =/= true andalso X =/= false
-                     andalso X =/= ':' andalso hd(atom_to_list(X)) =:= $:.
+                     andalso X =/= ':' andalso X =/= '' andalso hd(atom_to_list(X)) =:= $:.
 
 identical(X, Y) -> X =:= Y.
 
@@ -106,24 +125,40 @@ is_fn(_) -> false.
 is_symbol(X) -> is_atom(X) andalso X =/= nil andalso X =/= true andalso X =/= false
                     andalso not is_keyword(X).
 
+keyword(nil) -> nil;
 keyword(K) when is_atom(K) ->
     case is_keyword(K) of
         true -> K;
         false -> binary_to_atom(<<$:, (atom_to_binary(K))/binary>>)
     end;
-keyword(B) when is_binary(B) -> binary_to_atom(<<$:, B/binary>>).
+keyword(B) when is_binary(B) -> binary_to_atom(<<$:, B/binary>>);
+keyword(_) -> nil.                                          % (keyword 5): nil, as on the JVM
 
 keyword(nil, Name) -> keyword(Name);
-keyword(Ns, Name) -> binary_to_atom(<<$:, (str1(Ns))/binary, $/, (str1(Name))/binary>>).
+keyword(Ns, Name) when is_binary(Ns), is_binary(Name) -> binary_to_atom(<<$:, Ns/binary, $/, Name/binary>>);
+keyword(Ns, Name) -> cast_string(if is_binary(Ns) -> Name; true -> Ns end).
 
+symbol(nil) ->
+    erlang:error(ex_info(<<"no conversion to symbol">>, clj2_coll:hash_map_kv([':type', ':IllegalArgumentException']), nil));
 symbol(S) when is_atom(S) -> S;
-symbol(B) when is_binary(B) -> binary_to_atom(B).
+symbol(B) when is_binary(B) -> binary_to_atom(B);
+symbol(_) ->
+    erlang:error(ex_info(<<"no conversion to symbol">>, clj2_coll:hash_map_kv([':type', ':IllegalArgumentException']), nil)).
 
 symbol(nil, Name) -> symbol(Name);
-symbol(Ns, Name) -> binary_to_atom(<<(str1(Ns))/binary, $/, (str1(Name))/binary>>).
+symbol(Ns, Name) when is_binary(Ns), is_binary(Name) -> binary_to_atom(<<Ns/binary, $/, Name/binary>>);
+symbol(Ns, Name) -> cast_string(if is_binary(Ns) -> Name; true -> Ns end).
+
+cast_string(nil) ->
+    erlang:error(ex_info(<<"Cannot invoke a method on nil">>, clj2_coll:hash_map_kv([':type', ':NullPointerException']), nil));
+cast_string(X) ->
+    erlang:error(ex_info(<<"class ", (atom_to_binary(clj2_class:class_of(X)))/binary,
+                           " cannot be cast to class java.lang.String">>,
+                         clj2_coll:hash_map_kv([':type', ':ClassCastException']), nil)).
 
 %% @doc name of a symbol or keyword (without namespace), or a string.
 name(B) when is_binary(B) -> B;
+name(nil) -> cast_string(nil);
 name(A) when is_atom(A) ->
     Bin = strip_colon(A),
     case binary:split(Bin, <<"/">>) of
@@ -131,6 +166,7 @@ name(A) when is_atom(A) ->
         _ -> Bin
     end.
 
+namespace(nil) -> cast_string(nil);
 namespace(A) when is_atom(A) ->
     case binary:split(strip_colon(A), <<"/">>) of
         [Ns, N] when Ns =/= <<>>, N =/= <<>> -> Ns;
@@ -154,6 +190,7 @@ apply(F, Args) ->
 %% @doc `/' on integers stays exact when it divides, else a float
 %% (no ratio arithmetic yet: registered divergence).
 divide(X, Y) when is_integer(X), is_integer(Y), Y =/= 0, X rem Y =:= 0 -> X div Y;
+divide(X, Y) when element(1, X) =:= decimal; element(1, Y) =:= decimal -> num_op('/', X, Y);
 divide(X, Y) -> X / Y.
 
 %%====================================================================
@@ -175,7 +212,18 @@ compare(X, X) -> 0;
 compare(nil, _) -> -1;
 compare(_, nil) -> 1;
 compare(X, Y) when is_number(X), is_number(Y) -> sign(X - Y);
+compare(X, Y) when element(1, X) =:= decimal; element(1, Y) =:= decimal ->
+    case num_compare('<', X, Y) of
+        true -> -1;
+        false -> case num_compare('==', X, Y) of true -> 0; false -> 1 end
+    end;
 compare(X, Y) when is_binary(X), is_binary(Y) -> lex(X, Y);
+%% symbols and keywords: namespace first (none before any), then name
+compare(X, Y) when is_atom(X), is_atom(Y), not is_boolean(X), not is_boolean(Y) ->
+    case compare(namespace(X), namespace(Y)) of
+        0 -> lex(name(X), name(Y));
+        C -> C
+    end;
 compare(X, Y) when is_atom(X), is_atom(Y) -> lex(atom_to_binary(X), atom_to_binary(Y));
 compare({vector, _, A}, {vector, _, B}) when tuple_size(A) =/= tuple_size(B) ->
     sign(tuple_size(A) - tuple_size(B));
@@ -213,7 +261,9 @@ sort(Cmp, Coll) ->
 %% @doc A subset of java.util.Formatter: %s %d %f %.Nf %x %X %o %e %b %c %n %%.
 %% Works on code points (the format string decoded, arguments as
 %% chardata) and encodes the result once: padding counts characters.
-format(Fmt, Args) when is_binary(Fmt) -> clj2_format:format(Fmt, Args).
+format(Fmt, Args) when is_binary(Fmt) -> clj2_format:format(Fmt, Args);
+format(nil, _) -> cast_string(nil);
+format(Fmt, _) -> cast_string(Fmt).
 
 %% ex-info: a record-shaped value, thrown with erlang:error
 ex_info(Msg, nil, Cause) -> ex_info(Msg, {map, nil, #{}}, Cause);            % nil data reads back as {}
@@ -252,6 +302,53 @@ throwable(Class, Reason) ->
        ':data' => {map, nil, #{':type' => binary_to_atom(<<":", Simple/binary>>)}},
        ':cause' => nil, ':host' => true, ':erlang' => {Class, Reason}}}.
 
+%% @doc An Erlang error refined by the call that raised it, which the
+%% stacktrace's top frame names with its arguments: the JVM would have
+%% thrown NullPointerException for a nil operand, ClassCastException for
+%% a non-number one, where BEAM only says badarith (or badarg, or
+%% function_clause). Anything else is left as it is.
+refine_error(error, R, [{M, F, Args, _} | _]) when is_list(Args),
+                                                   (R =:= badarith orelse R =:= badarg orelse
+                                                    R =:= function_clause) ->
+    %% never let the refinement itself fail: the original error stands
+    try refine(R, M, F, Args) catch _:_ -> R end;
+refine_error(_, R, _) -> R.
+
+refine(R, M, F, Args) ->
+    HasNil = lists:member(nil, Args),
+    Bits = M =:= erlang andalso lists:member(F, ['band', 'bor', 'bxor', 'bsl', 'bsr', 'bnot']),
+    Arith = M =:= erlang andalso lists:member(F, ['+', '-', '*', '/', 'div', 'rem', '<', '>', '=<', '>=',
+                                                  abs, float, trunc, round]),
+    NonInteger = [X || X <- Args, not is_integer(X)],
+    NonNumber = [X || X <- Args, not is_number(X)],
+    %% the host's own string, regex and math functions, and the runtime's:
+    %% a call they have no clause for is a value of the wrong class
+    Typed = R =/= badarith andalso
+        (lists:member(M, [unicode, re, math, string, binary]) orelse
+         lists:prefix("clj2_", atom_to_list(M))),
+    if
+        HasNil -> host_error(':NullPointerException', <<"Cannot invoke a method on nil">>, {error, R});
+        Bits, NonInteger =/= [] ->
+            host_error(':IllegalArgumentException',
+                       iolist_to_binary(["bit operation not supported for: class ",
+                                         atom_to_binary(clj2_class:class_of(hd(NonInteger)))]), {error, R});
+        Arith, NonNumber =/= [] ->
+            host_error(':ClassCastException',
+                       iolist_to_binary(["class ", atom_to_binary(clj2_class:class_of(hd(NonNumber))),
+                                         " cannot be cast to class java.lang.Number"]), {error, R});
+        Typed, Args =/= [] ->
+            host_error(':ClassCastException',
+                       iolist_to_binary(["class ", atom_to_binary(clj2_class:class_of(hd(Args))),
+                                         " cannot be cast to the class ", atom_to_binary(M), ":",
+                                         atom_to_binary(F), " requires"]), {error, R});
+        true -> R
+    end.
+
+host_error(Type, Msg, Orig) ->
+    {'clojure.lang.ExceptionInfo', nil,
+     #{':message' => Msg, ':data' => {map, nil, #{':type' => Type}},
+       ':cause' => nil, ':host' => true, ':erlang' => Orig}}.
+
 compile_cause({_, {not_public, Msg}}) -> {':IllegalStateException', Msg};
 compile_cause({resolve, {unresolved_symbol, S}}) ->
     {':RuntimeException', iolist_to_binary(["Unable to resolve symbol: ", atom_to_binary(S), " in this context"])};
@@ -265,6 +362,8 @@ erlang_message(error, {clj2_index_out_of_bounds, I}) when is_integer(I) ->
 erlang_message(error, {clj2_index_out_of_bounds, _}) -> nil;
 erlang_message(error, {clj2_not_ifn, X}) ->
     iolist_to_binary(["class ", atom_to_binary(clj2_class:class_of(X)), " cannot be cast to class clojure.lang.IFn"]);
+erlang_message(error, {clj2_arity, N, _}) when is_integer(N), N > 20 ->
+    <<"Wrong number of args (> 20) passed to: fn">>;
 erlang_message(error, {clj2_arity, N, _}) when is_integer(N) ->
     iolist_to_binary(["Wrong number of args (", integer_to_binary(N), ") passed to: fn"]);
 erlang_message(error, {clj2_unbound_var, M, Name}) ->
@@ -308,6 +407,111 @@ denominator({ratio, _, D}) -> D.
 existing_keyword(nil, Name) -> binary_to_existing_atom(<<":", Name/binary>>);
 existing_keyword(Ns, Name) -> binary_to_existing_atom(<<":", Ns/binary, "/", Name/binary>>).
 
+%% @doc Tagged literals and reader conditionals as data: their fields
+%% read as keys (:tag :form, :form :splicing?), = is by value, and they
+%% are not maps.
+tagged_literal(Tag, Form) -> {tagged_literal, nil, #{':tag' => Tag, ':form' => Form}}.
+is_tagged_literal({tagged_literal, _, _}) -> true;
+is_tagged_literal(_) -> false.
+reader_conditional(Form, Splicing) ->
+    {reader_conditional, nil, #{':form' => Form, ':splicing?' => Splicing =:= true}}.
+is_reader_conditional({reader_conditional, _, _}) -> true;
+is_reader_conditional(_) -> false.
+
+%% @doc A value used where a number is required: nil is a
+%% NullPointerException, anything else a ClassCastException (as on the JVM)
+not_number(nil) ->
+    erlang:error(ex_info(<<"Cannot use nil as a number">>,
+                         clj2_coll:hash_map_kv([':type', ':NullPointerException']), nil));
+not_number(X) ->
+    erlang:error(ex_info(<<"class ", (atom_to_binary(clj2_class:class_of(X)))/binary,
+                           " cannot be cast to class java.lang.Number">>,
+                         clj2_coll:hash_map_kv([':type', ':ClassCastException']), nil)).
+
+%% @doc A numeric comparison off the fast path (both Erlang numbers): a
+%% ratio compares by value (exactly, or as a float against a float);
+%% anything else that is not a number raises as on the JVM.
+num_compare(Op, X, Y) ->
+    C = case {rational(X), rational(Y)} of
+            {A, B} when is_float(A); is_float(B) -> sign(to_float(A) - to_float(B));
+            {{N1, D1}, {N2, D2}} -> sign(N1 * D2 - N2 * D1)
+        end,
+    case Op of
+        '<' -> C < 0;
+        '>' -> C > 0;
+        '=<' -> C =< 0;
+        '>=' -> C >= 0;
+        '==' -> C =:= 0
+    end.
+
+rational(I) when is_integer(I) -> {I, 1};
+rational({decimal, _, _} = D) -> clj2_decimal:to_rational(D);
+rational(F) when is_float(F) -> F;
+rational({ratio, N, D}) -> {N, D};
+rational(X) -> not_number(X).
+
+to_float({N, D}) -> N / D;
+to_float(F) -> F.
+
+%% @doc Arithmetic off the fast path (both Erlang numbers), with the JVM's
+%% contagion: a double makes the result a double; otherwise a BigDecimal
+%% makes it a BigDecimal (rounded by *math-context*); a ratio has no
+%% arithmetic here (:number/no-ratio-arithmetic); a non-number raises.
+num_op(Op, X, Y) ->
+    case {num_kind(X), num_kind(Y)} of
+        {A, B} when A =:= float; B =:= float ->
+            FX = to_double(X), FY = to_double(Y),
+            case Op of
+                '+' -> FX + FY;
+                '-' -> FX - FY;
+                '*' -> FX * FY;
+                '/' -> FX / FY
+            end;
+        _ ->
+            DX = clj2_decimal:from(X), DY = clj2_decimal:from(Y),
+            MC = math_context(),
+            case Op of
+                '+' -> clj2_decimal:add(DX, DY, MC);
+                '-' -> clj2_decimal:sub(DX, DY, MC);
+                '*' -> clj2_decimal:mul(DX, DY, MC);
+                '/' -> clj2_decimal:divide(DX, DY, MC)
+            end
+    end.
+
+%% @doc quot/rem off the integer path: doubles (truncated quotient, fmod),
+%% BigDecimals (divideToIntegralValue, remainder)
+num_quot(N, D) ->
+    case {num_kind(N), num_kind(D)} of
+        {A, B} when A =:= float; B =:= float -> float(trunc(divide(to_double(N), to_double(D))));
+        _ -> clj2_decimal:quot(clj2_decimal:from(N), clj2_decimal:from(D))
+    end.
+
+num_rem(N, D) ->
+    case {num_kind(N), num_kind(D)} of
+        {A, B} when A =:= float; B =:= float ->
+            FD = to_double(D),
+            FD == 0 andalso erlang:error(badarith),
+            math:fmod(to_double(N), FD);
+        _ -> clj2_decimal:remainder(clj2_decimal:from(N), clj2_decimal:from(D))
+    end.
+
+num_kind(I) when is_integer(I) -> integer;
+num_kind(F) when is_float(F) -> float;
+num_kind({decimal, _, _}) -> decimal;
+num_kind(X) -> not_number(X).
+
+to_double({decimal, _, _} = D) -> clj2_decimal:to_float(D);
+to_double(N) -> float(N).
+
+%% the bound *math-context* (nil: exact)
+math_context() ->
+    try clj2_var:deref('clojure.core', '*math-context*') catch error:_ -> nil end.
+
+%% @doc number? beyond Erlang's numbers: ratios and BigDecimals
+is_boxed_number({ratio, N, D}) -> is_integer(N) andalso is_integer(D);
+is_boxed_number({decimal, U, S}) -> is_integer(U) andalso is_integer(S);
+is_boxed_number(_) -> false.
+
 %% @doc Transients: {transient, nil, PersistentValue} (clojure.core/transient)
 %% only vectors, hash maps and hash sets are editable (as on the JVM:
 %% a sorted collection, a seq or a record is a ClassCastException)
@@ -323,7 +527,10 @@ transient(X) ->
 is_transient({transient, _, _}) -> true;
 is_transient(_) -> false.
 persistent({transient, _, C}) -> C;
-persistent(X) -> erlang:error(ex_info(<<"not a transient">>, clj2_coll:hash_map_kv([':value', X]), nil)).
+persistent(X) ->
+    erlang:error(ex_info(<<"class ", (atom_to_binary(clj2_class:class_of(X)))/binary,
+                           " cannot be cast to class clojure.lang.ITransientCollection">>,
+                         clj2_coll:hash_map_kv([':type', ':ClassCastException', ':value', X]), nil)).
 
 %%====================================================================
 %% Metadata (clojerl2-021 follow-up)
@@ -401,13 +608,129 @@ unsupported_float(Kw) ->
                          clj2_coll:hash_map_kv([':type', ':ArithmeticException']), nil)).
 
 %% @doc What a BigDecimal literal (1.5M) evaluates to while there is no
-%% BigDecimal (corpus :pending/numbers): an error naming the literal.
-unsupported_bigdec(Text) ->
-    erlang:error(ex_info(<<Text/binary, "M: BigDecimal literals are not supported yet (clojerl2 :pending/numbers)">>,
-                         clj2_coll:hash_map_kv([':type', ':UnsupportedOperationException']), nil)).
-
 %% @doc What a tagged literal with no reader function (#inst ...)
 %% evaluates to: the JVM reader's error, at evaluation time.
 unsupported_tag(Tag) ->
     erlang:error(ex_info(<<"No reader function for tag ", (atom_to_binary(Tag))/binary>>,
                          clj2_coll:hash_map_kv([':type', ':RuntimeException']), nil)).
+
+%% @doc What a def inside an expression does when it runs: the var gets
+%% the value as its root (set_var_root/2), and is the result.
+def_root(V, Val) ->
+    _ = set_var_root(V, Val),
+    V.
+
+%% @doc Give a var a new root value (alter-var-root, with-redefs, a def
+%% inside an expression): the var's validator runs first, its watches
+%% after. A var whose value lives in the var table is set there; a fn or
+%% constant var, linked directly, moves its value there first
+%% (clj2_rt_eval:redirect/3, once). → the value
+set_var_root({var, _, {Ns, Name}}, Val) ->
+    case clj2_ns:info(Ns) of
+        {ok, #{module := NsMod, vars := #{Name := I}}} ->
+            Watches = maps:get(watches, I, #{}),
+            validate_var(I, Val),
+            Old = case map_size(Watches) of
+                      0 -> nil;
+                      _ -> raw_root(maps:get(module, I, NsMod), Name, I)
+                  end,
+            M = case I of
+                    #{kind := K} when K =:= fn; K =:= const -> to_table(Ns, Name, I);
+                    _ -> maps:get(module, I, NsMod)
+                end,
+            clj2_var:set_root(M, Name, clj2_rt_eval:root_value(M, Name, Val)),
+            notify_var(Watches, {var, nil, {Ns, Name}}, Old, Val),
+            Val;
+        %% a fn var defined earlier in a file that is still compiling (a
+        %% compile-time segment, not registered yet): its calls are linked
+        %% to that segment's functions, so it cannot be redefined from here
+        _ ->
+            erlang:error(ex_info(iolist_to_binary(["Can't redefine ", atom_to_binary(Ns), "/", atom_to_binary(Name),
+                                                   " from inside an expression: the var is not registered yet"]),
+                                 clj2_coll:hash_map_kv([':type', ':IllegalStateException']), nil))
+    end.
+
+%% @doc A def inside an expression of a var whose value is in the var
+%% table already (clj2_p_resolve: the module is known when it compiles,
+%% and the var may not be registered yet -- a compile-time segment).
+assign_root(V = {var, _, {Ns, Name}}, M, Val) ->
+    case clj2_ns:info(Ns) of
+        {ok, #{vars := #{Name := #{kind := K} = I}}} when K =/= fn, K =/= const,
+                                                          (is_map_key(watches, I) orelse
+                                                           is_map_key(validator, I)) ->
+            _ = set_var_root(V, Val);
+        _ -> clj2_var:set_root(M, Name, Val)
+    end,
+    V.
+
+%% a fn or constant var's value moves into the var table (once)
+to_table(Ns, Name, I) ->
+    Ns =:= 'clojure.core' andalso core_direct_linked(Name),
+    clj2_rt_eval:redirect(Ns, Name, I).
+
+%% @doc (alter-var-root v f & args): the root becomes (apply f root args).
+%% The value moves into the var table first, so the old value f gets is
+%% the fn itself, not a call through the var (which it may wrap).
+alter_var_root(V, F, Args) ->
+    set_var_root(V, invoke(F, [table_root(V) | clj2_coll:to_list(Args)])).
+
+%% @doc A var's root value, whatever binding this process has of it
+%% (what with-redefs saves and restores), once the value is in the var
+%% table (as table_root/1)
+table_root(V = {var, _, {Ns, Name}}) ->
+    case clj2_ns:info(Ns) of
+        {ok, #{vars := #{Name := #{kind := K} = I}}} when K =:= fn; K =:= const ->
+            _ = to_table(Ns, Name, I);
+        _ -> ok
+    end,
+    var_root(V).
+
+%% @doc A var's root value, whatever binding this process has of it
+var_root({var, _, {Ns, Name}}) ->
+    {ok, #{module := NsMod, vars := #{Name := I}}} = clj2_ns:info(Ns),
+    raw_root(maps:get(module, I, NsMod), Name, I).
+
+raw_root(M, Name, #{kind := indirect}) -> clj2_var:root(M, Name);
+raw_root(M, Name, I) -> var_value(M, Name, I).
+
+validate_var(#{validator := F}, Val) when F =/= nil ->
+    case invoke(F, [Val]) of
+        R when R =:= false; R =:= nil ->
+            erlang:error(ex_info(<<"Invalid reference state">>,
+                                 clj2_coll:hash_map_kv([':type', ':IllegalStateException']), nil));
+        _ -> ok
+    end;
+validate_var(_, _) -> ok.
+
+notify_var(Watches, V, Old, New) ->
+    [invoke(F, [K, V, Old, New]) || {K, F} <- lists:sort(maps:to_list(Watches))],
+    ok.
+
+%% @doc (set-validator! #'v f): checks the current root, as on the JVM
+set_var_validator(V = {var, _, {Ns, Name}}, F) ->
+    {ok, #{vars := #{Name := I}}} = clj2_ns:info(Ns),
+    F =:= nil orelse validate_var(#{validator => F}, var_root(V)),
+    clj2_ns:put_var(Ns, Name, I#{validator => F}),
+    nil.
+
+var_validator({var, _, {Ns, Name}}) ->
+    {ok, #{vars := #{Name := I}}} = clj2_ns:info(Ns),
+    maps:get(validator, I, nil).
+
+%% @doc add-watch / remove-watch on a var (Fun updates its watch map)
+update_var_watches(V = {var, _, {Ns, Name}}, Fun) ->
+    {ok, #{vars := #{Name := I}}} = clj2_ns:info(Ns),
+    clj2_ns:put_var(Ns, Name, I#{watches => Fun(maps:get(watches, I, #{}))}),
+    V.
+
+%% clojure.core is linked directly into everything compiled against it
+%% (itself included), so its fn and constant vars keep their values
+core_direct_linked(Name) ->
+    erlang:error(ex_info(iolist_to_binary(["Can't change the root of clojure.core/", atom_to_binary(Name),
+                                           ": clojure.core is direct-linked (clojerl2 :vars/core-direct-linked)"]),
+                         clj2_coll:hash_map_kv([':type', ':IllegalStateException']), nil)).
+
+%% @private A fn var whose value moved into the var table
+%% (clj2_rt_eval:redirect/3) calls it through here.
+invoke_root(M, Name, Req, Rest) ->
+    invoke(clj2_var:root(M, Name), clj2_coll:to_list(Req) ++ clj2_coll:to_list(Rest)).

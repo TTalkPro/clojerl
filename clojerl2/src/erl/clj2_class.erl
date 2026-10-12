@@ -47,6 +47,7 @@ class_of({set, _, M}) when is_map(M) -> 'clojure.lang.PersistentHashSet';
 class_of({sorted_map, _, {_, _, _}}) -> 'clojure.lang.PersistentTreeMap';
 class_of({sorted_set, _, {_, _, _}}) -> 'clojure.lang.PersistentTreeSet';
 class_of({ratio, _, _}) -> 'clojure.lang.Ratio';
+class_of({decimal, _, _}) -> 'java.math.BigDecimal';
 class_of({clj2_fn, _, _}) -> 'clojure.lang.AFunction';
 class_of({fnmeta, _, _}) -> 'clojure.lang.AFunction';
 class_of({clj2_reduced, _}) -> 'clojure.lang.Reduced';
@@ -181,6 +182,9 @@ resolve(S) ->
             Lang = list_to_atom("java.lang." ++ atom_to_list(S)),
             case Known(Lang) of
                 true -> {ok, Lang};
+                %% Clojure's default imports beyond java.lang
+                false when S =:= 'BigDecimal'; S =:= 'BigInteger' ->
+                    {ok, list_to_atom("java.math." ++ atom_to_list(S))};
                 false -> error
             end
     end.
@@ -239,7 +243,12 @@ exception_class({badarg, _}) -> 'java.lang.IllegalArgumentException';
 exception_class(function_clause) -> 'java.lang.IllegalArgumentException';
 exception_class({case_clause, _}) -> 'java.lang.IllegalArgumentException';
 exception_class({badmatch, _}) -> 'java.lang.IllegalArgumentException';
+exception_class({clj2_index_out_of_bounds, nil}) -> 'java.lang.NullPointerException';
 exception_class({clj2_index_out_of_bounds, _}) -> 'java.lang.IndexOutOfBoundsException';
+exception_class(R) when element(1, R) =:= clj2_string_index_out_of_bounds -> 'java.lang.StringIndexOutOfBoundsException';
+exception_class({clj2_cannot_compare, _, _}) -> 'java.lang.ClassCastException';
+exception_class({clj2_not_derefable, _}) -> 'java.lang.ClassCastException';
+exception_class({clj2_not_pending, _}) -> 'java.lang.ClassCastException';
 exception_class({clj2_not_seqable, _}) -> 'java.lang.IllegalArgumentException';
 exception_class({clj2_not_countable, _}) -> 'java.lang.UnsupportedOperationException';
 exception_class({clj2_not_ifn, _}) -> 'java.lang.ClassCastException';

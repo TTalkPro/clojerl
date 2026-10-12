@@ -28,6 +28,11 @@
 %% Static fields
 %%====================================================================
 
+field('java.math.BigDecimal', 'ZERO') -> {decimal, 0, 0};
+field('java.math.BigDecimal', 'ONE') -> {decimal, 1, 0};
+field('java.math.BigDecimal', 'TEN') -> {decimal, 10, 0};
+%% a rounding mode is its name (clj2_decimal:rounding_mode/1 reads it)
+field('java.math.RoundingMode', M) -> clj2_decimal:rounding_mode(M), M;
 field('java.lang.Long', 'MAX_VALUE') -> ?LONG_MAX;
 field('java.lang.Long', 'MIN_VALUE') -> ?LONG_MIN;
 field('java.lang.Integer', 'MAX_VALUE') -> ?INT_MAX;
@@ -62,6 +67,9 @@ static(C, F, []) when F =/= random, F =/= currentTimeMillis, F =/= nanoTime ->
 static(C, M, Args) -> static1(C, M, Args).
 
 static1('java.lang.Math', M, Args) -> math_fn(M, Args);
+static1('java.math.BigDecimal', valueOf, [X]) when is_integer(X); is_float(X) -> clj2_decimal:from(X);
+static1('java.math.BigDecimal', valueOf, [U, S]) when is_integer(U), is_integer(S) -> {decimal, U, S};
+static1('java.math.RoundingMode', valueOf, [N]) -> M = binary_to_atom(str(N)), clj2_decimal:rounding_mode(M), M;
 static1('java.lang.StrictMath', M, Args) -> math_fn(M, Args);
 static1(C, M, Args) when C =:= 'java.lang.Long'; C =:= 'java.lang.Integer';
                         C =:= 'java.lang.Short'; C =:= 'java.lang.Byte' ->
@@ -78,8 +86,11 @@ static1('java.lang.String', join, [Sep | Elems]) -> clj2_string:join(Sep, Elems)
 static1('java.lang.String', format, [Fmt | Args]) -> clj2_format:format(Fmt, Args);
 static1('java.lang.System', currentTimeMillis, []) -> erlang:system_time(millisecond);
 static1('java.lang.System', nanoTime, []) -> erlang:monotonic_time(nanosecond);
-static1('java.lang.System', getProperty, [K]) -> property(K, nil);
-static1('java.lang.System', getProperty, [K, D]) -> property(K, D);
+static1('java.lang.System', getProperty, [K]) when is_binary(K) -> property(K, nil);
+static1('java.lang.System', getProperty, [K, D]) when is_binary(K) -> property(K, D);
+static1('java.lang.System', getProperty, [K | _]) ->
+    throw_new('java.lang.ClassCastException',
+              [iolist_to_binary(["class ", atom_to_binary(clj2_class:class_of(K)), " cannot be cast to class java.lang.String"])]);
 static1('java.lang.System', getenv, [K]) ->
     case os:getenv(unicode:characters_to_list(K)) of
         false -> nil;
@@ -172,12 +183,24 @@ round_half_even(X) ->
         _ -> case trunc(F) rem 2 of 0 -> F; _ -> F + 1 end
     end.
 
-integer_fn(C, valueOf, [I]) when is_integer(I) -> in_range(C, I, integer_to_binary(I));
+integer_fn(C, valueOf, [I]) when is_integer(I) -> in_range(C, I, integer_to_binary(I), 10);
 integer_fn(C, M, [S]) when M =:= parseInt; M =:= parseLong; M =:= parseShort; M =:= parseByte; M =:= valueOf ->
-    in_range(C, parse_int(S, 10), S);
+    in_range(C, parse_int(S, 10), S, 10);
 integer_fn(C, M, [S, R]) when M =:= parseInt; M =:= parseLong; M =:= parseShort; M =:= parseByte; M =:= valueOf ->
-    in_range(C, parse_int(S, R), S);
-integer_fn(C, decode, [S]) -> in_range(C, decode(str(S)), S);
+    in_range(C, parse_int(S, R), S, R);
+integer_fn(C, decode, [S]) ->
+    I = decode(str(S)),
+    %% a narrow class names the value and the input (Byte/Short.decode)
+    case C =:= 'java.lang.Byte' orelse C =:= 'java.lang.Short' of
+        true ->
+            {Lo, Hi} = range_of(C),
+            case I >= Lo andalso I =< Hi of
+                true -> I;
+                false -> throw_new('java.lang.NumberFormatException',
+                                   [iolist_to_binary(["Value ", integer_to_binary(I), " out of range from input ", str(S)])])
+            end;
+        false -> in_range(C, I, S, 10)
+    end;
 integer_fn(_, toString, [I]) -> integer_to_binary(I);
 integer_fn(_, toString, [I, R]) -> string:lowercase(integer_to_binary(I, R));
 integer_fn(_, toHexString, [I]) -> unsigned(I, 16);
@@ -194,25 +217,43 @@ integer_fn(C, M, Args) -> no_member(C, M, Args).
 
 %% the parse and valueOf methods check the width of their class (a
 %% parsed number is a JVM long/int/short/byte; arithmetic stays BEAM's)
-in_range(C, I, S) ->
-    {Lo, Hi} = case C of
-                   'java.lang.Long' -> {?LONG_MIN, ?LONG_MAX};
-                   'java.lang.Integer' -> {?INT_MIN, ?INT_MAX};
-                   'java.lang.Short' -> {-32768, 32767};
-                   'java.lang.Byte' -> {-128, 127}
-               end,
+in_range(C, I, S, R) ->
+    {Lo, Hi} = range_of(C),
     case I >= Lo andalso I =< Hi of
         true -> I;
-        false -> throw_new('java.lang.NumberFormatException', [<<"For input string: \"", (str(S))/binary, "\"">>])
+        %% Short and Byte parse as an int, then range-check; Long and
+        %% Integer fail like any bad input
+        false when C =:= 'java.lang.Short'; C =:= 'java.lang.Byte' ->
+            throw_new('java.lang.NumberFormatException',
+                      [iolist_to_binary(["Value out of range. Value:\"", str(S), "\" Radix:", integer_to_binary(R)])]);
+        false -> bad_input(str(S), R)
     end.
 
+range_of('java.lang.Long') -> {?LONG_MIN, ?LONG_MAX};
+range_of('java.lang.Integer') -> {?INT_MIN, ?INT_MAX};
+range_of('java.lang.Short') -> {-32768, 32767};
+range_of('java.lang.Byte') -> {-128, 127}.
+
+parse_int(_, R) when is_integer(R), R < 2 ->
+    throw_new('java.lang.NumberFormatException',
+              [iolist_to_binary(["radix ", integer_to_binary(R), " less than Character.MIN_RADIX"])]);
+parse_int(_, R) when is_integer(R), R > 36 ->
+    throw_new('java.lang.NumberFormatException',
+              [iolist_to_binary(["radix ", integer_to_binary(R), " greater than Character.MAX_RADIX"])]);
 parse_int(S, R) when is_binary(S) ->
     Text = case S of <<"+", T/binary>> -> T; _ -> S end,
     try binary_to_integer(Text, R)
-    catch error:badarg -> throw_new('java.lang.NumberFormatException', [<<"For input string: \"", S/binary, "\"">>])
+    catch error:badarg -> bad_input(S, R)
     end;
 parse_int(nil, _) -> throw_new('java.lang.NumberFormatException', [<<"Cannot parse null string: null">>]).
 
+%% the JVM names a radix other than ten
+bad_input(S, 10) -> throw_new('java.lang.NumberFormatException', [<<"For input string: \"", S/binary, "\"">>]);
+bad_input(S, R) ->
+    throw_new('java.lang.NumberFormatException',
+              [iolist_to_binary(["For input string: \"", S, "\" under radix ", integer_to_binary(R)])]).
+
+decode(<<>>) -> throw_new('java.lang.NumberFormatException', [<<"Zero length string">>]);
 decode(<<"-", S/binary>>) -> -decode(S);
 decode(<<"+", S/binary>>) -> decode(S);
 decode(<<"0x", S/binary>>) -> parse_int(S, 16);
@@ -351,17 +392,17 @@ env(Name, D) ->
 
 method(nil, M, _) ->
     throw_new('java.lang.NullPointerException', [iolist_to_binary(["Cannot invoke \"", atom_to_binary(M), "\" on nil"])]);
-method(S, M, Args) when is_binary(S) ->
-    try string_method(S, M, Args)
-    catch error:R when R =:= badarg; R =:= function_clause; element(1, R) =:= badarg ->
-            %% a nil where the method takes a string
-            case lists:member(nil, Args) of
-                true -> throw_new('java.lang.NullPointerException', [<<"Cannot invoke a String method with a null argument">>]);
-                false -> erlang:raise(error, R, [])
-            end
+%% a String method refuses a nil argument (equals and the like take one)
+method(S, M, Args) when is_binary(S), M =/= equals, M =/= equalsIgnoreCase, M =/= contentEquals,
+                        M =/= valueOf, M =/= format ->
+    case lists:member(nil, Args) of
+        true -> throw_new('java.lang.NullPointerException', [<<"Cannot invoke a String method with a null argument">>]);
+        false -> string_method_checked(S, M, Args)
     end;
+method(S, M, Args) when is_binary(S) -> string_method_checked(S, M, Args);
 method({'clojure.lang.ExceptionInfo', _, _} = E, M, Args) -> exception_method(E, M, Args);
 method({'java.lang.StringBuilder', _, _} = B, M, Args) -> builder_method(B, M, Args);
+method({decimal, _, _} = D, M, Args) -> decimal_method(D, M, Args);
 method({var, _, {_, _}} = V, M, Args) -> var_method(V, M, Args);
 method(X, toString, []) -> to_string(X);
 method(X, equals, [Y]) -> clj2_coll:equals(X, Y);
@@ -381,6 +422,20 @@ method(X, M, Args) ->
          orelse is_list(X) orelse is_tuple(X) andalso element(1, X) =:= lazy_seq of
         true -> coll_method(X, M, Args);
         false -> no_member(clj2_class:class_of(X), M, Args)
+    end.
+
+
+%% a String method; an argument of the wrong class is a ClassCastException
+string_method_checked(S, M, Args) ->
+    try string_method(S, M, Args)
+    catch error:R when R =:= badarg; R =:= function_clause; element(1, R) =:= badarg ->
+            case [A || A <- Args, not is_binary(A), not is_integer(A), A =/= nil] of
+                [Bad | _] ->
+                    throw_new('java.lang.ClassCastException',
+                              [iolist_to_binary(["class ", atom_to_binary(clj2_class:class_of(Bad)),
+                                                 " cannot be cast to class java.lang.String"])]);
+                [] -> erlang:raise(error, R, [])
+            end
     end.
 
 string_method(S, length, []) -> string:length(S);
@@ -404,7 +459,10 @@ string_method(S, lastIndexOf, [X]) -> idx(clj2_string:last_index_of(S, X, nil));
 string_method(S, contains, [X]) -> clj2_string:includes(S, to_string(X));
 string_method(S, startsWith, [P]) -> clj2_string:starts_with(S, P);
 string_method(S, endsWith, [P]) -> clj2_string:ends_with(S, P);
-string_method(S, concat, [T]) -> <<S/binary, T/binary>>;
+string_method(S, concat, [T]) when is_binary(T) -> <<S/binary, T/binary>>;
+string_method(_, concat, [T]) ->
+    throw_new('java.lang.ClassCastException',
+              [iolist_to_binary(["class ", atom_to_binary(clj2_class:class_of(T)), " cannot be cast to class java.lang.String"])]);
 string_method(S, replace, [A, B]) -> clj2_string:replace(S, A, B, all);
 string_method(S, replaceAll, [Re, R]) -> clj2_string:replace(S, clj2_re:pattern(Re), R, all);
 string_method(S, replaceFirst, [Re, R]) -> clj2_string:replace(S, clj2_re:pattern(Re), R, first);
@@ -566,13 +624,19 @@ simple_name(C) ->
     [Last | _] = lists:reverse(string:split(atom_to_binary(C), ".", all)), Last.
 
 construct('java.lang.Object', []) -> {'java.lang.Object', nil, make_ref()};
+construct('java.math.BigDecimal', [X]) -> clj2_decimal:from(X);
+construct('java.math.BigDecimal', [X, {math_context, _, _} = MC]) -> clj2_decimal:round(clj2_decimal:from(X), MC);
+construct('java.math.MathContext', [P]) -> clj2_decimal:math_context(P, nil);
+construct('java.math.MathContext', [P, M]) -> clj2_decimal:math_context(P, M);
 construct('java.lang.String', []) -> <<>>;
 construct('java.lang.String', [S]) -> to_string(S);
 construct('java.lang.StringBuilder', []) -> builder([]);
 construct('java.lang.StringBuilder', [N]) when is_integer(N) -> builder([]);
+construct('java.lang.StringBuilder', [nil]) ->
+    throw_new('java.lang.NullPointerException', [<<"Cannot invoke \"String.length()\" because \"str\" is null">>]);
 construct('java.lang.StringBuilder', [S]) -> builder([to_string(S)]);
-construct('java.lang.Long', [X]) -> in_range('java.lang.Long', long_of(X), X);
-construct('java.lang.Integer', [X]) -> in_range('java.lang.Integer', long_of(X), X);
+construct('java.lang.Long', [X]) -> in_range('java.lang.Long', long_of(X), X, 10);
+construct('java.lang.Integer', [X]) -> in_range('java.lang.Integer', long_of(X), X, 10);
 construct('java.lang.Double', [X]) when is_number(X) -> float(X);
 construct('java.lang.Double', [S]) -> parse_double(S);
 construct('java.lang.Boolean', [X]) -> static('java.lang.Boolean', valueOf, [X]);
@@ -619,3 +683,39 @@ no_member(C, M, Args) ->
                                      integer_to_binary(length(Args)), " args for class ",
                                      case C of nil -> <<"nil">>; _ -> atom_to_binary(C) end]),
                    clj2_coll:hash_map_kv([':type', ':IllegalArgumentException']), nil)).
+
+%%====================================================================
+%% java.math.BigDecimal (clj2_decimal)
+%%====================================================================
+
+decimal_method(D, scale, []) -> clj2_decimal:scale(D);
+decimal_method(D, precision, []) -> clj2_decimal:precision(D);
+decimal_method(D, unscaledValue, []) -> clj2_decimal:unscaled(D);
+decimal_method(D, signum, []) -> clj2_decimal:signum(D);
+decimal_method(D, negate, []) -> clj2_decimal:negate(D);
+decimal_method(D, abs, []) -> clj2_decimal:abs(D);
+decimal_method(D, toString, []) -> clj2_decimal:to_string(D);
+decimal_method(D, toPlainString, []) -> clj2_decimal:to_plain_string(D);
+decimal_method(D, stripTrailingZeros, []) -> clj2_decimal:strip_trailing_zeros(D);
+decimal_method(D, setScale, [S]) -> clj2_decimal:set_scale(D, S, 'UNNECESSARY');
+decimal_method(D, setScale, [S, M]) -> clj2_decimal:set_scale(D, S, M);
+decimal_method(D, round, [MC]) -> clj2_decimal:round(D, MC);
+decimal_method(D, M, []) when M =:= doubleValue; M =:= floatValue -> clj2_decimal:to_float(D);
+decimal_method(D, M, []) when M =:= longValue; M =:= intValue; M =:= toBigInteger;
+                              M =:= shortValue; M =:= byteValue -> clj2_decimal:to_integer(D);
+decimal_method(D, compareTo, [O]) -> clj2_decimal:compare(D, clj2_decimal:from(O));
+decimal_method(D, equals, [{decimal, _, _} = O]) -> D =:= O;      % scale matters to equals
+decimal_method(_, equals, [_]) -> false;
+decimal_method(D, hashCode, []) -> clj2_decimal:hash(D);
+decimal_method(D, add, [O | MC]) -> clj2_decimal:add(D, clj2_decimal:from(O), mc(MC));
+decimal_method(D, subtract, [O | MC]) -> clj2_decimal:sub(D, clj2_decimal:from(O), mc(MC));
+decimal_method(D, multiply, [O | MC]) -> clj2_decimal:mul(D, clj2_decimal:from(O), mc(MC));
+decimal_method(D, divide, [O | MC]) -> clj2_decimal:divide(D, clj2_decimal:from(O), mc(MC));
+decimal_method(D, remainder, [O]) -> clj2_decimal:remainder(D, clj2_decimal:from(O));
+decimal_method(D, divideToIntegralValue, [O]) -> clj2_decimal:quot(D, clj2_decimal:from(O));
+decimal_method(D, max, [O]) -> case clj2_decimal:compare(D, O) >= 0 of true -> D; false -> O end;
+decimal_method(D, min, [O]) -> case clj2_decimal:compare(D, O) =< 0 of true -> D; false -> O end;
+decimal_method(_, M, Args) -> no_member('java.math.BigDecimal', M, Args).
+
+mc([{math_context, _, _} = MC]) -> MC;
+mc([]) -> nil.

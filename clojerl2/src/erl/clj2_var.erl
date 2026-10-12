@@ -29,6 +29,8 @@
         , push_frame/1
         , pop_frame/0
         , var_set/2
+        , is_thread_bound/1
+        , thread_bindings/0
         ]).
 
 -define(TAB, clj2_var).
@@ -160,13 +162,52 @@ var_set({local_var, _, Cell}, X) -> clj2_ref:reset(Cell, X);
 var_set({var, _, {Ns, Name}}, X) ->
     {ok, #{module := NsMod, vars := #{Name := I}}} = clj2_ns:info(Ns),
     M = maps:get(module, I, NsMod),
+    %% the validator runs before the binding check, as on the JVM
+    case I of
+        #{validator := F} when F =/= nil ->
+            case clj2_rt:invoke(F, [X]) of
+                R when R =:= false; R =:= nil ->
+                    erlang:error(clj2_rt:ex_info(<<"Invalid reference state">>,
+                                                 clj2_coll:hash_map_kv([':type', ':IllegalStateException']), nil));
+                _ -> ok
+            end;
+        _ -> ok
+    end,
     case get({clj2_dyn, M, Name}) of
         [_ | _] -> set_binding(M, Name, X), X;
+        %% bound while a file loads and at the REPL on the JVM, so set! of
+        %% them always works: this process gets a binding
+        _ when Ns =:= 'clojure.core', (Name =:= '*warn-on-reflection*' orelse
+                                       Name =:= '*unchecked-math*') ->
+            push_binding(M, Name, X), X;
         _ -> erlang:error(clj2_rt:ex_info(
                             iolist_to_binary(["Can't change/establish root binding of: ", atom_to_binary(Name),
                                               " with set"]),
                             clj2_coll:hash_map_kv([':type', ':IllegalStateException']), nil))
     end.
+
+%% @doc (thread-bound? v): a binding of v in this process
+is_thread_bound({var, _, {Ns, Name}}) ->
+    case clj2_ns:info(Ns) of
+        {ok, #{module := NsMod, vars := #{Name := I}}} ->
+            case get({clj2_dyn, maps:get(module, I, NsMod), Name}) of
+                [_ | _] -> true;
+                _ -> false
+            end;
+        _ -> false
+    end;
+is_thread_bound(_) -> false.
+
+%% @doc (get-thread-bindings): {var value} of every binding in this process
+thread_bindings() ->
+    Bound = maps:from_list([{{M, N}, V} || {{clj2_dyn, M, N}, [V | _]} <- get()]),
+    Pairs = lists:append(
+              [[{var, nil, {Ns, Name}}, maps:get({maps:get(module, I, NsMod), Name}, Bound)]
+               || Ns <- clj2_ns:all(),
+                  {ok, #{module := NsMod, vars := Vars}} <- [clj2_ns:info(Ns)],
+                  {Name, I} <- maps:to_list(Vars),
+                  is_map_key({maps:get(module, I, NsMod), Name}, Bound)]),
+    clj2_coll:hash_map_kv(Pairs).
 
 delete_roots(M) ->
     ets:match_delete(?TAB, {{M, '_'}, '_'}).

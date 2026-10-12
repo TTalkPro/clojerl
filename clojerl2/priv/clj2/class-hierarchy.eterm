@@ -245,6 +245,8 @@
 {class, <<"java.lang.reflect.Method">>, [<<"java.lang.reflect.Executable">>]}.
 {class, <<"java.math.BigDecimal">>, [<<"java.lang.Number">>, <<"java.lang.Comparable">>]}.
 {class, <<"java.math.BigInteger">>, [<<"java.lang.Number">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.math.MathContext">>, [<<"java.lang.Object">>]}.
+{class, <<"java.math.RoundingMode">>, [<<"java.lang.Enum">>]}.
 {class, <<"java.net.ConnectException">>, [<<"java.net.SocketException">>]}.
 {class, <<"java.net.MalformedURLException">>, [<<"java.io.IOException">>]}.
 {class, <<"java.net.SocketException">>, [<<"java.io.IOException">>]}.

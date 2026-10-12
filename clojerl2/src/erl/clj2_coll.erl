@@ -37,7 +37,7 @@
         , is_seq/1
         , cons/2
         , count/1
-        , nth/2, nth/3
+        , nth/2, nth/3, entry_part/2
         , get/2, get/3
         , assoc/3
         , dissoc/2
@@ -137,6 +137,9 @@ seq(nil) -> nil;
 seq([]) -> nil;
 seq([_ | _] = L) -> L;
 seq({lazy_seq, _, _} = L) -> clj2_lazy:seq(L);
+seq({'clojure.lang.ExceptionInfo', _, _}) ->
+    erlang:error(clj2_rt:ex_info(<<"Don't know how to create ISeq from: clojure.lang.ExceptionInfo">>,
+                                 hash_map_kv([':type', ':IllegalArgumentException']), nil));
 seq(X) ->
     case to_list(X) of
         [] -> nil;
@@ -154,6 +157,9 @@ cons(X, {lazy_seq, _, _} = L) -> [X | L];       % stays lazy
 cons(X, Coll) -> [X | to_list(Coll)].
 
 count(nil) -> 0;
+count({'clojure.lang.ExceptionInfo', _, _}) ->
+    erlang:error(clj2_rt:ex_info(<<"count not supported on this type: ExceptionInfo">>,
+                                 hash_map_kv([':type', ':UnsupportedOperationException']), nil));
 %% a transient reads through to the value it wraps (clojure.core/transient)
 count({transient, _, C}) -> count(C);
 count({Tag, _, {_, _, N}}) when (Tag =:= sorted_map orelse Tag =:= sorted_set), is_integer(N) -> N;
@@ -167,8 +173,12 @@ count({Tag, _, M}) when is_atom(Tag), is_map(M) -> map_size(M);
 count({array, _, _} = A) -> clj2_array:length(A);
 count(X) -> erlang:error({clj2_not_countable, X}).
 
+nth(nil, nil) -> erlang:error({clj2_index_out_of_bounds, nil});
+nth(nil, _) -> nil;
 nth(Coll, I) ->
     case nth(Coll, I, '$clj2_none') of
+        '$clj2_none' when is_binary(Coll), is_integer(I) ->
+            erlang:error({clj2_string_index_out_of_bounds, I, string:length(Coll)});
         '$clj2_none' -> erlang:error({clj2_index_out_of_bounds, I});
         V -> V
     end.
@@ -186,7 +196,19 @@ nth({array, _, _} = A, I, NotFound) when is_integer(I) ->
         false -> NotFound
     end;
 nth(nil, _, NotFound) -> NotFound;
-nth(_, _, NotFound) -> NotFound.
+nth({vector, _, _}, _, NotFound) -> NotFound;
+nth(L, _, NotFound) when is_list(L); is_binary(L) -> NotFound;
+nth({lazy_seq, _, _}, _, NotFound) -> NotFound;
+%% sets, maps, records, keywords, numbers, fns ... have no nth (JVM:
+%% UnsupportedOperationException, with or without a not-found)
+nth(X, _, _) ->
+    erlang:error(clj2_rt:ex_info(<<"nth not supported on this type: ",
+                                   (simple_class(X))/binary>>,
+                                 hash_map_kv([':type', ':UnsupportedOperationException']), nil)).
+
+simple_class(X) ->
+    [S | _] = lists:reverse(binary:split(atom_to_binary(clj2_class:class_of(X)), <<".">>, [global])),
+    S.
 
 nth_utf8(<<C/utf8, _/binary>>, 0, _) -> C;
 nth_utf8(<<_/utf8, Rest/binary>>, I, NotFound) -> nth_utf8(Rest, I - 1, NotFound);
@@ -228,6 +250,9 @@ assoc({vector, Meta, T}, I, V) when is_integer(I), I >= 0, I < tuple_size(T) ->
 assoc({vector, Meta, T}, I, V) when I =:= tuple_size(T) ->
     {vector, Meta, erlang:append_element(T, V)};
 assoc({Tag, Meta, M}, K, V) when is_atom(Tag), is_map(M), Tag =/= set -> {Tag, Meta, M#{K => V}};   % record
+assoc({vector, _, _}, I, _) when is_integer(I) ->
+    erlang:error(clj2_rt:ex_info(<<"Index ", (integer_to_binary(I))/binary, " out of bounds">>,
+                                 hash_map_kv([':type', ':IndexOutOfBoundsException']), nil));
 assoc(X, _, _) ->
     erlang:error(clj2_rt:ex_info(<<"class ", (atom_to_binary(clj2_class:class_of(X)))/binary,
                                    " cannot be cast to class clojure.lang.Associative">>,
@@ -261,7 +286,29 @@ conj({Tag, _, {_, _, _}} = S, X) when Tag =:= sorted_map; Tag =:= sorted_set -> 
 conj({map, Meta, M}, {vector, _, {K, V}}) -> {map, Meta, M#{K => V}};
 conj({map, Meta, M}, {map, _, M2}) -> {map, Meta, maps:merge(M, M2)};
 conj({map, _, _} = M, nil) -> M;
+conj({map, _, _}, {vector, _, _}) ->
+    erlang:error(clj2_rt:ex_info(<<"Vector arg to map conj must be a pair">>,
+                                 hash_map_kv([':type', ':IllegalArgumentException']), nil));
+%% another map (sorted, a record) or a seq of map entries: each entry
+conj({map, _, _} = M, X) when is_list(X); element(1, X) =:= lazy_seq; element(1, X) =:= sorted_map;
+                              (is_tuple(X) andalso tuple_size(X) =:= 3 andalso is_atom(element(1, X))
+                               andalso is_map(element(3, X)) andalso element(1, X) =/= set) ->
+    conj_entries(M, X);
 conj(C, X) -> erlang:error({clj2_cannot_conj, C, X}).
+
+%% each entry in turn: one that is not an entry fails before the rest of
+%% the seq is realized (so a seq of non-entries, even an infinite one, fails)
+conj_entries(M, X) when element(1, X) =:= sorted_map; is_tuple(X), element(1, X) =/= lazy_seq ->
+    lists:foldl(fun(E, Acc) -> conj(Acc, E) end, M, to_list(X));
+conj_entries(M, X) ->
+    case seq(X) of
+        nil -> M;
+        [E | T] ->
+            case E of
+                {vector, _, _} -> conj_entries(conj(M, E), T);
+                _ -> erlang:error({clj2_cannot_conj, M, E})
+            end
+    end.
 
 contains({transient, _, C}, K) -> contains(C, K);
 contains({Tag, _, {_, _, _}} = S, K) when Tag =:= sorted_map; Tag =:= sorted_set -> clj2_sorted:contains(S, K);
@@ -269,6 +316,10 @@ contains({map, _, M}, K) -> is_map_key(K, M);
 contains({set, _, M}, K) -> is_map_key(K, M);
 contains({vector, _, T}, I) when is_integer(I) -> I >= 0 andalso I < tuple_size(T);
 contains({Tag, _, M}, K) when is_atom(Tag), is_map(M) -> is_map_key(K, M);
+contains(B, I) when is_binary(B), is_integer(I) -> I >= 0 andalso I < string:length(B);
+contains(B, _) when is_binary(B) ->
+    erlang:error(clj2_rt:ex_info(<<"contains? not supported on type: java.lang.String">>,
+                                 hash_map_kv([':type', ':IllegalArgumentException']), nil));
 contains(_, _) -> false.
 
 keys({map, _, M}) -> seq(maps:keys(M));
@@ -310,6 +361,8 @@ subvec({vector, _, T}, S0, E0) ->
 %% their elements are; maps and sets by content; metadata ignored;
 %% everything else by `=:=' (so 1 and 1.0 differ, as in Clojure).
 equals(A, B) when A =:= B -> true;
+%% BigDecimals are equal by value (1.0M and 1.00M), as compareTo
+equals({decimal, _, _} = A, {decimal, _, _} = B) -> clj2_decimal:equals(A, B);
 equals({map, _, A}, {map, _, B}) when map_size(A) =:= map_size(B) ->
     lists:all(fun({K, V}) -> is_map_key(K, B) andalso equals(V, maps:get(K, B)) end,
               maps:to_list(A));

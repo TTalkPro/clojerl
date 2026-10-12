@@ -319,6 +319,9 @@ init([]) ->
     clj2_multi:new_table(),
     clj2_lazy:new_table(),
     clj2_eval = ets:new(clj2_eval, [named_table, public, ordered_set]),
+    %% the beams of namespaces loaded from memory (clj2_compiler:load_ns),
+    %% for clj2_rt_eval:redirect/3
+    clj2_beam = ets:new(clj2_beam, [named_table, public, set]),
     %% `user' always exists, as in Clojure: the REPL's first namespace. It
     %% has no module of its own (OTP's kernel has a module `user'); its
     %% vars, defined at the REPL, each have theirs.
