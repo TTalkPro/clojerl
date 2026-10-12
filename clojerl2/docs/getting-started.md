@@ -33,7 +33,8 @@ user=> (map greet ["甲" "乙"])
 - 一个 form 可以跨多行,读完整了才求值;一行也可以写多个 form。
 - `*1` `*2` `*3` 是最近三个值,`*e` 是最近一次异常。
 - `(doc map)` 显示 var 的元数和文档,`(dir clojure.core)` 列出命名空间里的 var。clojure.core 的函数目前大多还没有 docstring,`doc` 只能显示元数。
-- `def`/`defn`/`defmacro`、`ns`/`in-ns`、`require`、`eval`、`macroexpand` 都可以在 REPL 里用。
+- `def`/`defn`/`defmacro`、`ns`/`in-ns`、`require`/`refer`/`use`、`eval`、`macroexpand` 都可以在 REPL 里用。
+- 与 JVM 一样,`(in-ns 'foo)` 新建的命名空间什么都不 refer,`map` 之类要写成 `clojure.core/map`,或先执行 `(clojure.core/refer-clojure)`;要一个可以直接用 clojure.core 的新命名空间,用 `(ns foo)`。
 - 在终端里有行编辑和历史,历史跨会话保存。
 - 退出:Ctrl-D,或输入 `:repl/quit`。
 

@@ -167,13 +167,8 @@
   {:suite "concurrency-model / compare-and-set!" :label "immediate fixnums have no distinct boxes" :cause :values/no-identity}
   {:suite "conformance / #inst + syntax-quote literal collapse (spec 2.4/2.3)" :label "inst partial = full" :cause :pending/reader}
   {:suite "conformance / #inst + syntax-quote literal collapse (spec 2.4/2.3)" :label "sq number collapse" :cause :pending/compiler}
-  {:suite "conformance / 1.11 additions + ns fns (spec 35-var batch A)" :label "ns-publics lookup" :cause :pending/runtime-eval}
   {:suite "conformance / 1.11 additions + ns fns (spec 35-var batch A)" :label "with-redefs" :cause :pending/ref-types}
-  {:suite "conformance / HIGH: aliased namespace calls" :label "ns :use refers" :cause :pending/runtime-eval}
-  {:suite "conformance / HIGH: aliased namespace calls" :label "ns form + alias" :cause :pending/runtime-eval}
   {:suite "conformance / core misc" :label "definline instantiates the expansion template" :cause :pending/triage}
-  {:suite "conformance / defmacro surface + syntax-quote/ns (enabling real clojure libs)" :label "ns name with ^{:map} meta" :cause :pending/runtime-eval}
-  {:suite "conformance / defmacro surface + syntax-quote/ns (enabling real clojure libs)" :label "syntax-quote resolves alias" :cause :pending/runtime-eval}
   {:suite "conformance / defmacro surface + syntax-quote/ns (enabling real clojure libs)" :label "unquote *ns* in template" :cause :pending/host-types}
   {:suite "conformance / destructuring" :label "rest-pattern positional elements walk the seq (a map destructures)" :cause :pending/triage}
   {:suite "conformance / dispatch-table ops + misc as macros/fns (Stage 2 tier 6c)" :label "defonce keeps first" :cause :pending/compiler}
@@ -183,7 +178,6 @@
   {:suite "conformance / hasheq" :label "hash char \\x" :cause :pending/reader}
   {:suite "conformance / macros" :label "macroexpand-1" :cause :pending/triage}
   {:suite "conformance / metadata / vars" :label "defonce no-redef" :cause :pending/compiler}
-  {:suite "conformance / migratus enablement: def/defmacro/defmulti forms, assoc, try, ns" :label "cross-ns methods visible" :cause :pending/runtime-eval}
   {:suite "conformance / native-op parity (native ops at guarded arities)" :label "native unary div" :cause :number/no-ratio-arithmetic}
   {:suite "conformance / numbers / bits" :label "Double/doubleToLongBits and doubleToRawLongBits" :cause :pending/reader}
   {:suite "conformance / numbers / bits" :label "Double/longBitsToDouble round-trips" :cause :pending/triage}
@@ -553,10 +547,6 @@
   {:suite "macros / defmacro resolve" :label "defmacro has :macro true meta" :cause :pending/runtime-eval}
   {:suite "macros / defmacro resolve" :label "defmacro is in ns-map" :cause :pending/runtime-eval}
   {:suite "macros / defmacro resolve" :label "defmacro resolves as a macro var" :cause :pending/runtime-eval}
-  {:suite "macros / defmacro resolve" :label "syntax-quote defmacro resolves" :cause :pending/compiler}
-  {:suite "macros / refer-clojure resolve" :label "refer-clojure has :macro true meta" :cause :pending/runtime-eval}
-  {:suite "macros / refer-clojure resolve" :label "refer-clojure is in ns-map" :cause :pending/runtime-eval}
-  {:suite "macros / refer-clojure resolve" :label "refer-clojure resolves as a macro var" :cause :pending/runtime-eval}
   {:suite "macros / time, with-redefs, macroexpand" :label "with-redefs on deref reaches @ inside a fn" :cause :pending/ref-types}
   {:suite "macros / time, with-redefs, macroexpand" :label "with-redefs on deref reaches a value-position deref" :cause :pending/ref-types}
   {:suite "macros / time, with-redefs, macroexpand" :label "with-redefs rebinds" :cause :pending/ref-types}
@@ -565,7 +555,6 @@
   {:suite "macros / time, with-redefs, macroexpand" :label "with-redefs-fn" :cause :pending/missing-core-var}
   {:suite "map / bulk build boundaries" :label "transient nil get" :cause :pending/triage}
   {:suite "map / bulk build boundaries" :label "transient nil key" :cause :pending/triage}
-  {:suite "map / find's accepted types" :label "a record and a vector are associative" :cause :pending/runtime-eval}
   {:suite "map / find's accepted types" :label "a set is not associative" :cause :pending/triage}
   {:suite "map / find's accepted types" :label "a transient map and vector are, a transient set is not" :cause :pending/triage}
   {:suite "map / find's accepted types" :label "and neither is a sorted set" :cause :pending/triage}
@@ -643,52 +632,18 @@
   {:suite "murmur3 / statics" :label "Murmur3/hashUnordered over a vector" :cause :pending/host-types}
   {:suite "murmur3 / statics" :label "Murmur3/mixCollHash" :cause :pending/host-types}
   {:suite "murmur3 / statics" :label "Util/hashCombine mixes two hashes" :cause :pending/host-types}
-  {:suite "namespaces / alias, ns-unalias, ns-publics" :label "ns-publics has var" :cause :pending/runtime-eval}
   {:suite "namespaces / def & vars" :label "def returns var" :cause :pending/compiler}
   {:suite "namespaces / def & vars" :label "var-get" :cause :pending/runtime-eval}
-  {:suite "namespaces / error inside a fn must not leak its defining ns" :label "*ns* restored after throw" :cause :pending/compiler}
+  {:suite "namespaces / error inside a fn must not leak its defining ns" :label "*ns* restored after throw" :cause :fn/arity-at-compile-time}
   {:suite "namespaces / error inside a fn must not leak its defining ns" :label "alias survives a throwing stdlib call" :cause :fn/arity-at-compile-time}
   {:suite "namespaces / ns operations" :label "alter-meta! :macro makes a macro" :cause :pending/triage}
-  {:suite "namespaces / ns operations" :label "intern :macro meta makes a macro" :cause :pending/runtime-eval}
-  {:suite "namespaces / ns operations" :label "intern symbol meta -> var meta" :cause :pending/runtime-eval}
-  {:suite "namespaces / ns operations" :label "ns :refer-clojure :exclude steers syntax-quote" :cause :pending/runtime-eval}
-  {:suite "namespaces / ns operations" :label "ns :use :exclude falls through to the earlier use" :cause :pending/runtime-eval}
-  {:suite "namespaces / ns operations" :label "ns :use :exclude leaves the name unresolvable" :cause :pending/runtime-eval}
-  {:suite "namespaces / ns operations" :label "ns :use refers all" :cause :pending/runtime-eval}
-  {:suite "namespaces / ns operations" :label "ns form + alias" :cause :pending/runtime-eval}
-  {:suite "namespaces / ns operations" :label "standalone use" :cause :pending/runtime-eval}
-  {:suite "namespaces / require & refer" :label "require of in-session ns ok" :cause :pending/runtime-eval}
-  {:suite "namespaces / require & refer" :label "use missing lib throws" :cause :pending/runtime-eval}
+  {:suite "namespaces / ns operations" :label "intern :macro meta makes a macro" :cause :symbol/no-metadata}
+  {:suite "namespaces / ns operations" :label "intern symbol meta -> var meta" :cause :symbol/no-metadata}
   {:suite "namespaces / unified alias store" :label "alias fn visible to ns-aliases" :cause :pending/runtime-eval}
   {:suite "namespaces / unified alias store" :label "ns-unalias removes both views" :cause :pending/missing-core-var}
   {:suite "namespaces / unified alias store" :label "require :as registers the alias" :cause :pending/runtime-eval}
   {:suite "ns / :refer-clojure exclusion" :label ":only [] still leaves ns and in-ns" :cause :pending/triage}
-  {:suite "ns / :refer-clojure exclusion" :label ":only withholds every name it does not list" :cause :pending/triage}
-  {:suite "ns / :refer-clojure exclusion" :label ":rename refers a core var under the new name only" :cause :pending/triage}
-  {:suite "ns / :refer-clojure exclusion" :label ":rename with :only renames only a listed name" :cause :pending/triage}
-  {:suite "ns / :refer-clojure exclusion" :label "a later refer-clojure :exclude does not withdraw a mapped name" :cause :pending/triage}
-  {:suite "ns / :refer-clojure exclusion" :label "an :only then an :exclude withhold only what both withhold" :cause :pending/triage}
-  {:suite "ns / :refer-clojure exclusion" :label "an excluded name used above the ns's own def does not resolve" :cause :pending/triage}
-  {:suite "ns / :refer-clojure exclusion" :label "re-evaluating an ns form with the same exclusion keeps it" :cause :pending/triage}
-  {:suite "ns / :refer-clojure exclusion" :label "refer-clojure :exclude in a bare in-ns namespace withholds the name" :cause :pending/triage}
-  {:suite "ns / :refer-clojure exclusion" :label "resolve, ns-resolve and ns-map see no excluded name" :cause :pending/triage}
-  {:suite "ns / :refer-clojure exclusion" :label "syntax-quote qualifies an excluded name to the current ns" :cause :pending/triage}
-  {:suite "ns / :refer-clojure exclusion" :label "try/catch compiles in a ns whose :only omits let, or and instance?" :cause :pending/triage}
-  {:suite "ns / :refer-clojure exclusion" :label "two :only calls map the union of their names" :cause :pending/triage}
   {:suite "ns / ns-imports" :label "a deftype's class is not an intern, its factory fn is" :cause :pending/runtime-eval}
-  {:suite "ns / ns-map, ns-unmap, ns-refers" :label "ns-map has var" :cause :pending/runtime-eval}
-  {:suite "ns / ns-map, ns-unmap, ns-refers" :label "ns-refers sees refer" :cause :pending/runtime-eval}
-  {:suite "ns / ns-unmap" :label "unmap blocks the implicit core refer" :cause :pending/runtime-eval}
-  {:suite "ns / ns-unmap refer-all name" :label "ns-unmap removes refer-all name from resolve" :cause :pending/compiler}
-  {:suite "ns / private var references" :label "a private fn passed as a value is refused" :cause :pending/triage}
-  {:suite "ns / private var references" :label "a private macro is refused" :cause :pending/triage}
-  {:suite "ns / private var references" :label "the var special form still reaches a private var" :cause :pending/triage}
-  {:suite "ns / refer name checks" :label ":refer-clojure :only a missing name throws" :cause :pending/triage}
-  {:suite "ns / refer name checks" :label "refer :only a missing name throws IllegalAccessError" :cause :pending/runtime-eval}
-  {:suite "ns / refer name checks" :label "refer :only a private name throws IllegalAccessError" :cause :pending/triage}
-  {:suite "ns / refer name checks" :label "refer without :only skips private vars" :cause :pending/triage}
-  {:suite "ns / refer name checks" :label "require :refer a missing name throws" :cause :pending/triage}
-  {:suite "ns / resolve-class" :label "a deftype's class maps only where it is defined" :cause :pending/runtime-eval}
   {:suite "nth / unsupported type" :label "a set has no nth, with or without a not-found" :cause :pending/triage}
   {:suite "nth / unsupported type" :label "nor do a map, a keyword, a number or a fn" :cause :pending/triage}
   {:suite "nth / unsupported type" :label "vector destructuring of a set raises rather than binding nil" :cause :pending/triage}
@@ -861,7 +816,6 @@
   {:suite "printing / *print-readably*" :label "nil makes pr print a string bare, like print" :cause :char/integer}
   {:suite "printing / doubles" :label "a subnormal prints the two digits nearest its value" :cause :pending/triage}
   {:suite "printing / doubles" :label "format starts a subnormal from the same two digits" :cause :pending/triage}
-  {:suite "protocols / cross-ns extend" :label "extend-protocol to a record named by its fully-qualified name, from a third ns" :cause :pending/runtime-eval}
   {:suite "protocols / defprotocol options" :label "docstring + option + method" :cause :pending/compiler}
   {:suite "protocols / defprotocol options" :label "option only" :cause :pending/compiler}
   {:suite "protocols / dispatch miss message" :label "a miss on a method whose other receivers are extended" :cause :pending/triage}
@@ -924,7 +878,6 @@
   {:suite "reader / dispatch & sugar" :label "reader conditional" :cause :pending/reader}
   {:suite "reader / hex N suffix" :label "0xFFN reads as integer 255" :cause :pending/triage}
   {:suite "reader / metadata" :label "a set in metadata is read as a value, not a tagged form" :cause :pending/triage}
-  {:suite "reader / metadata" :label "a vector in metadata reads as a value" :cause :pending/triage}
   {:suite "reader / metadata" :label "metadata on an empty list is preserved" :cause :pending/triage}
   {:suite "reader / metadata ^" :label "meta on quoted sym" :cause :pending/triage}
   {:suite "reader / nested syntax-quote" :label "a quoted template is that same construction code" :cause :pending/compiler}
@@ -938,23 +891,16 @@
   {:suite "reader / read-string backquote" :label "read (quote #{1 2})" :cause :pending/compiler}
   {:suite "reader / read-string backquote" :label "read (quote (a ~b c))" :cause :pending/compiler}
   {:suite "reader / read-string backquote" :label "read (quote (a# a#)) gensym stable" :cause :pending/compiler}
-  {:suite "reader / read-string backquote" :label "read (quote (quote x))" :cause :pending/compiler}
   {:suite "reader / read-string backquote" :label "read (quote [a ~b c])" :cause :pending/compiler}
-  {:suite "reader / read-string backquote" :label "read (quote x)" :cause :pending/compiler}
   {:suite "reader / read-string backquote" :label "read (quote {:a 1 :b ~x})" :cause :pending/compiler}
-  {:suite "reader / read-string backquote" :label "read (quote ~x)" :cause :pending/compiler}
   {:suite "reader / record literal" :label "#ns.Type{} constructs record in read-string" :cause :pending/compiler}
   {:suite "reader / record vector ctor" :label "#ns.Type[] constructs record from vector" :cause :pending/compiler}
   {:suite "reader / scalar literals" :label "bigdec suffix M" :cause :pending/numbers}
   {:suite "reader / scalar literals" :label "symbolic Infinity" :cause :pending/reader}
   {:suite "reader / scalar literals" :label "symbolic NaN" :cause :pending/reader}
-  {:suite "reader / set literals reach a macro as sets" :label "the literal's metadata comes with it" :cause :pending/triage}
   {:suite "reader / shebang line" :label "and it comments to end of line anywhere, not only at the start of input" :cause :pending/compiler}
   {:suite "reader / strict tokens" :label "the core reader rejects invalid numbers and duplicate keys too" :cause :pending/triage}
   {:suite "reader / surrogate in string" :label "\\ud800 in string throws Invalid character constant" :cause :pending/compiler}
-  {:suite "reader / syntax-quote is not a reserved name" :label "`syntax-quote qualifies to the current ns like any other symbol" :cause :pending/runtime-eval}
-  {:suite "reader / syntax-quote is not a reserved name" :label "a var named syntax-quote is an ordinary var" :cause :pending/runtime-eval}
-  {:suite "reader / syntax-quote is not a reserved name" :label "and it can be referred into another namespace" :cause :pending/runtime-eval}
   {:suite "reader / syntax-quote literal collapse (spec 2.4 S25)" :label "bool nested" :cause :pending/compiler}
   {:suite "reader / syntax-quote literal collapse (spec 2.4 S25)" :label "char nested" :cause :pending/compiler}
   {:suite "reader / syntax-quote literal collapse (spec 2.4 S25)" :label "keyword nested" :cause :pending/compiler}
@@ -962,15 +908,9 @@
   {:suite "reader / syntax-quote literal collapse (spec 2.4 S25)" :label "number nested" :cause :pending/compiler}
   {:suite "reader / syntax-quote literal collapse (spec 2.4 S25)" :label "string nested" :cause :pending/compiler}
   {:suite "reader / syntax-quote literal collapse (spec 2.4 S25)" :label "string triple" :cause :pending/compiler}
-  {:suite "reader / syntax-quote resolution" :label "& stays bare" :cause :pending/compiler}
-  {:suite "reader / syntax-quote resolution" :label "alias qualifies through the alias" :cause :pending/compiler}
-  {:suite "reader / syntax-quote resolution" :label "core macro name qualifies to clojure.core" :cause :pending/compiler}
-  {:suite "reader / syntax-quote resolution" :label "core-default name qualifies to clojure.core" :cause :pending/compiler}
-  {:suite "reader / syntax-quote resolution" :label "unmapped name qualifies to current ns" :cause :pending/compiler}
   {:suite "reader / unquote" :label "~@x reads as clojure.core/unquote-splicing" :cause :pending/compiler}
   {:suite "reader / unquote" :label "~x reads as clojure.core/unquote" :cause :pending/compiler}
   {:suite "reader / var-quote #'" :label "deref var-quote" :cause :pending/triage}
-  {:suite "reader-model / nested fn literals" :label "nested #() reads" :cause :pending/compiler}
   {:suite "reader-model / read-eval" :label "#= evaluates under read-string" :cause :pending/triage}
   {:suite "records / ISeq deftype" :label "a deftype that is its own seq walks through its first and next" :cause :pending/compiler}
   {:suite "records / class constructor" :label "a record class also constructs from fields, __meta and __extmap" :cause :fn/arity-at-compile-time}
@@ -1166,15 +1106,11 @@
   {:suite "strings / nil arguments" :label "String methods refuse a nil argument with NullPointerException" :cause :pending/triage}
   {:suite "strings / nil arguments" :label "a StringBuilder over nil" :cause :pending/triage}
   {:suite "strings / nil arguments" :label "alength of nil" :cause :pending/missing-core-var}
-  {:suite "strings / nil arguments" :label "clojure.string/replace with a nil replacement or a non-string one" :cause :pending/triage}
   {:suite "structmaps" :label "defstruct / struct-map / struct" :cause :pending/missing-core-var}
-  {:suite "syntax-quote / catch bare" :label "`catch stays bare (special form)" :cause :pending/compiler}
-  {:suite "syntax-quote / defmacro qualified" :label "`defmacro qualifies to ns, not bare" :cause :pending/compiler}
   {:suite "syntax-quote / expanded before anything sees the form" :label "in quoted data, beside an unquote" :cause :pending/compiler}
   {:suite "syntax-quote / expanded before anything sees the form" :label "the compiler and read-string agree on a bare symbol" :cause :pending/compiler}
   {:suite "syntax-quote / in a deftype method body" :label "a mutable field's live-read rewrite still leaves the template's unquotes alone" :cause :pending/special-forms}
   {:suite "syntax-quote / in a deftype method body" :label "defrecord and reify method templates agree with deftype's" :cause :protocols/type-designators}
-  {:suite "syntax-quote / reify* bare" :label "`reify* stays bare (special form)" :cause :pending/compiler}
   {:suite "syntax-quote / ~@ is lazy" :label "a splice in head position realizes its first chunk to produce the head, as seq does" :cause :lazy-seq/no-chunking}
   {:suite "syntax-quote / ~@ is lazy" :label "a spliced lazy seq is not realized by building the template, only by walking to it" :cause :pending/triage}
   {:suite "syntax-quote / ~@ is lazy" :label "a top-level do evaluates the forms ahead of a splice before the splice is realized" :cause :pending/runtime-eval}
@@ -1225,8 +1161,6 @@
   {:suite "untested / misc seqs + binding machinery" :label "xml-seq root" :cause :pending/missing-core-var}
   {:suite "untested / misc seqs + binding machinery" :label "xml-seq walks" :cause :pending/missing-core-var}
   {:suite "untested / ns + REPL machinery" :label "ns-imports empty user" :cause :pending/missing-core-var}
-  {:suite "untested / ns + REPL machinery" :label "ns-interns sees def" :cause :pending/runtime-eval}
-  {:suite "untested / ns + REPL machinery" :label "refer-clojure" :cause :pending/missing-core-var}
   {:suite "untested / primed + division + bit ops" :label "/ ratio-as-double" :cause :number/no-ratio-arithmetic}
   {:suite "untested / protocols: extend + extends?" :label "extend registers" :cause :pending/missing-core-var}
   {:suite "untested / protocols: extend + extends?" :label "extend two methods" :cause :pending/missing-core-var}
@@ -1238,7 +1172,6 @@
   {:suite "vars / cached reference stays correct" :label "undeclared forward reference in a fn body throws" :cause :pending/triage}
   {:suite "vars / cached reference stays correct" :label "unknown symbol nested in a let body throws" :cause :pending/missing-core-var}
   {:suite "vars / declare" :label "declare sets :declared on the var" :cause :pending/compiler}
-  {:suite "vars / privacy" :label "ns-publics drops private vars; ns-interns keeps them" :cause :pending/runtime-eval}
   {:suite "vars / set! binding" :label "set! inside binding works" :cause :pending/special-forms}
   {:suite "vars / set! binding" :label "set! outside binding throws" :cause :pending/special-forms}
   {:suite "vars / thread-binding family" :label "bound? on def" :cause :pending/runtime-eval}

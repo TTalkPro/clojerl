@@ -3,7 +3,7 @@
 语料:`test/corpus.edn`(jolt `test/chez/corpus.edn` @ 6c2685e,EPL-2.0;`:expected` 经 `make corpus-regen` 以 JVM Clojure 1.12.5 重新生成),只计 `:portability :common` 条目。
 生成:`make corpus`;门控:`make certify`(对照 `test/corpus-known-failures.edn`)。判定见 `src/erl/clj2_corpus.erl`。
 
-**通过 3614 / 4841(74.7%)**
+**通过 3648 / 4841(75.4%)**
 
 ## 按 core 分层
 
@@ -11,9 +11,9 @@
 
 | 层 | 通过 | 条目 | 通过率 |
 |---|---|---|---|
-| 00-kernel | 1522 | 1934 | 79% |
-| 01-core | 1910 | 2529 | 76% |
-| 02-protocols | 85 | 188 | 45% |
+| 00-kernel | 1523 | 1932 | 79% |
+| 01-core | 1940 | 2531 | 77% |
+| 02-protocols | 88 | 188 | 47% |
 | 03-print | 93 | 186 | 50% |
 | 04-repl | 4 | 4 | 100% |
 
@@ -21,7 +21,7 @@
 
 | suite | 通过 | 条目 | 通过率 |
 |---|---|---|---|
-| conformance | 320 | 364 | 88% |
+| conformance | 321 | 364 | 88% |
 | numbers | 210 | 339 | 62% |
 | seq | 245 | 276 | 89% |
 | reader | 129 | 211 | 61% |
@@ -30,8 +30,8 @@
 | regex | 143 | 150 | 95% |
 | format | 102 | 140 | 73% |
 | clojure.core | 130 | 135 | 96% |
-| untested | 100 | 120 | 83% |
-| macros | 94 | 119 | 79% |
+| untested | 102 | 120 | 85% |
+| macros | 97 | 119 | 82% |
 | io | 61 | 119 | 51% |
 | control | 99 | 102 | 97% |
 | maps | 69 | 98 | 70% |
@@ -46,7 +46,7 @@
 | transient | 55 | 63 | 87% |
 | forms | 56 | 63 | 89% |
 | core | 36 | 60 | 60% |
-| namespaces | 37 | 56 | 66% |
+| namespaces | 39 | 56 | 70% |
 | lazy | 50 | 56 | 89% |
 | vector | 55 | 55 | 100% |
 | seq-type-model | 10 | 53 | 19% |
@@ -54,13 +54,13 @@
 | string | 45 | 49 | 92% |
 | truthiness | 47 | 47 | 100% |
 | transducers | 42 | 45 | 93% |
-| ns | 17 | 44 | 39% |
+| ns | 41 | 44 | 93% |
 | clojure.string | 42 | 42 | 100% |
 | collections | 28 | 41 | 68% |
 | refs | 2 | 40 | 5% |
 | multimethods | 35 | 37 | 95% |
 | equality | 32 | 32 | 100% |
-| vars | 11 | 31 | 35% |
+| vars | 12 | 31 | 39% |
 | state | 30 | 31 | 97% |
 | uuid | 30 | 30 | 100% |
 | records | 15 | 30 | 50% |
@@ -73,7 +73,7 @@
 | syntax-quote | 11 | 22 | 50% |
 | sequences | 21 | 21 | 100% |
 | seqs | 19 | 21 | 90% |
-| strings | 16 | 20 | 80% |
+| strings | 17 | 20 | 85% |
 | regex-parity | 15 | 20 | 75% |
 | list | 20 | 20 | 100% |
 | errors | 4 | 19 | 21% |
@@ -165,14 +165,14 @@
 
 | cause | 条目 |
 |---|---|
-| `:pending/triage` | 356 |
-| `:pending/compiler` | 178 |
-| `:pending/missing-core-var` | 118 |
+| `:pending/triage` | 336 |
+| `:pending/compiler` | 177 |
+| `:pending/missing-core-var` | 117 |
 | `:pending/reader` | 105 |
 | `:pending/numbers` | 67 |
 | `:host/jvm-classes` | 61 |
-| `:pending/runtime-eval` | 61 |
 | `:number/beam-semantics` | 52 |
+| `:pending/runtime-eval` | 49 |
 | `:seqs/class-model` | 42 |
 | `:collections/map-order` | 24 |
 | `:pending/stdlib-namespaces` | 22 |
@@ -195,14 +195,14 @@
 
 | 类别 | 条目 |
 |---|---|
-| threw (unexpected) | 453 |
-| wrong value | 384 |
-| compile: unresolved symbol | 134 |
+| threw (unexpected) | 441 |
+| wrong value | 366 |
+| compile: unresolved symbol | 130 |
 | compile: syntax | 57 |
 | compile: error | 44 |
 | expected a throw | 35 |
 | compile: link | 19 |
-| compile: resolve | 15 |
+| compile: resolve | 14 |
 | compile: read | 12 |
 | compile: driver | 12 |
 | compile: unsupported special form set! | 11 |
@@ -212,8 +212,8 @@
 | timeout | 6 |
 | compile: unsupported | 5 |
 | compile: other | 4 |
+| :expected does not evaluate | 3 |
 | compile: verify | 2 |
-| :expected does not evaluate | 2 |
 | crashed | 1 |
 | compile: unsupported literal unquote | 1 |
 | compile: unsupported literal fnstar | 1 |
@@ -230,44 +230,41 @@
 | `reader-conditional` | 6 |
 | `read+string` | 6 |
 | `ref-min-history` | 5 |
-| `line-seq` | 4 |
 | `tagged-literal` | 4 |
-| `ref-max-history` | 3 |
-| `__reader-features` | 3 |
+| `line-seq` | 4 |
 | `alter-var-root` | 3 |
+| `__reader-features` | 3 |
 | `chunk-first` | 3 |
+| `ref-max-history` | 3 |
 | `chunk-buffer` | 3 |
-| `sorted-set?` | 3 |
 | `StringWriter.` | 3 |
 | `thread-bound?` | 3 |
+| `sorted-set?` | 3 |
 | `bigdec` | 3 |
-| `keyword-identical?` | 2 |
-| `refer` | 2 |
 | `ref?` | 2 |
-| `sorted-map?` | 2 |
-| `Inst` | 2 |
-| `xml-seq` | 2 |
+| `keyword-identical?` | 2 |
 | `inst-ms*` | 2 |
+| `Inst` | 2 |
+| `sorted-map?` | 2 |
+| `xml-seq` | 2 |
 | `undefined?` | 1 |
-| `update-proxy` | 1 |
-| `construct-proxy` | 1 |
-| `corpus.e3887` | 1 |
-| `ref-history-count` | 1 |
-| `use` | 1 |
-| `object?` | 1 |
-| `InputStream` | 1 |
+| `iterator-seq` | 1 |
+| `java.nio.file.attribute.FileAttribute` | 1 |
 | `java.net.URL.` | 1 |
-| `test` | 1 |
-| `refer-clojure` | 1 |
 | `print-dup` | 1 |
 | `defstruct` | 1 |
-| `get-proxy-class` | 1 |
-| `a` | 1 |
-| `java.nio.file.attribute.FileAttribute` | 1 |
-| `init-proxy` | 1 |
-| `with-redefs-fn` | 1 |
+| `test` | 1 |
 | `ns-imports` | 1 |
-| `iterator-seq` | 1 |
-| `get-thread-bindings` | 1 |
+| `a` | 1 |
+| `object?` | 1 |
+| `construct-proxy` | 1 |
+| `init-proxy` | 1 |
+| `update-proxy` | 1 |
 | `file-seq` | 1 |
+| `corpus.e3887` | 1 |
+| `ref-history-count` | 1 |
+| `get-proxy-class` | 1 |
+| `with-redefs-fn` | 1 |
+| `get-thread-bindings` | 1 |
+| `InputStream` | 1 |
 | `bogus-head` | 1 |

@@ -71,10 +71,12 @@ run(Opts) ->
 
 in_user(#{actual := A, expected := E0}) ->
     E = case is_binary(E0) of true -> E0; false -> <<>> end,         % or :throws
-    re:run([A, " ", E], "user[/.][^ ]|\\(in-ns \\(quote user\\)\\)|\\(in-ns 'user\\)", [unicode]) =/= nomatch.
+    %% user/x, #user.R, (in-ns 'user), or the namespace named: (ns-map 'user)
+    re:run([A, " ", E], "user[/.][^ ]|\\(quote user\\)|'user[) \\]]", [unicode]) =/= nomatch.
 
 global_effects(Src) ->
-    re:run(Src, "\\((ns|in-ns|load-string|load-file|eval|require|create-ns|remove-ns|intern|use|refer) ",
+    %% spit too: rows share temp file names (/tmp/jolt-spit-test.txt)
+    re:run(Src, "\\((ns|in-ns|load-string|load-file|eval|require|create-ns|remove-ns|intern|use|refer|refer-clojure|spit) ",
            [unicode]) =/= nomatch.
 
 default_file() -> test_file("corpus.edn").
@@ -289,15 +291,13 @@ evaluate(Ns, Src) ->
                     {error, _, Msg} -> throw({read, Msg})
                 end,
         Body = flatten_do(Forms),
-        {Init, [Last]} = lists:split(length(Body) - 1, Body),
-        Prog = {forms, [[ns, Ns] | Init] ++ [[def, '__result__', Last]]},
-        case clj2_compiler:load_ns(Prog) of
-            {ok, Ns} ->
-                try {value, Ns:'__result__'()}
-                catch C:R -> {threw, brief({C, R})}
-                end;
-            {error, {ns_init_failed, _, R2}} -> {threw, brief(R2)};
-            {error, Why} -> {compile_error, Why}
+        case lists:any(fun is_ns_form/1, Body) of
+            %% an entry that switches namespaces (ns forms) is what a REPL
+            %% session does on the JVM: evaluate it form by form, as the
+            %% clojerl2 REPL and load-string do (a namespace module has one
+            %% ns form)
+            true -> evaluate_forms(Ns, Body);
+            false -> evaluate_unit(Ns, Body)
         end
     catch
         throw:{read, Msg2} -> {compile_error, {read, Msg2}};
@@ -305,6 +305,33 @@ evaluate(Ns, Src) ->
         %% a literal handed to a macro that has no data form yet
         error:{clj2_form, {no_data_form, K}} -> {compile_error, {unsupported, {literal, K}}};
         C3:R3 -> {compile_error, {C3, brief(R3)}}
+    end.
+
+evaluate_unit(Ns, Body) ->
+    {Init, [Last]} = lists:split(length(Body) - 1, Body),
+    Prog = {forms, [[ns, Ns] | Init] ++ [[def, '__result__', Last]]},
+    case clj2_compiler:load_ns(Prog) of
+        {ok, Ns} ->
+            try {value, Ns:'__result__'()}
+            catch C:R -> {threw, brief({C, R})}
+            end;
+        {error, {ns_init_failed, _, R2}} -> {threw, brief(R2)};
+        {error, Why} -> {compile_error, Why}
+    end.
+
+evaluate_forms(Ns, Body) ->
+    clj2_ns:ensure(Ns),
+    try {value, clj2_compiler:eval({forms, Body}, #{ns => Ns})}
+    catch
+        error:{clj2_compile, _, Why} -> {compile_error, Why};
+        error:{clj2_read, _, Msg} -> {compile_error, {read, Msg}};
+        C:R -> {threw, brief({C, R})}
+    end.
+
+is_ns_form(F) ->
+    case unwrap(F) of
+        [H | _] -> unwrap(H) =:= ns;
+        _ -> false
     end.
 
 flatten_do([]) -> [nil];
