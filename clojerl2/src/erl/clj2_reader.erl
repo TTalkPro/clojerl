@@ -50,7 +50,10 @@
 %%%   * `M' suffixed decimals are `{bigdec, [], Bin}'; BEAM has no
 %%%     BigDecimal.
 %%%   * `\xHH' is accepted in addition to `\uHHHH'.
-%%%   * `#?(...)' reader conditionals are rejected with a clear error.
+%%%   * `#?(...)' / `#?@(...)' reader conditionals select on the
+%%%     features `:clje' (clojerl's platform keyword, so a .cljc file
+%%%     written for clojerl 1.0 reads the same) and `:default'; the
+%%%     `features' option overrides the set.
 %%%   * `#:ns{...}' qualifies its keys with `ns' in the reader.
 %%%-------------------------------------------------------------------
 -module(clj2_reader).
@@ -78,8 +81,10 @@
 -type pos() :: {pos_integer(), pos_integer()}.
 %% @doc 1-based `{Line, Col}'.
 
--type opt() :: #{file => file:filename_all() | undefined} | list().
-%% @doc Options; only `file' (a name used in error messages) is honoured.
+-type opt() :: #{file => file:filename_all() | undefined,
+                 features => [atom()]} | list().
+%% @doc Options: `file' (a name used in error messages) and `features'
+%% (the keywords `#?(...)' selects on, as atoms; default `[':clje']').
 
 -type result() :: {ok, term(), pos(), binary()}
                 | {eof, pos()}
@@ -97,6 +102,7 @@
             , col  = 1      :: pos_integer()
             , file          :: file:filename_all() | undefined
             , args = []     :: [frame()]
+            , features = [':clje'] :: [atom()]
             }).
 
 %%====================================================================
@@ -108,13 +114,14 @@
          orelse (C) =:= $\n orelse (C) =:= $\r orelse (C) =:= $\f)).
 
 %% Terminating characters end a token. This is JVM Clojure's macro set:
-%% note that `'`, `#', `~` and `&` are *not* terminating, so `x'` and
-%% `foo#bar` read as single symbols.
+%% note that `'`, `#', `~`, `&` and `%' are *not* terminating, so `x'`,
+%% `foo#bar` and `:%percent` read as single tokens (`%' only starts an
+%% argument at the beginning of a token, read_arg).
 -define(IS_MACRO(C),
         ((C) =:= $" orelse (C) =:= $; orelse (C) =:= $@ orelse (C) =:= $^
          orelse (C) =:= $` orelse (C) =:= $~ orelse (C) =:= $( orelse (C) =:= $)
          orelse (C) =:= $[ orelse (C) =:= $] orelse (C) =:= ${ orelse (C) =:= $}
-         orelse (C) =:= $\\ orelse (C) =:= $%)).
+         orelse (C) =:= $\\)).
 
 -define(IS_TERMINATING(C), (?IS_WS(C) orelse ?IS_MACRO(C))).
 
@@ -201,7 +208,8 @@ new_state(Src, Opts) ->
         {error, Msg} -> {error, {1, 1}, Msg};
         {ok, Bin} ->
             {Bin1, Line} = skip_shebang(Bin),
-            {ok, #st{src = Bin1, line = Line, file = opt_file(Opts)}}
+            {ok, #st{src = Bin1, line = Line, file = opt_file(Opts),
+                     features = opt_features(Opts)}}
     end.
 
 to_bin(Src) when is_binary(Src) ->
@@ -229,6 +237,14 @@ opt_file(Opts) when is_list(Opts) ->
 opt_file(_) ->
     undefined.
 
+opt_features(#{features := Fs}) when is_list(Fs) -> Fs;
+opt_features(Opts) when is_list(Opts) ->
+    case lists:keyfind(features, 1, Opts) of
+        {features, Fs} when is_list(Fs) -> Fs;
+        _ -> [':clje']
+    end;
+opt_features(_) -> [':clje'].
+
 %% Only a `#!' at offset 0 is a shebang; elsewhere `#!x' is a tagged
 %% literal, exactly like JVM Clojure.
 skip_shebang(<<"#!", _/binary>> = Bin) ->
@@ -242,9 +258,14 @@ skip_shebang(Bin) ->
 next_form(St) ->
     case read_form(St) of
         {ok, Form, Loc, St1} -> {ok, Form, Loc, St1#st.src};
+        {many, _, Loc, St1} -> splice_err(Loc, St1);
         {eof, St1} -> {eof, pos(St1)};
         {error, _, _} = Error -> Error
     end.
+
+%% `#?@(...)' outside a collection, as JVM Clojure refuses it
+splice_err(Loc, St) ->
+    {error, Loc, prefix(St, <<"reader conditional splicing not allowed at the top level">>)}.
 
 read_all_forms(St0, Acc) ->
     %% NOTE: must not go through next_form/1 -- that returns the *rest
@@ -252,6 +273,7 @@ read_all_forms(St0, Acc) ->
     %% frames) across forms.
     case read_form(St0) of
         {ok, Form, _Loc, St1} -> read_all_forms(St1, [Form | Acc]);
+        {many, _, Loc, St1} -> splice_err(Loc, St1);
         {eof, St1} -> {ok, lists:reverse(Acc), pos(St1)};
         {error, _, _} = Error -> Error
     end.
@@ -309,9 +331,21 @@ skip_to_eol(St0) ->
 %%====================================================================
 %%
 %% read_form/1 returns
-%%     {ok, WrappedForm, Loc, St} | eof | {error, Loc, Msg}
+%%     {ok, WrappedForm, Loc, St} | {many, [WrappedForm], Loc, St}
+%%     | {eof, St} | {error, Loc, Msg}
+%% `many' is a `#?@(...)' splice: its forms belong to the enclosing
+%% collection (collect/3); anywhere else it is an error.
 
 read_form(St0) ->
+    case read_form1(St0) of
+        {skip, St1} -> read_form(St1);
+        Other -> Other
+    end.
+
+%% read_form/1 without the loop: a skipped form (`#_x', a `#?' with no
+%% matching feature) comes back as `{skip, St}', so a collection can
+%% see its closing delimiter right after one.
+read_form1(St0) ->
     St = skip_ws(St0),
     case peek(St) of
         eof ->
@@ -319,7 +353,8 @@ read_form(St0) ->
         {ok, Ch} ->
             Loc = pos(St),
             case read_form0(Ch, St) of
-                {skip, St1} -> read_form(St1);
+                {skip, St1} -> {skip, St1};
+                {many, Forms, St1} -> {many, Forms, Loc, St1};
                 {ok, Form, St1} ->
                     %% The returned position always equals loc(Form) --
                     %% for `^m f' that is f's own position, not the `^'.
@@ -365,6 +400,8 @@ read_form0(Ch, St) ->
 one_form(St) ->
     case read_form(St) of
         {ok, Form, _Loc, St1} -> {ok, Form, St1};
+        {many, _, Loc, St1} ->
+            {error, Loc, prefix(St1, <<"reader conditional splicing not allowed here">>)};
         {eof, _} -> eof;
         {error, _, _} = Error -> Error
     end.
@@ -590,36 +627,61 @@ read_map(St0) ->
         {ok, Pairs, St2} -> {ok, {map, [], Pairs}, St2}
     end.
 
+%% An item of a collection: one form, or the forms a `#?@' splices in.
 read_item(St) ->
-    case one_form(St) of
-        eof -> mk_err(St, <<"EOF while reading a collection">>);
+    case read_form1(St) of
+        {eof, _} -> mk_err(St, <<"EOF while reading a collection">>);
         {error, _, _} = Error -> Error;
-        {ok, Form, St1} -> {ok, Form, St1}
+        {ok, Form, _Loc, St1} -> {ok, Form, St1};
+        {many, Forms, _Loc, St1} -> {many, Forms, St1};
+        {skip, St1} -> {many, [], St1}
     end.
 
 read_map_item(St) ->
-    case one_form(St) of
-        eof ->
+    case read_form1(St) of
+        {eof, _} ->
             mk_err(St, <<"EOF while reading collection, expected }">>);
         {error, _, _} = Error -> Error;
-        {ok, Key, St1} ->
-            case skip_ws(St1) of
-                St1a = #st{src = <<$}/utf8, _/binary>>} ->
-                    mk_err(St1a, <<"map literal must contain an even number of forms">>);
-                _ ->
-                    read_map_value(Key, St1)
-            end
+        {ok, Key, _Loc, St1} -> read_map_value(Key, St1);
+        %% a splice of keys and values
+        {many, Forms, _Loc, St1} -> pair_forms(Forms, St1);
+        {skip, St1} -> {many, [], St1}
     end.
 
 read_map_value(Key, St) ->
-    case one_form(St) of
-        eof ->
-            mk_err(St, <<"EOF while reading collection, expected }">>);
-        {error, _, _} = Error -> Error;
-        {ok, Val, St2} ->
-            %% any form is a key, as in Clojure (`{[x y] :pt}' is how
-            %% map destructuring binds a nested pattern)
-            {ok, {Key, Val}, St2}
+    case skip_ws(St) of
+        St1 = #st{src = <<$}/utf8, _/binary>>} ->
+            mk_err(St1, <<"map literal must contain an even number of forms">>);
+        _ ->
+            case read_form1(St) of
+                {eof, _} ->
+                    mk_err(St, <<"EOF while reading collection, expected }">>);
+                {error, _, _} = Error -> Error;
+                {skip, St2} -> read_map_value(Key, St2);
+                {ok, Val, _Loc, St2} ->
+                    %% any form is a key, as in Clojure (`{[x y] :pt}' is how
+                    %% map destructuring binds a nested pattern)
+                    {ok, {Key, Val}, St2};
+                {many, [], _Loc, St2} -> read_map_value(Key, St2);
+                {many, [Val | More], _Loc, St2} ->
+                    case pair_forms(More, St2) of
+                        {many, Pairs, St3} -> {many, [{Key, Val} | Pairs], St3};
+                        Error -> Error
+                    end
+            end
+    end.
+
+%% Spliced forms in a map pair up; a key left over takes the next form.
+pair_forms([], St) -> {many, [], St};
+pair_forms([K], St) ->
+    case read_map_value(K, St) of
+        {ok, Pair, St1} -> {many, [Pair], St1};
+        Other -> Other
+    end;
+pair_forms([K, V | Rest], St) ->
+    case pair_forms(Rest, St) of
+        {many, Pairs, St1} -> {many, [{K, V} | Pairs], St1};
+        Error -> Error
     end.
 
 collect(St0, Close, ItemFun) ->
@@ -639,6 +701,11 @@ collect(St0, Close, ItemFun) ->
                     case collect(St1, Close, ItemFun) of
                         {error, _, _} = Error -> Error;
                         {ok, Rest, St2} -> {ok, [Item | Rest], St2}
+                    end;
+                {many, Items, St1} ->
+                    case collect(St1, Close, ItemFun) of
+                        {error, _, _} = Error -> Error;
+                        {ok, Rest, St2} -> {ok, Items ++ Rest, St2}
                     end
             end
     end.
@@ -791,6 +858,10 @@ char_value(<<"u{", Rest/binary>>, St) ->
         _ ->
             mk_err(St, <<"unterminated unicode escape: \\u{ is missing }">>)
     end;
+%% `\o', `\x', `\u' alone are the letters (JVM Clojure: `\o' is o)
+char_value(<<"o">>, _St) -> {ok, $o};
+char_value(<<"x">>, _St) -> {ok, $x};
+char_value(<<"u">>, _St) -> {ok, $u};
 char_value(<<"u", Rest/binary>>, St) ->
     case hex_digits(Rest) of
         {ok, List} when length(List) =:= 4 -> {ok, list_to_integer(List, 16)};
@@ -1086,9 +1157,7 @@ read_dispatch(St0) ->
         {ok, $'} -> read_var_quote(St1);
         {ok, $:} -> read_namespaced_map(St1);
         {ok, $#} -> read_symbolic_value(St1);
-        {ok, $?} ->
-            mk_err(St1, <<"reader conditionals (#?(...)) are not supported ",
-                          "in clojerl2 v1">>);
+        {ok, $?} -> read_cond(St1);
         {ok, $_} ->
             St2 = advance(St1),
             case one_form(St2) of
@@ -1113,6 +1182,58 @@ read_dispatch(St0) ->
                 error ->
                     mk_err(St1, <<"invalid tag: ", (to_bin_safe(Token))/binary>>)
             end
+    end.
+
+%% `#?(:feat form ...)' and `#?@(:feat [forms] ...)': every branch is
+%% read (as data; a tagged literal of another platform is fine), the
+%% first whose feature is one of ours, or `:default', is the result.
+%% No match reads as nothing (`skip'); a splice hands its forms to the
+%% enclosing collection (`many').
+read_cond(St0) ->
+    St1 = advance(St0),
+    {Splice, St2} = case peek(St1) of
+                        {ok, $@} -> {true, advance(St1)};
+                        _ -> {false, St1}
+                    end,
+    St3 = skip_ws(St2),
+    case peek(St3) of
+        {ok, $(} ->
+            case collect(advance(St3), $), fun read_item/1) of
+                {error, _, _} = Error -> Error;
+                {ok, Items, St4} when length(Items) rem 2 =:= 1 ->
+                    mk_err(St4, <<"read-cond requires an even number of forms">>);
+                {ok, Items, St4} -> select_cond(Items, Splice, St4)
+            end;
+        _ -> mk_err(St3, <<"read-cond body must be a list">>)
+    end.
+
+select_cond([], false, St) -> {skip, St};
+select_cond([], true, St) -> {many, [], St};
+select_cond([K, Form | Rest], Splice, St = #st{features = Fs}) ->
+    case strip(K) of
+        Kw when is_atom(Kw) ->
+            case is_keyword(Kw) of
+                false -> mk_err(St, <<"feature should be a keyword">>);
+                true ->
+                    case Kw =:= ':default' orelse lists:member(Kw, Fs) of
+                        false -> select_cond(Rest, Splice, St);
+                        true when not Splice -> {ok, Form, St};
+                        true -> splice_forms(Form, St)
+                    end
+            end;
+        _ -> mk_err(St, <<"feature should be a keyword">>)
+    end.
+
+splice_forms({clj2_loc, _, _, Inner, _}, St) -> splice_forms(Inner, St);
+splice_forms({vector, [], Items}, St) -> {many, Items, St};
+splice_forms(Items, St) when is_list(Items) -> {many, Items, St};
+splice_forms(_, St) ->
+    mk_err(St, <<"spliced form list in read-cond-splicing must implement ISequential">>).
+
+is_keyword(A) when is_atom(A) ->
+    case atom_to_list(A) of
+        [$: | _] -> true;
+        _ -> false
     end.
 
 read_set(St0) ->
@@ -1202,7 +1323,8 @@ namespaced_name(Name, _) -> Name.
 read_ns_item(St, Ns, Marker) ->
     case read_map_item(St) of
         {error, _, _} = Error -> Error;
-        {ok, {Key, Val}, St1} -> {ok, {qualify(Key, Ns, Marker), Val}, St1}
+        {ok, {Key, Val}, St1} -> {ok, {qualify(Key, Ns, Marker), Val}, St1};
+        {many, Pairs, St1} -> {many, [{qualify(K, Ns, Marker), V} || {K, V} <- Pairs], St1}
     end.
 
 qualify(Key, <<>>, _Marker) ->

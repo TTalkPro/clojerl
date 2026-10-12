@@ -59,6 +59,8 @@ all_forms(Cases) ->
 leaves_test_() ->
     all_forms(
       [ {<<"nil">>,   {1,1}, nil}
+      , {<<":%percent">>, {1,1}, ':%percent'}    % % does not end a token
+      , {<<"a%b">>,       {1,1}, 'a%b'}
       , {<<"true">>,  {1,1}, true}
       , {<<"false">>, {1,1}, false}
       , {<<"x">>,     {1,1}, 'x'}
@@ -173,6 +175,10 @@ chars_test_() ->
       , {<<"\\backspace">>,   {1,1}, 8}
       , {<<"\\formfeed">>,    {1,1}, 12}
       , {<<"\\e">>,           {1,1}, $e}         % letters, as in Clojure
+      , {<<"\\o">>,           {1,1}, $o}         % the letter, not an octal escape
+      , {<<"\\x">>,           {1,1}, $x}
+      , {<<"\\u">>,           {1,1}, $u}
+      , {<<"\\o7">>,          {1,1}, 7}
       , {<<"\\f">>,           {1,1}, $f}
       , {<<"\\v">>,           {1,1}, $v}
       , {<<"\\0">>,           {1,1}, $0}
@@ -406,11 +412,79 @@ discard_test_() ->
                         {ok, clj2_reader:strip(F), L, R}
                     end)
     , ?_assertMatch({ok, _, {1, 1}, <<>>}, clj2_reader:read(<<"[#_1 2]">>, #{}))
+    , ?_assertEqual({ok, {vector, [], [1]}, {1, 1}, <<>>},
+                    begin
+                        {ok, F1, L1, R1} = clj2_reader:read(<<"[1 #_2]">>, #{}),
+                        {ok, clj2_reader:strip(F1), L1, R1}
+                    end)
+    , ?_assertEqual({ok, {map, [], [{':a', 1}]}, {1, 1}, <<>>},
+                    begin
+                        {ok, F3, L3, R3} = clj2_reader:read(<<"{:a 1 #_:b #_2}">>, #{}),
+                        {ok, clj2_reader:strip(F3), L3, R3}
+                    end)
     , ?_assertEqual({map, [], [{':a', 1}]},
                     begin
                         {ok, F2, _, _} = clj2_reader:read(<<"{#_:x :a 1}">>, #{}),
                         clj2_reader:strip(F2)
                     end)
+    ].
+
+%% Reader conditionals: `:clje' and `:default' are the features; a
+%% splice gives its forms to the enclosing collection.
+reader_cond_test_() ->
+    Read = fun(Src) ->
+                   case clj2_reader:read(Src, #{}) of
+                       {ok, F, L, R} -> {ok, clj2_reader:strip(F), L, R};
+                       Other -> Other
+                   end
+           end,
+    [ ?_assertEqual({ok, 2, {1, 17}, <<>>}, Read(<<"#?(:clj 1 :clje 2 :default 3)">>))
+    , ?_assertEqual({ok, 3, {1, 20}, <<>>}, Read(<<"#?(:clj 1 :default 3)">>))
+    , ?_assertEqual({ok, 1, {1, 11}, <<>>}, Read(<<"#? (:clje 1)">>))
+    , ?_assertEqual({ok, 5, {1, 22}, <<>>}, Read(<<"#?(:clje #?(:default 5))">>))
+      %% every branch is read as data, whatever platform it is for
+    , ?_assertEqual({ok, 9, {1, 53}, <<>>},
+                    Read(<<"#?(:cljs (js/foo) :jank (#cpp (:member x)) :default 9)">>))
+      %% no matching feature: the form is not there
+    , ?_assertEqual({eof, {1, 12}}, Read(<<"#?(:cljs 1)">>))
+    , ?_assertEqual({ok, 4, {1, 13}, <<>>}, Read(<<"#?(:cljs 1) 4">>))
+    , ?_assertEqual({ok, {vector, [], [1, 3]}, {1, 1}, <<>>}, Read(<<"[1 #?(:cljs 2) 3]">>))
+    , ?_assertEqual({ok, {vector, [], [1]}, {1, 1}, <<>>}, Read(<<"[1 #?(:cljs 2)]">>))
+    , ?_assertEqual({ok, [x], {1, 1}, <<>>}, Read(<<"(x #?(:cljr (is 1)))">>))
+    , ?_assertEqual({ok, {map, [], [{':a', 1}]}, {1, 1}, <<>>}, Read(<<"{:a 1 #?(:cljs :b)}">>))
+    , ?_assertEqual({ok, {map, [], [{':a', 1}]}, {1, 1}, <<>>}, Read(<<"{:a #?(:cljs 2) 1}">>))
+    , ?_assertEqual({error, {1, 16}, <<"map literal must contain an even number of forms">>},
+                    Read(<<"{:a #?(:cljs 2)}">>))
+      %% splicing into a list, a vector, a map, a namespaced map, a set
+    , ?_assertEqual({ok, {vector, [], [1, 2, 3, 4]}, {1, 1}, <<>>}, Read(<<"[1 #?@(:clje [2 3]) 4]">>))
+    , ?_assertEqual({ok, {vector, [], [1, 4]}, {1, 1}, <<>>}, Read(<<"[1 #?@(:cljs [2 3]) 4]">>))
+    , ?_assertEqual({ok, [ns, foo], {1, 1}, <<>>},
+                    Read(<<"(ns foo #?@(:lpy [(:import sys)] :default []))">>))
+    , ?_assertEqual({ok, {map, [], [{':a', 1}, {':b', 2}]}, {1, 1}, <<>>}, Read(<<"{:a #?@(:clje [1 :b 2])}">>))
+    , ?_assertEqual({ok, {map, [], [{':a', 1}, {':c', 3}]}, {1, 1}, <<>>}, Read(<<"{#?@(:clje [:a 1]) :c 3}">>))
+    , ?_assertEqual({ok, {map, [], [{':a', 1}, {':b', 2}]}, {1, 1}, <<>>}, Read(<<"{#?@(:clje [:a 1 :b]) 2}">>))
+    , ?_assertEqual({ok, {map, [], [{':a/x', 1}]}, {1, 1}, <<>>}, Read(<<"#:a{#?@(:clje [:x 1])}">>))
+    , ?_assertEqual({ok, {set, [], [1, 2]}, {1, 1}, <<>>}, Read(<<"#{#?@(:clje (1 2))}">>))
+      %% the features option
+    , ?_assertEqual(2, begin
+                           {ok, F, _, _} = clj2_reader:read(<<"#?(:clj 1 :jvm 2 :default 3)">>,
+                                                            #{features => [':jvm']}),
+                           clj2_reader:strip(F)
+                       end)
+      %% errors, as JVM Clojure reports them
+    , ?_assertEqual({error, {1, 1}, <<"reader conditional splicing not allowed at the top level">>},
+                    Read(<<"#?@(:clje [1])">>))
+    , ?_assertEqual({error, {1, 1}, <<"reader conditional splicing not allowed at the top level">>},
+                    Read(<<"#?@(:cljs [1])">>))
+    , ?_assertEqual({error, {1, 2}, <<"reader conditional splicing not allowed here">>},
+                    Read(<<"'#?@(:clje [1])">>))
+    , ?_assertEqual({error, {1, 19}, <<"map literal must contain an even number of forms">>},
+                    Read(<<"{:a #?@(:cljs [1])}">>))
+    , ?_assertEqual({error, {1, 9}, <<"read-cond requires an even number of forms">>}, Read(<<"#?(:clj)">>))
+    , ?_assertEqual({error, {1, 8}, <<"feature should be a keyword">>}, Read(<<"#?(1 2)">>))
+    , ?_assertEqual({error, {1, 3}, <<"read-cond body must be a list">>}, Read(<<"#?[:clje 1]">>))
+    , ?_assertEqual({error, {1, 14}, <<"spliced form list in read-cond-splicing must implement ISequential">>},
+                    Read(<<"[#?@(:clje 7)]">>))
     ].
 
 shebang_test() ->
@@ -667,8 +741,8 @@ errors_test_() ->
     , ?_test(err({<<"[1 2)">>,          {1, 5}}))    %% unmatched )
     , ?_test(err({<<"{:a 1 2">>,        {1, 8}}))    %% odd map
     , ?_test(err({<<"{:a}">>,           {1, 4}}))
-    , ?_test(err({<<"#?(:clj 1)">>,     {1, 2}}))    %% reader conditional
-    , ?_test(err({<<"#?(1)">>,          {1, 2}}))
+    , ?_test(err({<<"#?(1)">>,          {1, 6}}))    %% odd reader conditional
+    , ?_test(err({<<"#?(:clje">>,       {1, 9}}))    %% EOF in one
     , ?_test(err({<<"^:a">>,            {1, 4}}))    %% dangling metadata
     , ?_test(err({<<"^">>,              {1, 2}}))
     , ?_test(err({<<"'">>,              {1, 2}}))
