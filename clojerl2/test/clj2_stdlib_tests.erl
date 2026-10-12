@@ -143,3 +143,61 @@ transient_test() ->
     ?assertEqual([1, 2], plain(ev("(persistent! (conj! (transient [1]) 2))"))),
     ?assertEqual(':iae', ev("(try (apply assoc {:a 1} [:b 2 :c]) (catch IllegalArgumentException e :iae))")),
     ?assertEqual(':cce', ev("(try (assoc #{1} 1 2) (catch ClassCastException e :cce))")).
+
+%% refer, refer-clojure, use, the ns form's :refer-clojure filters, ns-unmap
+%% of a referred name, and private vars across namespaces
+refer_test() ->
+    setup(),
+    %% :exclude / :only / :rename, seen by the compiler, resolve and ns-map
+    ?assertEqual(true, ev("(= [nil nil false (var clojure.core/filter)]"
+                          "   (load-string \"(ns t.rf1 (:refer-clojure :exclude [map]))"
+                          "     [(resolve 'map) (ns-resolve 't.rf1 'map) (contains? (ns-map 't.rf1) 'map) (resolve 'filter)]\"))")),
+    ?assertEqual(true, ev("(= '[t.rf1/map clojure.core/filter] (load-string \"(in-ns 't.rf1) [`map `filter]\"))")),
+    ?assertEqual(true, ev("(= [nil (var clojure.core/map) [2 3]]"
+                          "   (load-string \"(ns t.rf2 (:refer-clojure :rename {map core-map}))"
+                          "     [(resolve 'map) (resolve 'core-map) (core-map inc [1 2])]\"))")),
+    ?assertEqual(true, ev("(= [nil (var clojure.core/prn)]"
+                          "   (load-string \"(ns t.rf3 (:refer-clojure :only [prn resolve])) [(resolve 'map) (resolve 'prn)]\"))")),
+    %% an excluded name used before the namespace defines it does not compile
+    ?assertError({clj2_compile, _, {resolve, {unresolved_symbol, get}}},
+                 ev("(load-string \"(ns t.rf4 (:refer-clojure :exclude [get])) (defn probe [] (get {:a 1} :a))\")")),
+    %% a later refer-clojure adds what it maps
+    ?assertEqual(true, ev("(= [true nil] (load-string \"(ns t.rf5 (:refer-clojure :only [inc]))"
+                          "  (clojure.core/refer-clojure :exclude '[dec])"
+                          "  [(clojure.core/some? (clojure.core/resolve 'map)) (clojure.core/resolve 'dec)]\"))")),
+    %% refer and use
+    ev("(load-string \"(ns t.rf-src) (def helper 9) (defn- hid [] 1)\")"),
+    ?assertEqual(9, ev("(load-string \"(ns t.rf6 (:use [t.rf-src])) helper\")")),
+    ?assertEqual(nil, ev("(load-string \"(ns t.rf7) (refer 't.rf-src) (resolve 'hid)\")")),
+    ?assertEqual(9, ev("(load-string \"(ns t.rf8) (refer 't.rf-src :rename '{helper h}) h\")")),
+    ?assertEqual([<<"IllegalAccessError">>, <<"nope does not exist">>],
+                 plain(ev("(load-string \"(ns t.rf9) (try (refer 't.rf-src :only '[nope]) :ok"
+                          "  (catch Throwable e [(.getSimpleName (class e)) (ex-message e)]))\")"))),
+    ?assertEqual([<<"IllegalAccessError">>, <<"hid is not public">>],
+                 plain(ev("(load-string \"(ns t.rf10) (try (refer 't.rf-src :only '[hid]) :ok"
+                          "  (catch Throwable e [(.getSimpleName (class e)) (ex-message e)]))\")"))),
+    ?assertEqual(<<"nope2 does not exist">>,
+                 ev("(try (require '[clojure.string :refer [nope2]]) :ok (catch Throwable e (ex-message e)))")),
+    %% ns-unmap takes away an implicit clojure.core refer too
+    ?assertEqual(nil, ev("(load-string \"(ns t.rf11) (ns-unmap *ns* 'map) (resolve 'map)\")")),
+    %% another namespace's private fn and macro are refused; (var ns/x) reaches it
+    ev("(load-string \"(ns t.rf-priv) (defn- pf [] :reached) (defmacro ^:private pm [] :pm)\")"),
+    ?assertError({clj2_compile, _, {resolve, {not_public, <<"var: t.rf-priv/pf is not public">>}}},
+                 ev("(load-string \"(ns t.rf12) (map t.rf-priv/pf [1])\")")),
+    ?assertError({clj2_compile, _, {resolve, {not_public, <<"var: #'t.rf-priv/pf is not public">>}}},
+                 ev("(load-string \"(ns t.rf13) (t.rf-priv/pf)\")")),
+    ?assertError({clj2_compile, _, {resolve, {not_public, <<"var: #'t.rf-priv/pm is not public">>}}},
+                 ev("(load-string \"(ns t.rf14) (t.rf-priv/pm)\")")),
+    ?assertEqual(':reached', ev("(load-string \"(ns t.rf15) (@#'t.rf-priv/pf)\")")).
+
+%% read-string expands syntax-quote as the JVM reader does, keeps reader
+%% metadata on collections; alter-meta! :macro makes a var a macro
+read_and_macro_meta_test() ->
+    setup(),
+    ?assertEqual(true, ev("(= '(quote clojure.core/map) (read-string \"`map\"))")),
+    ?assertEqual(true, ev("(= '(quote t.stdlib/nope) (read-string \"`nope\"))")),
+    ?assertEqual(true, ev("(= {:k 1} (meta (read-string \"^{:k 1} [1]\")))")),
+    ev("(defmacro amac1 [x] (list (quote +) x 1))"),
+    ev("(def amac2 @#'amac1)"),
+    ev("(alter-meta! #'amac2 merge (meta #'amac1))"),
+    ?assertEqual(6, ev("(amac2 5)")).

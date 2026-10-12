@@ -30,7 +30,7 @@ run(Tops, St) ->
                        end, #{}, Tops),
     Refs = lists:usort(
              lists:append(
-               [clj2_np:fold(L0, fun({sym, _, S}, Acc) ->
+               [clj2_np:fold(L0, fun({Tag, _, S}, Acc) when Tag =:= sym; Tag =:= the_var ->
                                          case qualifier(S) of
                                              nil -> Acc;
                                              Q -> [Q | Acc]

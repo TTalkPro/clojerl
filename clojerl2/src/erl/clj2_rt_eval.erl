@@ -19,6 +19,7 @@
 -export([current_ns/0, set_current_ns/1, in_ns/1, save_ns/0, restore_ns/1]).
 -export([eval/1, read_string/1, load_string/1, macroexpand_1/1, macroexpand/1]).
 -export([alias/2]).
+-export([req_refers/1, refer/2, refer_clojure/1]).
 -export([resolve/2, ns_publics/1, ns_interns/1, ns_map/1, ns_aliases/1, ns_refers/1,
          find_var/1, intern/2, intern/3, intern_value/2, ns_unmap/2, remove_ns/1,
          requiring_resolve/1]).
@@ -47,9 +48,10 @@ set_current_ns(Ns) when is_atom(Ns) ->
     end,
     ok.
 
-%% @doc (in-ns 'foo): switch to `foo', creating it when it does not exist.
+%% @doc (in-ns 'foo): switch to `foo', creating it when it does not exist
+%% -- bare, as on the JVM: it refers nothing until a refer-clojure.
 in_ns(Ns) when is_atom(Ns) ->
-    clj2_ns:ensure(Ns),
+    clj2_ns:ensure(Ns, bare),
     set_current_ns(Ns),
     Ns.
 
@@ -68,7 +70,7 @@ eval(Form) -> clj2_compiler:eval({forms, [clj2_form:from_value(Form)]}).
 %% @doc (read-string s): the first form of `s' as data.
 read_string(S) when is_binary(S) ->
     case clj2_reader:read_all(S) of
-        {ok, [F | _], _} -> clj2_form:to_data(F);
+        {ok, [F | _], _} -> clj2_p_parse:data_form(F, current_ns());
         {ok, [], _} -> erlang:error({clj2_read, <<"EOF while reading">>});
         {error, Where, Msg} -> erlang:error({clj2_read, Where, Msg})
     end.
@@ -117,8 +119,9 @@ load_specs(Args, Cur) ->
                         end,
               Refers = case Opts of
                            _ when Ns =:= Cur -> #{};
-                           #{':refer' := ':all'} -> maps:from_keys(public_names(Ns), Ns);
-                           #{':refer' := Syms} -> maps:from_keys(clj2_coll:to_list(Syms), Ns);
+                           #{':refer' := ':all'} -> req_refers(#{ns => Ns, refer => all, rename => rename_opt(Opts)});
+                           #{':refer' := Syms} ->
+                               req_refers(#{ns => Ns, refer => clj2_coll:to_list(Syms), rename => rename_opt(Opts)});
                            _ -> #{}
                        end,
               {maps:merge(AAcc, Aliases), maps:merge(RAcc, Refers)}
@@ -136,11 +139,53 @@ opts([':reload' | Rest], Acc) -> opts(Rest, Acc#{':reload' => true});
 opts([], Acc) -> Acc;
 opts(Bad, _) -> erlang:error({clj2_require, {bad_libspec_options, Bad}}).
 
-public_names(Ns) ->
-    case clj2_ns:info(Ns) of
-        {ok, #{vars := Vars}} -> [N || {N, I} <- maps:to_list(Vars), not maps:get(private, I, false)];
-        error -> []
-    end.
+rename_opt(#{':rename' := M}) -> maps:from_list([{K, V} || [K, V] <- [clj2_coll:to_list(P) || P <- clj2_coll:to_list(M)]]);
+rename_opt(_) -> #{}.
+
+%% @doc What a libspec's :refer (a list, or `all') maps in the namespace
+%% that requires it: Sym => Target (clj2_ns refer targets). A name the
+%% namespace does not have, or has private, is the JVM's
+%% IllegalAccessError.
+req_refers(#{ns := R, refer := Ss} = Req) ->
+    _ = ensure_loaded(R),
+    clj2_ns:refer_map(R, #{only => Ss, rename => maps:get(rename, Req, #{}),
+                           exclude => maps:get(exclude, Req, [])}, strict).
+
+%% @doc (refer ns-sym & filters): maps the public vars of ns-sym (the
+%% filters :exclude, :only and :rename select and rename them) into the
+%% current namespace. Referring clojure.core is refer-clojure.
+refer(NsSym, Filters) when is_atom(NsSym) ->
+    Spec = refer_spec(clj2_coll:to_list(Filters)),
+    Cur = current_ns(),
+    case NsSym of
+        'clojure.core' ->
+            _ = clj2_ns:refer_map('clojure.core', Spec, strict),
+            clj2_ns:add_core_refer(Cur, Spec);
+        _ ->
+            clj2_ns:info(NsSym) =/= error orelse
+                erlang:error(clj2_rt:ex_info(<<"No namespace: ", (atom_to_binary(NsSym))/binary>>,
+                                             clj2_coll:hash_map_kv([':type', ':Exception']), nil)),
+            clj2_ns:put_ctx(Cur, #{}, clj2_ns:refer_map(NsSym, Spec, strict))
+    end,
+    nil.
+
+%% @doc (refer-clojure & filters)
+refer_clojure(Filters) -> refer('clojure.core', Filters).
+
+refer_spec(Fs) -> refer_spec(Fs, #{}).
+refer_spec([], Spec) -> Spec;
+refer_spec([':exclude', L | Rest], Spec) -> refer_spec(Rest, Spec#{exclude => clj2_coll:to_list(L)});
+refer_spec([':only', L | Rest], Spec) ->
+    is_seqable(L) orelse illegal_argument(<<"Arg to refer must be sequential">>),
+    refer_spec(Rest, Spec#{only => clj2_coll:to_list(L)});
+refer_spec([':refer', ':all' | Rest], Spec) -> refer_spec(Rest, Spec);
+refer_spec([':refer', L | Rest], Spec) -> refer_spec([':only', L | Rest], Spec);
+refer_spec([':rename', M | Rest], Spec) -> refer_spec(Rest, Spec#{rename => rename_opt(#{':rename' => M})});
+refer_spec([_K, _V | Rest], Spec) -> refer_spec(Rest, Spec);
+refer_spec(_, Spec) -> Spec.
+
+is_seqable(L) -> is_list(L) orelse clj2_coll:is_vector(L) orelse
+                     (is_tuple(L) andalso element(1, L) =:= lazy_seq).
 
 load(Ns, Reload) ->
     case not Reload andalso clj2_ns:info(Ns) =/= error of
@@ -226,16 +271,14 @@ resolve(Ns, Sym) when is_atom(Ns), is_atom(Sym) ->
         _ ->
             case var_of(Ns, Sym) of
                 nil ->
-                    case maps:find(Sym, ctx(Ns, refers)) of
-                        {ok, RNs} -> var_of(RNs, Sym);
+                    case maps:find(Sym, clj2_ns:refers(Ns)) of
+                        {ok, T} ->
+                            {RNs, RName} = clj2_ns:refer_target(Sym, T),
+                            var_of(RNs, RName);
                         error ->
-                            case Ns =/= 'clojure.core' andalso public_var_of('clojure.core', Sym) of
-                                {var, _, _} = V -> V;
-                                _ ->
-                                    case clj2_class:resolve(Sym) of
-                                        {ok, C} -> C;
-                                        error -> nil
-                                    end
+                            case clj2_class:resolve(Sym) of
+                                {ok, C} -> C;
+                                error -> nil
                             end
                     end;
                 V -> V
@@ -246,16 +289,6 @@ resolve(Ns, Sym) when is_atom(Ns), is_atom(Sym) ->
 var_of(Ns, Name) ->
     case clj2_ns:info(Ns) of
         {ok, #{vars := #{Name := _}}} -> clj2_rt:var(Ns, Name);
-        _ -> nil
-    end.
-
-public_var_of(Ns, Name) ->
-    case clj2_ns:info(Ns) of
-        {ok, #{vars := #{Name := I}}} ->
-            case maps:get(private, I, false) of
-                true -> nil;
-                false -> clj2_rt:var(Ns, Name)
-            end;
         _ -> nil
     end.
 
@@ -286,11 +319,11 @@ ns_aliases(Ns) -> sym_map(maps:to_list(ctx(Ns, aliases))).
 %% public vars (the implicit refer-clojure) included
 ns_refers(Ns) -> sym_map(refer_pairs(Ns)).
 
-refer_pairs('clojure.core') -> [];
 refer_pairs(Ns) ->
-    Core = vars_of('clojure.core', fun(I) -> not maps:get(private, I, false) end),
-    Explicit = [{S, clj2_rt:var(R, S)} || {S, R} <- maps:to_list(ctx(Ns, refers))],
-    maps:to_list(maps:merge(maps:from_list(Core), maps:from_list(Explicit))).
+    [{S, clj2_rt:var(RNs, RName)} || {S, T} <- maps:to_list(clj2_ns:refers(Ns)),
+                                     {RNs, RName} <- [clj2_ns:refer_target(S, T)]].
+
+
 
 %% @doc (ns-map ns): the refers under the interns
 ns_map(Ns) ->

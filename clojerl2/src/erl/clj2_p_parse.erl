@@ -44,7 +44,7 @@
 
 -include("clojerl2.hrl").
 
--export([pass/0, run/2, specials/0]).
+-export([pass/0, run/2, specials/0, data_form/2]).
 
 pass() -> #{name => parse, in => lcore, out => l0}.
 
@@ -92,7 +92,8 @@ ns_env(Tops, E) ->
         [{ns_decl, _, Ns, Reqs, _}] ->
             E#{ns := Ns,
                aliases := maps:from_list([{As, R} || #{ns := R, as := As} <- Reqs, As =/= nil]),
-               refers := maps:from_list([{S, R} || #{ns := R, refer := Ss} <- Reqs, S <- Ss])};
+               refers := lists:foldl(fun(R, Acc) -> maps:merge(Acc, clj2_rt_eval:req_refers(R)) end,
+                                     #{}, [R || R = #{refer := _} <- Reqs])};
         _ -> E
     end.
 
@@ -252,30 +253,64 @@ ns_clause(C, A) ->
         [H | Specs] ->
             case unwrap(H) of
                 ':require' -> [require_spec(S, CA) || S <- Specs];
-                ':refer-clojure' ->
-                    case [unwrap(X) || X <- Specs] of
-                        [':exclude', V] ->
-                            case clj2_form:vector_items(V) of
-                                false -> syntax(CA, bad_refer_clojure);
-                                Syms -> [#{refer_clojure => #{exclude => [unwrap(X) || X <- Syms]}}]
-                            end;
-                        _ -> unsupported(CA, {refer_clojure, Specs})
-                    end;
+                ':refer-clojure' -> [#{refer_clojure => refer_filters(Specs, CA)}];
+                %% (:use ns ...) is (:require ns ...) referring all its
+                %% public vars, or :only them
+                ':use' -> [use_spec(S, CA) || S <- Specs];
                 Other -> unsupported(CA, {ns_clause, Other})
             end;
         _ -> syntax(CA, bad_ns_clause)
     end.
 
+%% :exclude [syms] :only [syms] :rename {sym sym}, as refer takes them
+refer_filters(Specs, A) -> refer_filters([unwrap(X) || X <- Specs], #{}, A).
+
+refer_filters([], F, _A) -> F;
+refer_filters([':exclude', V | Rest], F, A) -> refer_filters(Rest, F#{exclude => syms(V, A)}, A);
+refer_filters([':only', V | Rest], F, A) -> refer_filters(Rest, F#{only => syms(V, A)}, A);
+refer_filters([':rename', M | Rest], F, A) ->
+    case clj2_form:map_pairs(M) of
+        false -> syntax(A, bad_refer_rename);
+        Pairs -> refer_filters(Rest, F#{rename => maps:from_list([{unwrap(K), unwrap(V)} || {K, V} <- Pairs])}, A)
+    end;
+refer_filters(Other, _F, A) -> unsupported(A, {refer_filters, Other}).
+
+syms(V, A) ->
+    case clj2_form:vector_items(V) of
+        false ->
+            case unwrap(V) of
+                L when is_list(L) -> [unwrap(X) || X <- L];
+                _ -> syntax(A, bad_refer_list)
+            end;
+        Items -> [unwrap(X) || X <- Items]
+    end.
+
+use_spec(S, A) ->
+    SA = pos(S, A),
+    case unwrap(S) of
+        Ns when is_atom(Ns) -> #{ns => Ns, as => nil, refer => all, rename => #{}, exclude => []};
+        V ->
+            case clj2_form:vector_items(V) of
+                [N | Opts] ->
+                    F = refer_filters(Opts, SA),
+                    Ns = unwrap(N),
+                    is_atom(Ns) orelse syntax(SA, bad_use),
+                    #{ns => Ns, as => nil, refer => maps:get(only, F, all),
+                      rename => maps:get(rename, F, #{}), exclude => maps:get(exclude, F, [])};
+                _ -> syntax(SA, bad_use)
+            end
+    end.
+
 require_spec(S, A) ->
     SA = pos(S, A),
     case unwrap(S) of
-        Ns when is_atom(Ns) -> #{ns => Ns, as => nil, refer => []};
+        Ns when is_atom(Ns) -> #{ns => Ns, as => nil, refer => [], rename => #{}};
         V ->
             case clj2_form:vector_items(V) of
                 [N | Opts] ->
                     Ns = unwrap(N),
                     is_atom(Ns) orelse syntax(SA, bad_require),
-                    require_opts([unwrap(O) || O <- Opts], #{ns => Ns, as => nil, refer => []}, SA);
+                    require_opts([unwrap(O) || O <- Opts], #{ns => Ns, as => nil, refer => [], rename => #{}}, SA);
                 _ -> syntax(SA, bad_require)
             end
     end.
@@ -283,14 +318,14 @@ require_spec(S, A) ->
 require_opts([], R, _A) -> R;
 require_opts([':as', Alias | Rest], R, A) when is_atom(Alias) ->
     require_opts(Rest, R#{as := Alias}, A);
-%% :refer :all: the namespace's public vars (it is loaded to know them)
-require_opts([':refer', ':all' | Rest], R = #{ns := Ns}, A) ->
-    ok = clj2_rt_eval:ensure_loaded(Ns),
-    Syms = case clj2_ns:info(Ns) of
-               {ok, #{vars := Vars}} -> [K || {K, I} <- maps:to_list(Vars), not maps:get(private, I, false)];
-               error -> syntax(A, {no_such_namespace, Ns})
-           end,
-    require_opts(Rest, R#{refer := Syms}, A);
+%% :refer :all: the namespace's public vars, known once it is loaded
+require_opts([':refer', ':all' | Rest], R, A) ->
+    require_opts(Rest, R#{refer := all}, A);
+require_opts([':rename', M | Rest], R, A) ->
+    case clj2_form:map_pairs(M) of
+        false -> syntax(A, bad_require_rename);
+        Pairs -> require_opts(Rest, R#{rename := maps:from_list([{unwrap(K), unwrap(V)} || {K, V} <- Pairs])}, A)
+    end;
 require_opts([':refer', V | Rest], R, A) ->
     case clj2_form:vector_items(V) of
         false -> syntax(A, bad_refer);
@@ -513,6 +548,8 @@ macroexpand(S, F, A, E = #{locals := Ls, expand := Expand}) ->
             case Expand(S, form_data(F, A, E), Env) of
                 none -> none;
                 {ok, X} -> {ok, X};
+                {error, {not_public, _} = NP} ->
+                    erlang:error({clj2_compile, erl_anno:location(A), {resolve, NP}});
                 {error, Why} -> erlang:error({clj2_compile, erl_anno:location(A),
                                              {macroexpand, S, Why}})
             end
@@ -523,6 +560,25 @@ macroexpand(_, _, _, _) -> none.
 %% expanded `#(...)' and syntax-quote by then, so they are expanded
 %% here too: `#(...)' to (fn* ...), syntax-quote to the code that builds
 %% its result (same rules as squote/3, as forms instead of nodes).
+%% @doc A reader form as the data (read) returns in namespace `Ns': as
+%% the JVM reader does, syntax-quote is expanded there (`x is (quote
+%% ns/x)), against the namespace's aliases and refers, and #() is a fn*.
+data_form(F, Ns) ->
+    {Aliases, Own} = case clj2_ns:info(Ns) of
+                         {ok, I = #{vars := Vars}} -> {maps:get(aliases, I, #{}), maps:map(fun(_, _) -> true end, Vars)};
+                         error -> {#{}, #{}}
+                     end,
+    E = #{ns => Ns, aliases => Aliases, refers => clj2_ns:refers(Ns), own_names => Own,
+          locals => #{}, expand => none},
+    form_data(F, erl_anno:new({1, 1}), E).
+
+%% a collection's reader metadata (^:k [..]) stays on the value, as it does
+%% on the JVM (clj2_form:to_data keeps it the same way)
+form_data({clj2_loc, _, _, Inner, Meta} = W, _A, E)
+  when is_map(Meta), map_size(Meta) > 0, is_tuple(Inner),
+       (element(1, Inner) =:= vector orelse element(1, Inner) =:= map orelse element(1, Inner) =:= set) ->
+    clj2_rt:with_meta(form_data(Inner, anno(W), E),
+                      clj2_coll:hash_map_kv(lists:append([[K, form_data(V, anno(W), E)] || {K, V} <- maps:to_list(Meta)])));
 form_data(W, _A, E) when ?CLJ2_IS_LOC(W) -> form_data(?CLJ2_LOC_FORM(W), anno(W), E);
 form_data({syntax_quote, [], T}, A, E) -> sq_data(T, A, E, gensym_suffix(A));
 form_data({fnstar, [], [{arity, [], [Ps, Body]}]}, A, E) ->
@@ -1002,7 +1058,12 @@ sq_symbol1(S, Str, Own, _E, Ns, Aliases, Refers, G) ->
                                S =:= 'extend-protocol' -> qsym('clojure.core', S);
                         _ when is_map_key(S, Own) -> qsym(Ns, S);
                         _ ->
-                            qsym(maps:get(S, Refers, Ns), S)
+                            case Refers of
+                                #{S := T} ->
+                                    {RNs, RName} = clj2_ns:refer_target(S, T),
+                                    qsym(RNs, RName);
+                                _ -> qsym(Ns, S)
+                            end
                     end
             end
     end.

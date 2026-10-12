@@ -132,7 +132,7 @@ protocol_id(A, Sym, Ns, NsVars, #{aliases := Al, refers := Rf}) ->
             _ when is_map_key(Sym, NsVars) -> {Ns, Sym};
             _ ->
                 case Rf of
-                    #{Sym := R} -> {R, Sym};
+                    #{Sym := T} -> clj2_ns:refer_target(Sym, T);
                     _ -> fail(A, {unresolved_protocol, Sym})
                 end
         end,
@@ -267,9 +267,7 @@ current(Opts) ->
 %% → {Value, Opts}
 eval_top({ns_decl, _, Ns, Reqs, _}, _Cur, Opts) ->
     clj2_ns:ensure(Ns),
-    _ = requires(Ns, Reqs, ns_ctx(Ns, Opts)),
-    clj2_ns:put_ctx(Ns, maps:from_list([{As, R} || #{ns := R, as := As} <- Reqs, As =/= nil]),
-                    maps:from_list([{S, R} || #{ns := R, refer := Ss} <- Reqs, S <- Ss])),
+    declare_ns(Ns, requires(Ns, Reqs, ns_ctx(Ns, Opts))),
     clj2_rt_eval:in_ns(Ns),
     {nil, case Opts of #{ns := _} -> Opts#{ns := Ns}; _ -> Opts end};
 eval_top({def, _, _, _, _} = T, Ns, Opts) ->
@@ -387,10 +385,17 @@ expand_ns(Src, Opts) ->
                                %% (a macro expanding in it may resolve names)
                                clj2_ns:ensure(Ns),
                                clj2_rt_eval:set_current_ns(Ns),
-                               requires(Ns, Reqs, C);
+                               RC = requires(Ns, Reqs, C),
+                               declare_ns(Ns, RC),
+                               RC;
                            [{eval, _, {invoke, _, {sym, _, Req}, Args}}]
                              when Req =:= require; Req =:= 'clojure.core/require' ->
                                compile_time_require(Args, C);
+                           %% (refer 'ns ...) and (refer-clojure ...) too
+                           [{eval, _, {invoke, _, {sym, _, Ref}, Args}}]
+                             when Ref =:= refer; Ref =:= 'clojure.core/refer';
+                                  Ref =:= 'refer-clojure'; Ref =:= 'clojure.core/refer-clojure' ->
+                               compile_time_refer(Ref, Args, C);
                            %% (alias 'a 'ns) too: the forms after it use a/x
                            [{eval, _, {invoke, _, {sym, _, Alias}, [{const, _, As}, {const, _, Target}]}}]
                              when (Alias =:= alias orelse Alias =:= 'clojure.core/alias'),
@@ -418,6 +423,20 @@ compile_time_require(Args, C = #{ns := Ns, aliases := Al, refers := Rf}) ->
         true ->
             {Aliases, Refers} = clj2_rt_eval:load_specs([V || {const, _, V} <- Args], Ns),
             C#{aliases := maps:merge(Al, Aliases), refers := maps:merge(Rf, Refers)}
+    end.
+
+%% A top-level refer or refer-clojure with constant arguments runs now,
+%% like require: the forms after it resolve what it maps.
+compile_time_refer(Ref, Args, C = #{ns := Ns}) ->
+    case lists:all(fun({const, _, _}) -> true; (_) -> false end, Args) of
+        false -> C;
+        true ->
+            Vs = [V || {const, _, V} <- Args],
+            case lists:last(string:split(atom_to_list(Ref), "/")) of
+                "refer" -> clj2_rt_eval:refer(hd(Vs), tl(Vs));
+                _ -> clj2_rt_eval:refer_clojure(Vs)
+            end,
+            C#{refers := clj2_ns:refers(Ns)}
     end.
 
 %% Compile the pending forms into a segment module and load it, so the
@@ -485,39 +504,58 @@ ns_ctx(Ns, Opts) ->
                           {maps:map(fun(_, I) -> maps:merge(#{module => M}, I) end, Vars), E};
                       error -> {#{}, #{}}
                   end,
+    %% what the namespace refers now: the registry's (its ns form, refer
+    %% and refer-clojure calls, ns-unmap); clojure.core's own kernel none
     Refers = case maps:get(refer_clojure, Opts, true) of
-                 true -> core_refers(Ns, []);
-                 false -> #{}
+                 true -> clj2_ns:refers(Ns);
+                 false -> maps:get(refers, Repl, #{})
              end,
     #{ns => Ns, aliases => maps:get(aliases, Repl, #{}),
-      refers => maps:merge(Refers, maps:get(refers, Repl, #{})), own => Own,
+      refers => Refers, own => Own,
       defined => maps:map(fun(_, _) -> true end, Own)}.
 
 requires(Ns, Reqs, Ctx) ->
     _ = [begin clj2_rt_eval:ensure_loaded(R), info_or_fail(R) end || #{ns := R} <- Reqs, R =/= Ns],
-    Excluded = lists:append([Ex || #{refer_clojure := #{exclude := Ex}} <- Reqs]),
-    Explicit = maps:from_list([{S, R} || #{ns := R, refer := Ss} <- Reqs, S <- Ss]),
+    Specs = core_specs(Reqs),
+    Explicit = explicit_refers(Reqs),
     Core = case maps:get(refer_clojure, Ctx, true) of
-               true -> core_refers(Ns, Excluded);
+               true -> clj2_ns:core_refers(Ns, Specs);
                false -> #{}
            end,
     Ctx#{ns := Ns,
          aliases := maps:from_list([{As, R} || #{ns := R, as := As} <- Reqs, As =/= nil]),
-         refers := maps:merge(Core, Explicit)}.
+         refers := maps:merge(Core, Explicit),
+         core_refer => Specs}.
 
 %% Every namespace but clojure.core itself refers clojure.core's public
-%% vars (Clojure's implicit (refer-clojure)), minus `:exclude'. Its own
+%% vars (Clojure's implicit (refer-clojure)), as its ns form's
+%% :refer-clojure clauses filter them (:exclude, :only, :rename); a
+%% listed name core lacks is the JVM's IllegalAccessError. Its own
 %% definitions shadow them (resolve, the expander and syntax-quote look
 %% at their own namespace first).
-core_refers('clojure.core', _) -> #{};
-core_refers(_Ns, Excluded) ->
-    case clj2_ns:info('clojure.core') of
-        {ok, #{vars := Vars}} ->
-            maps:from_list([{N, 'clojure.core'} || {N, I} <- maps:to_list(Vars),
-                                                   not maps:get(private, I, false),
-                                                   not lists:member(N, Excluded)]);
-        error -> #{}
+core_specs(Reqs) ->
+    case [S || #{refer_clojure := S} <- Reqs] of
+        [] -> [#{}];
+        Specs ->
+            _ = [clj2_ns:refer_map('clojure.core', S, strict) || S <- Specs],
+            Specs
     end.
+
+explicit_refers(Reqs) ->
+    lists:foldl(fun(R, Acc) -> maps:merge(Acc, clj2_rt_eval:req_refers(R)) end,
+                #{}, [R || R = #{refer := _} <- Reqs]).
+
+%% The ns form, in the registry from the moment it is read: macros that
+%% run while the rest compiles (resolve, ns-map ...) see its context.
+declare_ns(Ns, Ctx = #{aliases := Al}) ->
+    clj2_ns:ensure(Ns),
+    clj2_ns:set_core_refer(Ns, maps:get(core_refer, Ctx, [#{}])),
+    clj2_ns:put_ctx(Ns, Al, maps:filter(fun(_, T) -> not is_core_target(T) end, maps:get(refers, Ctx))),
+    ok.
+
+is_core_target('clojure.core') -> true;
+is_core_target({'clojure.core', _}) -> true;
+is_core_target(_) -> false.
 
 parse_state(Ctx = #{ns := Ns, aliases := Al, refers := Rf}) ->
     #{ns => Ns, aliases => Al, refers => Rf, expand => expander(Ctx),
@@ -539,9 +577,16 @@ expander(Ctx) ->
     fun(S, Form, Env) ->
             case macro_var(S, Ctx) of
                 none -> none;
+                {private, Shown} ->
+                    {error, {not_public, iolist_to_binary(["var: ", Shown, " is not public"])}};
                 {M, Name, Info} ->
                     try
-                        F = clj2_rt:var_fn(M, Name, Info),
+                        %% a fn var links directly; a var made a macro by
+                        %% its metadata ((def m @#'other) + :macro) holds it
+                        F = case Info of
+                                #{kind := fn} -> clj2_rt:var_fn(M, Name, Info);
+                                _ -> M:Name()
+                            end,
                         {ok, clj2_form:from_value(clj2_rt:invoke(F, [Form, Env | tl(Form)]))}
                     catch
                         C:R -> {error, {C, R}}
@@ -558,14 +603,23 @@ macro_var(S, Ctx = #{ns := Ns, aliases := Al, refers := Rf, own := Own}) ->
             Name = list_to_atom(N),
             case Full =:= Ns of
                 true -> own_macro(Name, Own);
-                false -> ext_macro(Full, Name)
+                false ->
+                    case ext_macro(Full, Name) of
+                        %% another namespace's private macro is refused, as
+                        %% on the JVM (clojure.core's serve its own expansions)
+                        {_, _, #{private := true}} when Full =/= 'clojure.core' ->
+                            {private, ["#'", atom_to_list(Full), "/", atom_to_list(Name)]};
+                        Found -> Found
+                    end
             end;
         _ ->
             case own_macro(S, Own) of
                 none when is_map_key(S, Defined) -> none;    % an own var shadows a referred macro
                 none ->
                     case Rf of
-                        #{S := RNs} -> ext_macro(RNs, S);
+                        #{S := T} ->
+                            {RNs, RName} = clj2_ns:refer_target(S, T),
+                            ext_macro(RNs, RName);
                         _ -> none
                     end;
                 Found -> Found
@@ -603,13 +657,15 @@ compile_tops(Tops, Ns, M, Prior, Register, Ctx, Opts) ->
                %% explicit aliases and refers (the implicit clojure.core
                %% refer is known to the registry already)
                ns_aliases => maps:get(aliases, Ctx, #{}),
-               ns_refers => maps:filter(fun(_, R) -> R =/= 'clojure.core' end, maps:get(refers, Ctx, #{})),
+               ns_refers => maps:filter(fun(_, T) -> not is_core_target(T) end, maps:get(refers, Ctx, #{})),
+               ns_core_refer => maps:get(core_refer, Ctx, [#{}]),
                scope => scope(St1, Ns, Vars, Unit, M, Ctx)},
     clj2_np:run(back(Opts), Tops1, pass_opts(Opts, St2)).
 
 %% The namespaces this unit can see, looked up once, here.
 scope(#{ns_refs := Refs}, Ns, Vars, Unit, M, Ctx = #{aliases := Aliases, refers := Refers}) ->
-    Required = lists:usort(maps:values(Aliases) ++ maps:values(Refers)),
+    Required = lists:usort(maps:values(Aliases) ++
+                           [element(1, clj2_ns:refer_target(S, T)) || {S, T} <- maps:to_list(Refers)]),
     Ext0 = maps:from_list([{R, info_or_fail(R)} || R <- Required, R =/= Ns]),
     Ext = lists:foldl(fun(Q, Acc) when Q =:= Ns; is_map_key(Q, Acc) -> Acc;
                          (Q, Acc) ->

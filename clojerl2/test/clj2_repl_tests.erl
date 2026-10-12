@@ -7,13 +7,16 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-%% each test in a fresh namespace of its own, current in this process
+%% each test in a fresh namespace of its own, current in this process; it
+%% refers clojure.core, as one made by an ns form does ((in-ns 'x) alone
+%% makes a bare one, see current_ns/0)
 ev(Src) -> clj2_compiler:eval(unicode:characters_to_binary(Src)).
 
 fresh(Ns) ->
     {ok, _} = clj2_core:ensure(),
     clj2_rt_eval:restore_ns(undefined),
     clj2_ns:remove(Ns),
+    clj2_ns:ensure(Ns),
     clj2_rt_eval:in_ns(Ns).
 
 repl_test_() ->
@@ -65,6 +68,14 @@ current_ns() ->
     ?assertEqual('t.repl.other', clj2_rt_eval:current_ns()),
     ev("(def here 1)"),
     ?assertMatch({ok, #{vars := #{here := _}}}, clj2_ns:info('t.repl.other')),
+    %% a namespace in-ns creates refers nothing, as on the JVM, until a
+    %% refer-clojure (ns and in-ns stay reachable)
+    ?assertEqual(nil, ev("(clojure.core/resolve 'inc)")),
+    ?assertError({clj2_compile, _, {resolve, {unresolved_symbol, inc}}}, ev("(inc 1)")),
+    ?assertEqual(true, ev("(clojure.core/var? (clojure.core/resolve 'in-ns))")),
+    ev("(clojure.core/refer-clojure :exclude '[dec])"),
+    ?assertEqual(2, ev("(inc 1)")),
+    ?assertEqual(nil, ev("(resolve 'dec)")),
     ev("(ns t.repl.third)"),
     ?assertEqual('t.repl.third', ev("*ns*")),
     ?assertEqual(1, ev("t.repl.other/here")),

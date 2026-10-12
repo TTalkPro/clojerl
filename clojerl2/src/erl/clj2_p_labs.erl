@@ -178,7 +178,8 @@ init_fun(Ns, M, Vars, Steps, A, Register, St) ->
                        [{elit, A, Ns}, {elit, A, M}, {elit, A, Vars},
                         %% the ns form's aliases and refers, for ns-aliases/resolve
                         {elit, A, #{aliases => maps:get(ns_aliases, St, #{}),
-                                    refers => maps:get(ns_refers, St, #{})}}]}
+                                    refers => maps:get(ns_refers, St, #{}),
+                                    core_refer => maps:get(ns_core_refer, St, [#{}])}}]}
           end,
     FailName = case Register of
                    true -> Ns;

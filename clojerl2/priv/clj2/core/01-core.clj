@@ -564,6 +564,25 @@
 (defn macroexpand-1 [form] (clj2_rt_eval/macroexpand_1 form))
 (defn macroexpand [form] (clj2_rt_eval/macroexpand form))
 (defn require [& args] (clj2_rt_eval/require args))
+(defn refer
+  "Refers to all public vars of ns, subject to filters: :exclude list-of-symbols,
+  :only list-of-symbols, :rename map-of-fromsymbol-tosymbol."
+  [ns-sym & filters]
+  (clj2_rt_eval/refer ns-sym filters))
+(defmacro refer-clojure
+  "Same as (refer 'clojure.core <filters>)"
+  [& filters]
+  `(clojure.core/refer '~'clojure.core ~@filters))
+(defn use
+  "Like require, but also refers to each lib's namespace (refer filters :only,
+  :exclude and :rename apply)."
+  [& args]
+  (doseq [a args]
+    (if (symbol? a)
+      (do (require a) (refer a))
+      (let [[lib & opts] a]
+        (require lib)
+        (apply refer lib opts)))))
 
 (defn all-ns [] (seq (clj2_ns/all)))
 ;; a namespace designator: nil is a NullPointerException and a
@@ -576,7 +595,8 @@
 (defn find-ns [name] (let [name (ns-designator name)] (when (clj2_ns/find_ns name) name)))
 (defn the-ns [x]
   (if (find-ns x) x (throw (ex-info (str "No namespace: " x " found") {:ns x}))))
-(defn create-ns [name] (clj2_ns/ensure name) name)
+;; a new namespace refers nothing, as on the JVM (ns does the refer-clojure)
+(defn create-ns [name] (clj2_ns/ensure name 'bare) name)
 (defn ns-name [ns] (the-ns ns))
 
 ;; Reflection over the registry (clj2_rt_eval): a var is {var meta

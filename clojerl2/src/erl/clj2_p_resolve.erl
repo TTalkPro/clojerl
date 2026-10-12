@@ -79,7 +79,8 @@ expr({sym, A, S}, Env, _L, St) ->
     end;
 %% (var x): the var itself, a constant #'ns/name (what def returns)
 expr({the_var, A, S}, _Env, _L, St) ->
-    case global(A, S, St) of
+    %% (var ns/x) reaches a private var too, as on the JVM
+    case global(A, S, St, private_ok) of
         {var, {varref, _, _, Name, _}} -> {{const, A, {var, nil, {var_ns(S, St), Name}}}, St};
         _ -> fail(A, {unresolved_var, S})
     end;
@@ -165,7 +166,12 @@ fresh(S, St = #{next_uid := N}) -> {{S, N}, St#{next_uid := N + 1}}.
 %% Globals
 %%====================================================================
 
-global(A, S, St = #{scope := Scope}) ->
+%% Access: `value' or `call' (another namespace's private var refused;
+%% the JVM names the symbol for a value, the var for a call), or
+%% `private_ok' (the var special form)
+global(A, S, St) -> global(A, S, St, value).
+
+global(A, S, St = #{scope := Scope}, Access) ->
     #{ns := Ns, vars := Vars, aliases := Aliases, refers := Refers,
       externals := Ext} = Scope,
     case qualified(S) of
@@ -180,10 +186,12 @@ global(A, S, St = #{scope := Scope}) ->
                     %% another namespace's private var is refused (core's
                     %% are used by its own macro expansions)
                     case Ref of
-                        {varref, _, _, _, #{private := true}} when QNs =/= 'clojure.core' ->
-                            Shown = case Q of
-                                        QNs -> ["#'", atom_to_list(QNs), "/", atom_to_list(Name)];
-                                        _ -> atom_to_list(S)
+                        %% (the JVM names the symbol as written)
+                        {varref, _, _, _, #{private := true}} when QNs =/= 'clojure.core',
+                                                                   Access =/= private_ok ->
+                            Shown = case Access of
+                                        call -> ["#'", atom_to_list(QNs), "/", atom_to_list(Name)];
+                                        value -> atom_to_list(S)
                                     end,
                             fail(A, {not_public, iolist_to_binary(["var: ", Shown, " is not public"])});
                         _ -> {var, Ref}
@@ -196,7 +204,9 @@ global(A, S, St = #{scope := Scope}) ->
                 #{S := _} -> {var, own_var(A, S, St)};
                 _ ->
                     case Refers of
-                        #{S := RNs} -> {var, ext_var(A, RNs, S, Ext)};
+                        #{S := T} ->
+                            {RNs, RName} = clj2_ns:refer_target(S, T),
+                            {var, ext_var(A, RNs, RName, Ext)};
                         _ -> unresolved
                     end
             end
@@ -207,7 +217,7 @@ var_ns(S, #{scope := #{ns := Ns, vars := Vars, aliases := Aliases, refers := Ref
     case qualified(S) of
         {Q, _} -> maps:get(Q, Aliases, Q);
         false when is_map_key(S, Vars) -> Ns;
-        false -> maps:get(S, Refers)
+        false -> element(1, clj2_ns:refer_target(S, maps:get(S, Refers)))
     end.
 
 %% A var's info may name its module (vars of earlier compile-time
@@ -232,7 +242,7 @@ qualified(S) ->
 fail(A, Why) -> erlang:error({clj2_compile, erl_anno:location(A), {resolve, Why}}).
 
 invoke_global(A, S, H, Args, Env, L, St) ->
-    case global(A, S, St) of
+    case global(A, S, St, call) of
         {erlang, M, F} ->
             {Args1, St1} = exprs(Args, Env, L, St),
             case {jvm_class(M), atom_to_list(F)} of
