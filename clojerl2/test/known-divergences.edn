@@ -50,7 +50,7 @@
   :alternative "Use quot/rem for exact integer division; keep numerator and denominator yourself where exact fractions matter."}
  {:id :number/beam-semantics
   :area :numbers
-  :reason "Arithmetic follows BEAM, not the JVM (a project decision): integers are unbounded (no 64-bit long overflow, wrap-around, truncation or range checks: parse-long of a big number is that number, ^long/^double hints coerce nothing, bit ops take bignums, %x of a negative number is signed); floats compare exactly, so 0.0 and -0.0 differ; float division by zero raises badarith and ##Inf/##NaN cannot be read (BEAM floats have no Inf/NaN); comparisons and numeric predicates do not type-check their arguments (Erlang term order: (< nil 1) is false, no exception)."
+  :reason "Arithmetic follows BEAM, not the JVM (a project decision): integers are unbounded (no 64-bit long overflow, wrap-around, truncation or range checks: parse-long of a big number is that number, ^long/^double hints coerce nothing, bit ops take bignums, %x of a negative number is signed); floats compare exactly, so 0.0 and -0.0 differ; float division by zero raises badarith and ##Inf/##NaN raise an ArithmeticException when evaluated (BEAM floats have no Inf/NaN; they read, so a file that mentions one still compiles); comparisons and numeric predicates do not type-check their arguments (Erlang term order: (< nil 1) is false, no exception)."
   :design "designs/03 §1.1; user decision 2026-10-11 (clojerl2-023)"
   :alternative "Check argument types yourself where a JVM program relied on ClassCastException; mask with (bit-and x 0xFFFFFFFFFFFFFFFF) where 64-bit wrap-around was intended; test for zero before dividing floats."}
  {:id :fn/arity-at-compile-time
