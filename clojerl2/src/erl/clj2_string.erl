@@ -85,14 +85,17 @@ join(Sep, Coll) ->
 %% empty pattern splits into characters
 split(S, Re, Limit) ->
     Parts = case clj2_re:source(clj2_re:pattern(Re)) of
+                <<>> when S =:= <<>> -> [<<>>];
                 <<>> -> [bin([C]) || C <- chars(S)];
                 _ -> split_at(S, Re, Limit)
             end,
+    %% as Java's String.split: no match is the string itself ("" → [""]);
+    %% otherwise, with limit 0, trailing empty strings go ("\n" → [])
     Trimmed = case Limit of
-                  0 -> drop_trailing_empty(Parts);
+                  0 when Parts =/= [S] -> drop_trailing_empty(Parts);
                   _ -> Parts
               end,
-    clj2_coll:vector(case Trimmed of [] -> [<<>>]; _ -> Trimmed end).
+    clj2_coll:vector(Trimmed).
 
 split_at(S, Re, Limit) ->
     MP = clj2_re:compiled(clj2_re:source(clj2_re:pattern(Re))),

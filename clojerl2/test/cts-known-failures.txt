@@ -141,3 +141,5 @@ clojure.core-test.with-out-str 3 0
 clojure.core-test.with-precision 0 17
 clojure.core-test.zero-qmark 4 6
 clojure.edn-test.read-string 0 1
+clojure.string-test.escape 1 0
+clojure.string-test.replace 1 0
