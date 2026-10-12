@@ -33,7 +33,7 @@
 
 ## 结论
 
-- **语料**:直接用 jolt 的行格式 `{:suite :label :expected :actual :portability}`(`:actual` 即设计里的 `:expr`),只跑 `:common` 条目。没有手写 `:tags`:每条按它引用的最靠后的 core 层自动归层(`clj2_core:layer_vars/0`),报告按层分列。
+- **语料**:来历(jolt 如何从 Janet 测试表抽出、改由 JVM 生成期望值)见 `clojerl2/notes/corpus-origin.md`。直接用 jolt 的行格式 `{:suite :label :expected :actual :portability}`(`:actual` 即设计里的 `:expr`),只跑 `:common` 条目。没有手写 `:tags`:每条按它引用的最靠后的 core 层自动归层(`clj2_core:layer_vars/0`),报告按层分列。
 - **判定**照 jolt:`:actual` 和 `:expected` 都是源码,各自编译求值后用 `=` 比较(向量 `:expected` 等于 seq `:actual`);`:expected :throws` 要求抛错。编译期错误按 JVM 的 CompilerException 处理,算抛错;未解析符号和不支持的形式除外。不可 EDN 化的值不走打印比较,`=` 已能覆盖。
 - **修掉的 runner bug**:旧 runner 把 `:expected` 当打印文本比、不认 `:throws`(224 条)。`flatten_do` 对 regex/deref/tagged 等字面量调用 `to_data` 会崩(约 600 条)。cleanup 按前缀清模块,`corpus.e1` 会误清 `corpus.e12`,有并行竞态。
 - **oracle**:`make corpus-regen` 跑 `clojerl2/tools/regen-corpus.clj`(移植自 jolt),用 JVM Clojure 1.12.5 重新生成。194 行 `:expected` 有变化,其中 38 条语义不同,20 条在 `:common` 里,比如 `dedupe` 的惰性。改成原地只改变化的行,注释保留;退出时显式 `System/exit`,否则超时 future 会让 JVM 一直不退。CI 不依赖 JVM。
