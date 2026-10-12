@@ -168,6 +168,15 @@ float_conv(S, A, F) ->
         X when is_float(X) ->
             P = case maps:get(prec, S) of none -> 6; Pr -> Pr end,
             upper(maps:get(conv, S), number(S, sign_bit(X), F(abs(X), P)));
+        %% a BigDecimal: %f exactly (rounded half up), %e %g through its double
+        {decimal, U, _} = D ->
+            P = case maps:get(prec, S) of none -> 6; Pr -> Pr end,
+            case maps:get(conv, S) of
+                $f ->
+                    Txt = clj2_decimal:to_plain_string(clj2_decimal:set_scale(clj2_decimal:abs(D), P, half_up)),
+                    number(S, U < 0, group(S, unicode:characters_to_list(Txt)));
+                C -> upper(C, number(S, U < 0, F(abs(clj2_decimal:to_float(D)), P)))
+            end;
         _ -> wrong_kind(S, A)
     end.
 
@@ -348,8 +357,9 @@ round_hex(Lead, Hex, P) ->
 %% Errors, named after the JVM's
 %%====================================================================
 
+%% the JVM names the argument's class: "d != java.lang.String"
 wrong_kind(#{conv := C}, A) ->
-    fail(conversion, [C], iolist_to_binary([C, " != ", clj2_print:pr_str(A)])).
+    fail(conversion, [C], iolist_to_binary([C, " != ", atom_to_binary(clj2_class:class_of(A))])).
 
 fail(missing, Spec) -> raise(<<"MissingFormatArgumentException">>, ["Format specifier '", Spec, "'"]);
 fail(unknown, Spec) -> raise(<<"UnknownFormatConversionException">>, ["Conversion = '", Spec, "'"]);

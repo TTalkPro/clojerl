@@ -16,7 +16,8 @@
 -module(clj2_hash).
 
 -export([hasheq/1, java_hash_code/1, hash_ordered/1, hash_unordered/1, mix_coll_hash/2,
-         hash_combine/2, string_hash_code/1, hash_int/1, hash_long/1]).
+         hash_combine/2, string_hash_code/1, hash_int/1, hash_long/1,
+         big_integer_hash_code/1, signed/1]).
 
 -define(M32, 16#FFFFFFFF).
 -define(C1, 16#cc9e2d51).
@@ -39,6 +40,7 @@ hasheq(A) when is_atom(A) ->
         true -> signed(symbol_hash(tl(atom_to_list(A))) + ?GOLDEN);
         false -> symbol_hash(atom_to_list(A))
     end;
+hasheq({decimal, _, _} = D) -> clj2_decimal:hash(D);
 hasheq({ratio, N, D}) -> signed(big_integer_hash_code(N) bxor big_integer_hash_code(D));
 hasheq({vector, _, T}) when is_tuple(T) -> hash_ordered(tuple_to_list(T));
 hasheq({map, _, M}) when is_map(M) -> map_hash(maps:to_list(M));
@@ -72,6 +74,7 @@ java_hash_code(A) when is_atom(A) ->
         true -> signed(symbol_hash_code(tl(atom_to_list(A))) + ?GOLDEN);
         false -> symbol_hash_code(atom_to_list(A))
     end;
+java_hash_code({decimal, _, _} = D) -> clj2_decimal:hash(D);
 java_hash_code({ratio, N, D}) -> signed(big_integer_hash_code(N) bxor big_integer_hash_code(D));
 java_hash_code({vector, _, T}) when is_tuple(T) -> list_hash_code(tuple_to_list(T));
 java_hash_code({map, _, M}) when is_map(M) ->

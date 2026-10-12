@@ -42,7 +42,8 @@ to_data({tagged, [], uuid, S}) when is_binary(S) -> clj2_string:uuid(S);
 %% ##NaN, 1.5M, #inst ...: kept as they are read; evaluated, they raise
 %% (clj2_p_parse), and as a case constant they match nothing
 to_data({tagged, [], Tag, F}) when is_atom(Tag) -> {tagged, [], Tag, to_data(F)};
-to_data({bigdec, [], B} = X) when is_binary(B) -> X;
+to_data({bigdec, [], B}) when is_binary(B) -> clj2_decimal:parse(B);
+to_data({decimal, _, _} = X) -> X;
 to_data({Tag, _, B} = X) when (Tag =:= regex orelse Tag =:= uuid), is_binary(B) -> X;
 to_data(X) -> erlang:error({clj2_form, {no_data_form, element(1, X)}}).
 
