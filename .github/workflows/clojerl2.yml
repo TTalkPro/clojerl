@@ -22,6 +22,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        submodules: true   # clojerl2/vendor/clojure-test-suite
     - name: Compile and test (reader, nanopass pipeline, namespaces, macros)
       run: make -C clojerl2 test
     - name: Corpus gate (designs/04 §5.1; failures must match test/corpus-known-failures.edn)
@@ -32,3 +34,5 @@ jobs:
       run: make -C clojerl2 example
     - name: Documentation examples (clojerl2-025)
       run: make -C clojerl2 docs-check
+    - name: clojure-test-suite gate (clojerl2-022; counts must match test/cts-known-failures.txt)
+      run: make -C clojerl2 cts

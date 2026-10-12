@@ -1,0 +1,3 @@
+[submodule "clojerl2/vendor/clojure-test-suite"]
+	path = clojerl2/vendor/clojure-test-suite
+	url = https://github.com/jank-lang/clojure-test-suite.git

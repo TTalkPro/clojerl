@@ -6,6 +6,8 @@
 #   make smoke      REPL / CLI smoke test (test/repl-smoke.sh)
 #   make example    the rebar3 plugin on examples/hello (test/rebar3-example.sh)
 #   make docs-check the `;=>' examples in docs/*.md (test/docs-examples.sh)
+#   make cts        the clojure-test-suite gate (test/cts.sh): per-namespace
+#                   fail/error counts must match test/cts-known-failures.txt
 #   make corpus     run the conformance corpus, write notes/corpus-baseline.md
 #   make certify    the corpus gate: fails on an unlisted failure or a stale
 #                   entry in test/corpus-known-failures.edn
@@ -41,7 +43,7 @@ empty      :=
 space      := $(empty) $(empty)
 TEST_MODS  := $(subst $(space),$(comma),$(strip $(basename $(notdir $(TESTS)))))
 
-.PHONY: all test smoke example docs-check FORCE corpus certify corpus-rebaseline corpus-regen clean
+.PHONY: all test smoke example docs-check cts FORCE corpus certify corpus-rebaseline corpus-regen clean
 
 CORE_SRCS := $(wildcard priv/clj2/core/*)
 
@@ -107,6 +109,12 @@ example: all
 
 docs-check: all
 	sh test/docs-examples.sh
+
+# the vendored clojure-test-suite, one VM per namespace, in the same
+# memory-capped scope as the corpus (CLJ2_CTS_WRITE_BASELINE=1 rewrites
+# the baseline)
+cts: all
+	$(CORPUS_RUN) sh test/cts.sh
 
 clean:
 	rm -rf $(EBIN)
