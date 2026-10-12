@@ -17,6 +17,7 @@
 
 %% layer-0 primitives for 01-core (clojerl2-021)
 -export([str_contains/2]).
+-export([unsupported_float/1, unsupported_bigdec/1, unsupported_tag/1]).
 -export([reduced/1, is_reduced/1, unreduced/1, compare/2, sort/2, format/2,
          ex_info/3, throwable/2, no_matching_clause/1, is_ex_info/1, ex_message/1, ex_data/1, ex_cause/1, subs/3]).
 
@@ -308,7 +309,17 @@ existing_keyword(nil, Name) -> binary_to_existing_atom(<<":", Name/binary>>);
 existing_keyword(Ns, Name) -> binary_to_existing_atom(<<":", Ns/binary, "/", Name/binary>>).
 
 %% @doc Transients: {transient, nil, PersistentValue} (clojure.core/transient)
-transient(C) -> {transient, nil, C}.
+%% only vectors, hash maps and hash sets are editable (as on the JVM:
+%% a sorted collection, a seq or a record is a ClassCastException)
+transient({vector, _, T} = C) when is_tuple(T) -> {transient, nil, C};
+transient({map, _, M} = C) when is_map(M) -> {transient, nil, C};
+transient({set, _, M} = C) when is_map(M) -> {transient, nil, C};
+transient(nil) ->
+    erlang:error(ex_info(<<"transient: nil">>, clj2_coll:hash_map_kv([':type', ':NullPointerException']), nil));
+transient(X) ->
+    erlang:error(ex_info(<<"class ", (atom_to_binary(clj2_class:class_of(X)))/binary,
+                           " cannot be cast to class clojure.lang.IEditableCollection">>,
+                         clj2_coll:hash_map_kv([':type', ':ClassCastException']), nil)).
 is_transient({transient, _, _}) -> true;
 is_transient(_) -> false.
 persistent({transient, _, C}) -> C;
@@ -380,3 +391,23 @@ merge_var_meta({var, _, {Ns, Name}} = V, {map, _, M}) ->
 
 is_var({var, _, {_, _}}) -> true;
 is_var(_) -> false.
+
+%% @doc What `##NaN', `##Inf' and `##-Inf' evaluate to: an
+%% ArithmeticException, since BEAM floats have no NaN or infinity (known
+%% divergence :number/beam-semantics).
+unsupported_float(Kw) ->
+    Name = list_to_binary(tl(atom_to_list(Kw))),
+    erlang:error(ex_info(<<"##", Name/binary, ": BEAM floats have no NaN or infinity (known divergence :number/beam-semantics)">>,
+                         clj2_coll:hash_map_kv([':type', ':ArithmeticException']), nil)).
+
+%% @doc What a BigDecimal literal (1.5M) evaluates to while there is no
+%% BigDecimal (corpus :pending/numbers): an error naming the literal.
+unsupported_bigdec(Text) ->
+    erlang:error(ex_info(<<Text/binary, "M: BigDecimal literals are not supported yet (clojerl2 :pending/numbers)">>,
+                         clj2_coll:hash_map_kv([':type', ':UnsupportedOperationException']), nil)).
+
+%% @doc What a tagged literal with no reader function (#inst ...)
+%% evaluates to: the JVM reader's error, at evaluation time.
+unsupported_tag(Tag) ->
+    erlang:error(ex_info(<<"No reader function for tag ", (atom_to_binary(Tag))/binary>>,
+                         clj2_coll:hash_map_kv([':type', ':RuntimeException']), nil)).

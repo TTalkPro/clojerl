@@ -227,8 +227,11 @@ assoc({vector, Meta, T}, I, V) when is_integer(I), I >= 0, I < tuple_size(T) ->
     {vector, Meta, setelement(I + 1, T, V)};
 assoc({vector, Meta, T}, I, V) when I =:= tuple_size(T) ->
     {vector, Meta, erlang:append_element(T, V)};
-assoc({Tag, Meta, M}, K, V) when is_atom(Tag), is_map(M) -> {Tag, Meta, M#{K => V}};   % record
-assoc(X, K, _) -> erlang:error({clj2_cannot_assoc, X, K}).
+assoc({Tag, Meta, M}, K, V) when is_atom(Tag), is_map(M), Tag =/= set -> {Tag, Meta, M#{K => V}};   % record
+assoc(X, _, _) ->
+    erlang:error(clj2_rt:ex_info(<<"class ", (atom_to_binary(clj2_class:class_of(X)))/binary,
+                                   " cannot be cast to class clojure.lang.Associative">>,
+                                 hash_map_kv([':type', ':ClassCastException']), nil)).
 
 dissoc(nil, _) -> nil;
 dissoc({map, Meta, M}, K) -> {map, Meta, maps:remove(K, M)};

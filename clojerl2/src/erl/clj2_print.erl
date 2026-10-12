@@ -60,6 +60,10 @@ pr({uuid, _, S}, _) when is_binary(S) -> [<<"#uuid \"">>, S, $"];
 pr({var, _, {Ns, Name}}, _) when is_atom(Ns), is_atom(Name) ->
     [<<"#'">>, atom_to_binary(Ns), $/, atom_to_binary(Name)];
 pr({clj2_fn, _, _}, _) -> <<"#object[clojure.lang.AFunction]">>;
+%% literals the runtime has no value for, as they were read
+pr({tagged, [], T, nil}, _) when T =:= 'NaN'; T =:= 'Inf'; T =:= '-Inf' -> [<<"##">>, atom_to_binary(T)];
+pr({tagged, [], Tag, F}, R) when is_atom(Tag) -> [$#, atom_to_binary(Tag), $\s, pr(F, R)];
+pr({bigdec, [], B}, _) when is_binary(B) -> [B, $M];
 pr({fnmeta, _, F}, R) -> pr(F, R);
 pr(F, _) when is_function(F) -> [<<"#object[">>, io_lib:format("~tp", [F]), $]];
 pr({Tag, _, _} = X, R) when Tag =:= atom; Tag =:= volatile; Tag =:= agent;

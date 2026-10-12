@@ -197,7 +197,10 @@ errors_test_() ->
     , ?_assertEqual({syntax, duplicate_fn_arity}, cerr("(fn* ([x] 1) ([y] 2))"))
     , ?_assertEqual({syntax, {bad_catch_class, 'Foo'}}, cerr("(try 1 (catch Foo e e))"))
     , ?_assertEqual({syntax, {not_at_top_level, def}}, cerr("(let* [a 1] (def x a))"))
-    , ?_assertEqual({unsupported, {literal, tagged}}, cerr("#inst \"2020-01-01\""))
+      %% a tagged literal with no reader function compiles, and raises when
+      %% evaluated (so a file that mentions one still loads)
+    , ?_assertEqual(<<"No reader function for tag inst">>,
+                    ev("(try #inst \"2020-01-01\" (catch Throwable e (ex-message e)))"))
     , ?_assertMatch({syntax, {bad_regex, <<"(">>, _}}, cerr("#\"(\""))
       %% positions are reported
     , ?_assertError({clj2_compile, {2, 3}, {resolve, {unresolved_symbol, nope}}},

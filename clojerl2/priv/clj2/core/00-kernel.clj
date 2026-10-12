@@ -199,7 +199,12 @@
     ([m k v] (clj2_coll/assoc m k v))
     ([m k v & kvs]
      (let* [m (clj2_coll/assoc m k v)]
-       (if kvs (recur m (first kvs) (second kvs) (nnext kvs)) m)))))
+       (if kvs
+         (if (next kvs)
+           (recur m (first kvs) (second kvs) (nnext kvs))
+           (throw (clj2_rt/ex_info "assoc expects even number of arguments after map/vector, found odd number"
+                                   {:type :IllegalArgumentException} nil)))
+         m)))))
 (def dissoc
   (fn* dissoc
     ([m] m)

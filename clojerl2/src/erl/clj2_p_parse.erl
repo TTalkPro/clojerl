@@ -340,6 +340,18 @@ form({tagged, [], uuid, S}, A, _E) when is_binary(S) ->
     try {const, A, clj2_string:uuid(S)}
     catch error:_ -> syntax(A, {bad_uuid, S})
     end;
+%% ##Inf / ##-Inf / ##NaN: BEAM floats have neither (known divergence
+%% :number/beam-semantics); the literal raises when evaluated, so the
+%% rest of a file that mentions one still compiles
+form({tagged, [], T, nil}, A, E) when T =:= 'NaN'; T =:= 'Inf'; T =:= '-Inf' ->
+    form(['clj2_rt/unsupported_float', list_to_atom(":" ++ atom_to_list(T))], A, E);
+%% 1.5M: no BigDecimal yet (:pending/numbers); raises when evaluated, likewise
+form({bigdec, [], B}, A, E) when is_binary(B) ->
+    form(['clj2_rt/unsupported_bigdec', B], A, E);
+%% any other tagged literal (#inst ...): no reader function for the tag;
+%% raises when evaluated (the JVM reader rejects the file)
+form({tagged, [], Tag, _}, A, E) when is_atom(Tag) ->
+    form(['clj2_rt/unsupported_tag', [quote, Tag]], A, E);
 form({Unq, [], _}, A, _E) when Unq =:= unquote; Unq =:= unquote_splicing ->
     syntax(A, unquote_outside_syntax_quote);
 form(X, A, E) ->

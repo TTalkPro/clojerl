@@ -97,6 +97,11 @@ number__beam_semantics_test() ->
     ?assertEqual(9223372036854775808, ev("(+ 9223372036854775807 1)")),
     ?assertEqual(false, ev("(= 0.0 -0.0)")),
     ?assertError(badarith, ev("(/ 1.0 0)")),
+    %% ##NaN / ##Inf read, and raise when evaluated
+    ?assertEqual(':ArithmeticException',
+                 ev("(try ##NaN (catch ArithmeticException e (:type (ex-data e))))")),
+    ?assertEqual(':ArithmeticException',
+                 ev("(try (+ 1 ##Inf) (catch ArithmeticException e (:type (ex-data e))))")),
     %% no type check: Erlang term order (numbers before atoms), no throw
     ?assertEqual(false, ev("(< nil 1)")).
 
