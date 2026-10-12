@@ -60,6 +60,7 @@ bin/clojerl2 -p src -m my.app x y         # 从源码路径 require my.app,调�
 ```
 
 - **源码路径**(`require` 在哪里找命名空间):`-p dir1:dir2`,或环境变量 `CLJ2_PATH`,默认是 `src:.`。命名空间 `my.app-util` 对应 `my/app_util.clj`(或 `.cljc`)。
+- **reader 条件**(`.cljc` 文件):`#?(...)` 和 `#?@(...)` 按 `:clje` 和 `:default` 两个特性选分支——`:clje` 是 clojerl 1.0 的平台关键字,为 clojerl 写的 `.cljc` 在 clojerl2 上读出同样的东西;其余分支(`:clj`、`:cljs` ……)读进来再丢掉,所以里面的宿主符号和标签字面量不碍事。
 - **退出码**:未捕获的异常时为 1,并把错误报告写到 stderr。
 
 一个程序的样子:
@@ -87,6 +88,31 @@ hello!
 ```
 
 参数都是字符串:`println` 打印时不带引号,所以显示为 `[1 2]`;用 `prn` 打印会显示 `["1" "2"]`。
+
+## 测试
+
+`clojure.test` 随标准库提供(`deftest`/`is`/`are`/`testing`/`use-fixtures`/`run-tests`/`test-var`,以及 `report` 和 `assert-expr` 两个多方法;`is` 支持 `thrown?`/`thrown-with-msg?`/`instance?`):
+
+```clojure
+;; test/my/util_test.clj
+(ns my.util-test
+  (:require [clojure.test :refer [deftest is are testing]]
+            [my.util :as u]))
+
+(deftest shout
+  (testing "adds a bang"
+    (is (= "hi!" (u/shout "hi")))
+    (are [in out] (= out (u/shout in))
+      "a" "a!"
+      ""  "!"))
+  (is (thrown? ArithmeticException (/ 1 0))))
+```
+
+```sh
+$ bin/clojerl2 -p src:test -e "(require 'my.util-test) (clojure.test/run-tests 'my.util-test)"
+```
+
+`run-tests` 打印失败明细和汇总,并返回 `{:test 1 :pass 4 :fail 0 :error 0 :type :summary}`。测试在 `deftest` 展开时登记到所在命名空间;重新加载文件只替换登记项,不会重复计数。`clojure.set`、`clojure.walk`、`clojure.template` 同样随标准库提供。
 
 ## 下一步
 

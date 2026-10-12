@@ -1,6 +1,6 @@
 # clojerl2-019 惰性序列
 
-状态:已完成(2026-10-11;与 clojerl 1.0 的吞吐对比未能完成,见结论)
+状态:已完成(2026-10-11;2026-10-12 补上与 clojerl 1.0 的吞吐对比,见结论)
 里程碑:M4
 依赖:clojerl2-003
 
@@ -41,6 +41,6 @@
   - ETS 版并发:8 个进程同抢一个慢 thunk,thunk 恰好运行一次、值一致(失败者等待赢家,比文档原来的"最多两次"更强);
   - 跨进程(pdict):3 个进程各实现一次、值一致——已登记 known-divergences;
   - 记忆单元有上限,长链(跳过 100 万元素的 filter)常量栈。
-- **未完成**:"与 clojerl 1.0 同级代码吞吐差不超 003 阈值"——003 报告没有固化这样的阈值,且 clojerl 1.0 在本机 OTP 28 上编不完整(`clojure/instant.clje` 的正则字面量),无法运行对比代码;clojerl2 自身的 pdict/ETS 吞吐已作为基线入库(notes/lazy-seq.md),对比留作开放项。
+- **与 clojerl 1.0 的吞吐对比(2026-10-12 补上)**:003 报告没有固化阈值,所以只如实记录。clojerl 1.0 在 OTP 28 上编不过的原因是 `erlang.util.Regex` 把 `re:compile` 的结果(OTP 28 起含 reference)存进值里,正则字面量就不能作模块常量;改成只存 pattern、用时按进程缓存编译(`src/erl/erlang/erlang.util.Regex.erl`,本仓库里的小改动)后 1.0 可以完整构建。同机各跑三次(`(time ...)`,`bin/clojerl2 -e` 对 `bin/clojerl -e`),见 notes/lazy-seq.md:range 上的 reduce 和 map/filter/take 链 clojerl2 慢 6–10 倍(clojerl 1.0 的 range 是专门类型、reduce 走内部路径),惰性 fib 的 `nth 5000` 和同一序列走两遍基本持平。差距方向与 notes 里"后续优化方向"(chunked seq、算术内联、调用快路径)一致,留给优化任务。
 - known-divergences 注册表首次建立:`clojerl2/test/known-divergences.edn`(10 条,含此前各任务的分歧),格式由 `clj2_divergences_tests` 校验;门控随 022。
 - 顺带修正:eval 模块不再在返回后立即删除(否则结果里的惰性序列/闭包会 `undef`),保留最近 100 个;docstring 进 EEP-48 Docs chunk(`-moduledoc`/`-doc`,对照 OTP 28 absform 文档,见 02 §2.1)。

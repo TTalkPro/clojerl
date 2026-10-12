@@ -20,7 +20,7 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **clojerl2**:
   - 整数无界,`(+ 9223372036854775807 1)` 得 9223372036854775808;
   - 浮点精确比较,`(= 0.0 -0.0)` 为 false;
-  - `(/ 1.0 0)` 报 `badarith`,BEAM 没有 Inf/NaN,所以 `##Inf`/`##NaN` 读不进来;
+  - `(/ 1.0 0)` 报 `badarith`;BEAM 没有 Inf/NaN,`##Inf`/`##NaN` 读得进来,求值时抛 `ArithmeticException`(文件里提到它们不影响其余部分编译);
   - 比较按 Erlang 的项序,不检查类型,`(< nil 1)` 为 false;
   - `^long`/`^double` 类型提示不做任何转换,`%x` 对负数输出带符号的结果。
 - **替代写法**:需要类型检查的地方自己判断;需要 64 位回绕的地方用 `(bit-and x 0xFFFFFFFFFFFFFFFF)`;浮点除法前先判断除数是否为零。
