@@ -6,7 +6,7 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **实测佐证**:`test/clj2_divergence_evidence_tests.erl` 为每一条准备一个测试。如果哪天行为变了,测试就会失败,登记表必须跟着更新。CI 还会检查本文是否覆盖了每一条。
 - **corpus 门控**:corpus 里因这些差异而与 JVM 结果不同的条目,都标注了对应的差异编号(`make certify`)。
 
-下面共 21 条。每条依次是:JVM 上的行为 → clojerl2 上的行为 → 替代写法。
+下面共 31 条。每条依次是:JVM 上的行为 → clojerl2 上的行为 → 替代写法。
 
 另外有很多功能是**还没做**,不属于有意的差异,例如 atom、多方法、正则。那些列在 [README](README.md#现状2026-10)。
 
@@ -16,14 +16,14 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 
 ### `:number/beam-semantics` 数学运算按 BEAM 来
 
-- **JVM**:`long` 溢出抛异常,`(= 0.0 -0.0)` 为 true,`(/ 1.0 0)` 得 `##Inf`,`(< nil 1)` 抛异常。
+- **JVM**:`long` 溢出抛异常,`(= 0.0 -0.0)` 为 true,`(/ 1.0 0)` 得 `##Inf`,`(byte 128)` 抛异常。
 - **clojerl2**:
   - 整数无界,`(+ 9223372036854775807 1)` 得 9223372036854775808;
   - 浮点精确比较,`(= 0.0 -0.0)` 为 false;
   - `(/ 1.0 0)` 报 `badarith`;BEAM 没有 Inf/NaN,`##Inf`/`##NaN` 读得进来,求值时抛 `ArithmeticException`(文件里提到它们不影响其余部分编译);
-  - 比较按 Erlang 的项序,不检查类型,`(< nil 1)` 为 false;
+  - `byte`/`short`/`int`/`long`/`char`/`float` 这些转换不检查范围,`(byte 128)` 得 128;
   - `^long`/`^double` 类型提示不做任何转换,`%x` 对负数输出带符号的结果。
-- **替代写法**:需要类型检查的地方自己判断;需要 64 位回绕的地方用 `(bit-and x 0xFFFFFFFFFFFFFFFF)`;浮点除法前先判断除数是否为零。
+- **替代写法**:需要范围检查的地方自己判断;需要 64 位回绕的地方用 `(bit-and x 0xFFFFFFFFFFFFFFFF)`;浮点除法前先判断除数是否为零。
 - 依据:designs/03 §1.1;项目决定(2026-10-11)。
 
 ### `:number/no-ratio-arithmetic` 没有分数运算
@@ -57,6 +57,27 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **clojerl2**:直接调用一个 fn var 时,如果元数不对,编译就不通过,因为 var 直接链接到模块函数。
 - **替代写法**:元数只能在运行时确定时,通过值来调用:`(apply f args)`,或 `(let [g f] (g 1 2))`。这样会像 JVM 一样在运行时报错,也能被 `catch` 捕获。
 - 依据:designs/03 §2.1a。
+
+### `:interop/erlang-module-calls` 未知的限定名是 Erlang 模块调用
+
+- **JVM**:`(zzs/union ...)` 里的 `zzs` 既不是别名也不是已有命名空间时,编译期报 `No such namespace: zzs`。
+- **clojerl2**:调用头 `ns/f` 的限定名既不是别名、也不是已知命名空间时,它指一个 Erlang 模块(`(lists/reverse x)` 调用 `lists:reverse/1`)。所以未知别名在编译期不报错,调用执行时才失败(`undef`)。
+- **替代写法**:在使用别名的 form 之前 `require` 好命名空间(JVM 上 fn 体内的 `require` 在编译期同样不建立别名);别名拼错时,看运行时的 `undef` 错误。
+- 依据:designs/09 §2(resolve:其余 `mod/fun` 调用头成为 `erl_call`)、§3(Erlang 调用)。
+
+### `:vars/forward-references` 同一文件里可以先用后定义
+
+- **JVM**:fn 体里引用文件后面才定义的 var,编译期报 `Unable to resolve symbol`,要先写 `declare`。
+- **clojerl2**:命名空间文件(以及任何作为一个单元编译的代码)在编译任何形式之前先声明全部顶层 var,所以 fn 体可以调用文件后面才定义的 var。在 REPL 里每个形式单独编译,未定义的名字仍然是编译错误。
+- **替代写法**:在 JVM 上能编译的代码不用改;要在两边都能跑的代码,照 JVM 的要求写 `declare`。
+- 依据:designs/03 §2.1(`clj2_p_declare`)。
+
+### `:macros/defmacro-form` defmacro 是编译器形式
+
+- **JVM**:`(macroexpand-1 '(defmacro m [a] a))` 展开成 `(do (clojure.core/defn m ([&form &env a] a)) (. (var m) (setMacro)) (var m))`。
+- **clojerl2**:`defmacro` 由编译器直接处理,不是宏,`macroexpand-1` 原样返回它。
+- **替代写法**:不要依赖 `defmacro` 的展开结果;要判断一个 var 是不是宏,用 `(:macro (meta #'m))`。
+- 依据:designs/01 §5(parse 的内核形式)。
 
 ### `:fn/structural-identity` fn 按值比较
 
@@ -95,9 +116,24 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
   - 重新加载命名空间,或在 REPL 里重定义 var(每个 REPL var 有自己的模块)时,旧版本仍然保留;
   - 此前取走的 fn 值继续运行旧代码,新的调用走新代码;
   - 再重定义一次,最旧的版本就被清除,仍持有它的 fn 值再被调用会报 `badfun`;
-  - 如果有进程正在执行最旧的版本,重定义会失败(`old_code_in_use`)。
+  - 如果有进程正在执行最旧的版本,重定义会失败(`old_code_in_use`);
+  - 在运行时被改值的 var(表达式里的 `def`、`alter-var-root`、`with-redefs`)不走上面这套:它的值第一次被改时搬进 var 表(只换一次代码),此后每次改值都只是改表,所有调用方立即看到新值,也没有版本上限的问题。
 - **替代写法**:想总是用到最新定义时,保存名字而不是值:直接写 `(f ...)`,或包一层 `(fn [& args] (apply f args))`。
 - 依据:designs/02 §5、designs/03 §2.2。
+
+### `:vars/core-direct-linked` clojure.core 的 var 不能在运行时改值
+
+- **JVM**:`(with-redefs [deref my-deref] ...)` 里,用户代码对 `deref` 的调用都走新值(core 内部是直接链接的,不受影响)。
+- **clojerl2**:clojure.core 直接链接进所有针对它编译的代码,包括 core 自己,所以 core 里 fn 和常量 var 的 root 不能在运行时改:对它们 `alter-var-root`、`with-redefs`,或在表达式里 `def`,会抛 `IllegalStateException`,信息里带这个编号。动态 var(`*out*`、`*print-length*` 等)照常 `binding`、`set!`。
+- **替代写法**:自己定义一个包一层的 var 并调用它,例如 `(defn my-deref [x] (deref x))`,然后 `(with-redefs [my-deref ...] ...)`。
+- 依据:designs/03 §2.1a。
+
+### `:vars/self-calls-direct` fn 对自己的调用不经过 var
+
+- **JVM**:fn 体里按名字调用自己,走的是 var,所以 `alter-var-root` 换上的新值在旧值的递归里也会被调用到。
+- **clojerl2**:命名空间模块里的 var 一旦在运行时被改值(`with-redefs`、`alter-var-root`、表达式里的 `def`),模块里 var 之间的调用都改走 var 表;但一个 fn 对自己的调用留在自己的函数体里,和 `recur` 一样。例如 `(alter-var-root #'f (fn [old] (fn [n] (if (zero? n) :new (old n)))))` 之后,`old` 的递归不会再进到新值里。
+- **替代写法**:需要让递归经过可替换的值时,把 fn 自身作为参数传进去,或者让它递归调用一个辅助 fn,新值去包那个辅助 fn。
+- 依据:designs/03 §2.1a、§2.2。
 
 ### `:namespaces/symbols` 命名空间就是符号
 
@@ -108,9 +144,9 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 
 ### `:symbol/no-metadata` 符号不带元数据
 
-- **JVM**:def 名字上的元数据经过宏也能保留,`(defn ^:private f ...)` 定义的是私有 var;符号可以 `with-meta`。
-- **clojerl2**:符号就是 atom,本身不带元数据。直接写在 `def` 名字上的元数据会保留(`^:private`、`^:dynamic`、`^{:doc ...}`),`defn` 的 docstring 和 attr-map 也会保留(`defn-` 经 attr-map 传 `:private`,定义的是私有 var);但写在交给宏的名字上的元数据会丢失,所以 `(defn ^:private f ...)` 定义出来的是公开 var;对符号 `with-meta` 会报错。
-- **替代写法**:私有函数用 `defn-`(或在 `defn` 的 attr-map 里写 `{:private true}`),文档写在 `defn` 的 docstring 里。
+- **JVM**:符号可以带元数据,`(meta '^:foo bar)` 是 `{:foo true}`,`with-meta` 对符号可用。
+- **clojerl2**:符号就是 atom,本身不带元数据:`(meta '^:foo bar)` 是 `nil`,对符号 `with-meta` 会失败。写在 `def` 名字上的元数据会保留,经过定义类的宏也一样(`(defn ^:private f ...)`、`(defmulti ^:dynamic m ...)`、`(defonce ^:private x ...)`):编译器把读入时宏调用名字上的元数据,接到展开结果里同名的 `def` 上。
+- **替代写法**:元数据放在 var 或集合上,不要放在符号值上;宏需要名字的元数据时,改为显式传一个 map 参数。
 - 依据:designs/03 §1.1。
 
 ### `:dynamic/per-process-bindings` 动态绑定属于进程
@@ -152,6 +188,20 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **clojerl2**:BEAM 的值没有身份,`identical?` 就是精确相等(`=:=`):`(identical? [1 2] (vector 1 2))` 为 true;`compare-and-set!` 在当前值等于期望值时就会交换。
 - **替代写法**:不要用 `identical?` 或 `compare-and-set!` 区分内容相同的值;确实需要时,在值里显式带上版本号或标识,例如 `{:version n ...}`。
 - 依据:designs/03 §1.1、§5.2。
+
+### `:collections/map-entry-vectors` map entry 就是二元向量
+
+- **JVM**:map entry 是 `clojure.lang.MapEntry`:`(map-entry? [:a 1])` 为 false,`(key [:a 1])` 抛异常,`(empty (first {:a 1}))` 为 nil。
+- **clojerl2**:map entry 就是两个元素的向量,没有单独的类型:`map-entry?` 对任何二元向量为 true,`key`/`val` 也接受它,`empty` 得到 `[]`。
+- **替代写法**:不要用 `map-entry?` 区分 entry 和自己构造的二元组;`key`、`val` 对两者都可用。
+- 依据:designs/03 §1.1。
+
+### `:sorted/comparator-calls` sorted 集合调用比较器的次数不同
+
+- **JVM**:sorted map/set 是红黑树 `PersistentTreeMap`,构建 1024 个递增键调用比较器 12301 次。
+- **clojerl2**:sorted 集合是自己的平衡树,调用比较器的次数不同(通常更少)。顺序、查找和相等都一样。
+- **替代写法**:比较器不要有副作用,不要统计它被调用的次数。
+- 依据:designs/03 §1.3。
 
 ### `:collections/exact-keys` map 的键按项精确比较
 

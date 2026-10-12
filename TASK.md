@@ -70,6 +70,17 @@ clojerl2:基于 nanopass 的 Clojure on ERTS 全新实现。设计文档见 [des
 | [clojerl2-024](tasks/clojerl2-024-rebar3-cache.md) | rebar3 插件 + 编译缓存 | 023 | 已完成(整条 rebar3 命令的 20% 判据只部分达标) |
 | [clojerl2-025](tasks/clojerl2-025-docs-divergences.md) | 用户文档 + known-divergences 定稿 | 022, 024 | 已完成,真实用户试用待安排 |
 
+## M6 — 一致性收尾
+
+| 任务 | 标题 | 依赖 | 状态 |
+|---|---|---|---|
+| [clojerl2-032](tasks/clojerl2-032-var-redefinition.md) | var 运行时重定义(嵌套 def、with-redefs、alter-var-root) | 015, 022 | 已完成 |
+| [clojerl2-033](tasks/clojerl2-033-corpus-triage.md) | corpus 分诊:334 条 `:pending/triage` 归类 | 022, 032 | 已完成 |
+| [clojerl2-034](tasks/clojerl2-034-severe-bugs.md) | 分诊发现的 4 个严重问题(`%&`、range、sequence、加载期 var) | 033 | 已完成 |
+| [clojerl2-035](tasks/clojerl2-035-jvm-exceptions-arg-checks.md) | JVM 异常类与 core 参数检查 | 033 | 已完成 |
+| [clojerl2-036](tasks/clojerl2-036-missing-core-vars.md) | 补缺失的 clojure.core 函数 | 033, 035 | 已完成 |
+| [clojerl2-037](tasks/clojerl2-037-bigdecimal.md) | BigDecimal | 035 | 已完成 |
+
 ## 关键路径
 
 ```

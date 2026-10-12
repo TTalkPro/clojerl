@@ -21,21 +21,22 @@ clojerl2 还在开发中。下面是诚实的现状,不是路线图。
 - reader 条件 `#?`/`#?@`(特性 `:clje` 与 `:default`),`.cljc` 文件可直接 `require`;
 - 标准库命名空间:`clojure.string`、`clojure.set`、`clojure.walk`、`clojure.template`、`clojure.test`(`deftest`/`is`/`are`/`run-tests` ……,见 [getting-started.md](getting-started.md));
 - 引用类型:atom、volatile、agent、future、promise、`binding`/`bound-fn`(ref/STM 有意不提供);
+- var 的运行时改值:表达式里的 `def`、同一文件里重复的顶层 `def`、`alter-var-root`、`with-redefs`/`with-redefs-fn`(包括别的命名空间里的 var)、var 的 watch 与 validator、对动态 var 的 `set!`、`locking`;clojure.core 的 fn 不能改值(见 differences.md);
 - 多方法与层次:`defmulti`/`defmethod`、`derive`/`isa?`/`prefer-method`,支持自定义层次;
 - 字符串与 IO:正则(Java 语法,`re-find`/`re-seq`/`re-matches`…)、`clojure.string`、`format`/`printf`(java.util.Formatter 语法)、`*out*`/`*in*`/`*err*` 重定向、`with-out-str`/`with-in-str`、`slurp`/`spit`、UUID;
+- BigDecimal:`1.5M` 字面量、算术、`with-precision`、`bigdec`、`format` 与常用的 `java.math.BigDecimal` 方法;
 - 字符串是 UTF-8,中文可直接使用。
 
-**还没有的**(括号里是 corpus 中因此失败的条目数,见 [corpus 基线](../notes/corpus-baseline.md);corpus 通过 3681 / 4841):
-- 尚未移植的 clojure.core 函数,或已有函数缺少某些元数(arity),例如部分 transducer 形式(118)
-- reader 尚不接受的写法:部分数字语法、转义等(105)
-- 编译器尚不接受的形式:fn 体内的 `def`、部分 `letfn`/`set!`/`.`/`new` 用法等(178 + 11)
-- BigDecimal:`1.5M` 读得进来,求值时抛错(67)
-- 其余命名空间与 var 操作:`read`、一个文件里多个 `ns` 形式、`intern` 带元数据等(48)
-- 部分宿主类型查询(20)
+**还没有的**(括号里是 corpus 中因此失败的条目数,见 [corpus 基线](../notes/corpus-baseline.md);corpus 通过 3975 / 4841):
+- reader 尚不接受的写法或读错误信息不同:部分数字语法、转义等(120)
+- 编译器尚不接受的形式:部分 `letfn`/`.`/`new` 用法、对字段的 `set!` 等(149 + 5)
+- 其余命名空间与 var 操作:`read`/`read+string`、一个文件里多个 `ns` 形式、`intern` 带元数据等(31)
+- 部分宿主类型与方法,例如从字节数组构造 `String`、字符集(49)
 - `clojure.edn`、`clojure.math`、`clojure.pprint` 等其余标准库命名空间(22)
-- `alter-var-root`、`with-redefs`、`locking`(12)
-- 能跑但结果与 JVM 不一致、待逐条分诊的(337)
+- var 对象的 Java 方法(`isBound`/`bindRoot`/`setMacro` 等)与局部 var 的绑定(14)
+- 打印:`print-method` 多方法、`*print-length*`/`*print-level*`/`*print-meta*` 等(29);惰性求值的时机:`iterate`/`pmap` 等(9)
+- 其余 core 宏与函数的错误结果,例如 `for` 的 `:while`、`definline`(19);record(7);正则与 format 的边角(10 + 8)
 
-**clojure-test-suite**:[jank-lang/clojure-test-suite](https://github.com/jank-lang/clojure-test-suite)(`vendor/clojure-test-suite`,子模块)全量跑在 CI 里(`make cts`),247 个命名空间,断言通过 4824 / 失败 416 / 错误 743,逐命名空间的失败数登记在 `test/cts-known-failures.txt`,变好变坏都会让 CI 变红。
+**clojure-test-suite**:[jank-lang/clojure-test-suite](https://github.com/jank-lang/clojure-test-suite)(`vendor/clojure-test-suite`,子模块)全量跑在 CI 里(`make cts`),247 个命名空间,断言通过 5454 / 失败 245 / 错误 393,逐命名空间的失败数登记在 `test/cts-known-failures.txt`,变好变坏都会让 CI 变红。
 
-**与 JVM 有意不同的**:见 [differences.md](differences.md)。共 21 条,每条都有替代写法。
+**与 JVM 有意不同的**:见 [differences.md](differences.md)。共 31 条,每条都有替代写法。
