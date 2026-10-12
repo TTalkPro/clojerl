@@ -30,9 +30,9 @@
   :alternative "Nothing to change; code that relied on chunks realizing ahead (side effects in map) should not."}
  {:id :symbol/no-metadata
   :area :reader
-  :reason "Symbols are atoms and carry no metadata of their own. Metadata written directly on a def name is kept (^:private, ^:dynamic, ^{:doc ...}), and so is a defn docstring; metadata written on a name handed to a macro is lost: (defn ^:private f ...) defines a public var (defn- does make it private), and with-meta on a symbol fails."
+  :reason "Symbols are atoms and carry no metadata of their own: (meta '^:foo bar) is nil and with-meta on a symbol fails. Metadata written on a def name is kept, also through the defining macros ((defn ^:private f ...), (defmulti ^:dynamic m ...)): the compiler carries the reader's metadata on a macro call's name over to the def of that name in the expansion."
   :design "designs/03 §1.1"
-  :alternative "Use defn- (or defn's attr-map, {:private true}) for a private fn; give docs as the defn docstring."}
+  :alternative "Keep metadata on vars and collections, not on symbol values; a macro that needs a name's metadata should take it as an explicit map argument."}
  {:id :char/integer
   :area :strings
   :reason "A character is its integer code point; there is no separate char type: \\a is 97, (str \\a) is \"97\", (seq \"ab\") is (97 98), (= \\a 97) is true, char? is true of any integer that is a code point, and format's %c takes one. Corpus rows that test char rendering are overridden in test/corpus-overrides.edn (project decision 2026-10-12: keep code points)."
@@ -50,7 +50,7 @@
   :alternative "Use quot/rem for exact integer division; keep numerator and denominator yourself where exact fractions matter."}
  {:id :number/beam-semantics
   :area :numbers
-  :reason "Arithmetic follows BEAM, not the JVM (a project decision): integers are unbounded (no 64-bit long overflow, wrap-around, truncation or range checks: parse-long of a big number is that number, ^long/^double hints coerce nothing, bit ops take bignums, %x of a negative number is signed); floats compare exactly, so 0.0 and -0.0 differ; float division by zero raises badarith and ##Inf/##NaN raise an ArithmeticException when evaluated (BEAM floats have no Inf/NaN; they read, so a file that mentions one still compiles); comparisons and numeric predicates do not type-check their arguments (Erlang term order: (< nil 1) is false, no exception)."
+  :reason "Arithmetic follows BEAM, not the JVM (a project decision): integers are unbounded (no 64-bit long overflow, wrap-around, truncation or range checks: parse-long of a big number is that number, ^long/^double hints coerce nothing, bit ops take bignums, %x of a negative number is signed); floats compare exactly, so 0.0 and -0.0 differ; float division by zero raises badarith and ##Inf/##NaN raise an ArithmeticException when evaluated (BEAM floats have no Inf/NaN; they read, so a file that mentions one still compiles); the casts byte, short, int, long, char and float do not range-check ((byte 128) is 128)."
   :design "designs/03 §1.1; user decision 2026-10-11 (clojerl2-023)"
   :alternative "Check argument types yourself where a JVM program relied on ClassCastException; mask with (bit-and x 0xFFFFFFFFFFFFFFFF) where 64-bit wrap-around was intended; test for zero before dividing floats."}
  {:id :fn/arity-at-compile-time
@@ -58,6 +58,21 @@
   :reason "A direct call to a fn var with an arity it does not have is a compile error (JVM: ArityException at run time), because vars link directly to module functions."
   :design "designs/03 §2.1a"
   :alternative "Call through a value when the arity is only known at run time: (apply f args), or a local (let [g f] (g 1 2)), raises at run time as on the JVM."}
+ {:id :vars/forward-references
+  :area :compiler
+  :reason "A namespace file (or anything compiled as one unit) declares all its top-level vars before compiling any form, so a fn body may call a var defined further down the file (JVM: Unable to resolve symbol, a compile error). At the REPL, where each form is its own unit, an undefined name is still a compile error."
+  :design "designs/03 §2.1 (clj2_p_declare: forward references without fake_fun)"
+  :alternative "Nothing to change for code that compiles on the JVM; use declare where the JVM needs it, for code meant to run on both."}
+ {:id :macros/defmacro-form
+  :area :compiler
+  :reason "defmacro is a form the compiler handles itself, not a macro: (macroexpand-1 '(defmacro m [a] a)) returns the form unchanged (JVM: a do with a defn taking &form and &env and a .setMacro call)."
+  :design "designs/01 §5 (parse: kernel forms)"
+  :alternative "Do not rely on the expansion of defmacro; use (:macro (meta #'m)) to ask whether a var is a macro."}
+ {:id :interop/erlang-module-calls
+  :area :compiler
+  :reason "A call head ns/f whose qualifier is neither an alias nor a known namespace names an Erlang module ((lists/reverse x) calls lists:reverse/1), so an unknown alias is not a compile error: the call fails when it runs (undef). JVM: 'No such namespace' when the form compiles."
+  :design "designs/09 §2 (resolve: the remaining mod/fun call heads are erl_call), §3 (Erlang calls)"
+  :alternative "Require a namespace before the forms that use its alias (a require inside a fn body aliases nothing at compile time on the JVM either); a misspelt alias shows up as undef when the call runs."}
  {:id :fn/structural-identity
   :area :compiler
   :reason "Fns are Erlang funs, which compare by value: two closures of the same fn form over equal captured values are = and identical?, and collapse as set members or map keys (JVM: every evaluation of a fn form is a distinct object)."
@@ -75,9 +90,19 @@
   :alternative "Use a defrecord plus extend-type where reify was used; extend a class the model knows (or a clj2 tag) instead of one it does not."}
  {:id :namespaces/hot-code-two-versions
   :area :namespaces
-  :reason "Redefinition follows BEAM's two-version code loading: reloading a namespace, or redefining a var at the REPL (each REPL var has a module of its own), keeps the previous version alive; fn values taken from it keep running the old code while new calls run the new one. A second redefinition purges the oldest version: fn values still holding it raise badfun when called, and a process still executing it makes the redefinition fail (old_code_in_use). JVM-style immediate global rebinding is not emulated."
+  :reason "Redefinition follows BEAM's two-version code loading: reloading a namespace, or redefining a var at the REPL (each REPL var has a module of its own), keeps the previous version alive; fn values taken from it keep running the old code while new calls run the new one. A second redefinition purges the oldest version: fn values still holding it raise badfun when called, and a process still executing it makes the redefinition fail (old_code_in_use). A var given a value at run time instead (a def inside an expression, alter-var-root, with-redefs) moves it into the var table once and is reassigned there from then on: no more versions, and every caller sees the new value."
   :design "designs/02 §5, designs/03 §2.2"
   :alternative "Hold the var's name rather than its value when you want the latest definition: call (f ...) directly or through a wrapper fn (fn [& args] (apply f args))."}
+ {:id :vars/core-direct-linked
+  :area :namespaces
+  :reason "clojure.core is linked directly into everything compiled against it, itself included, so the root of a clojure.core fn or constant var cannot change at run time: alter-var-root, with-redefs and a def inside an expression of such a var raise IllegalStateException naming this id. (JVM 1.8+: core is direct-linked too, but user code calls core through the var, so with-redefs of a core fn reaches user code.) Dynamic core vars (*out*, *print-length* ...) are bound and set as usual."
+  :design "designs/03 §2.1a"
+  :alternative "Redefine your own var that wraps the core fn, and call that: (defn my-deref [x] (deref x)), then (with-redefs [my-deref ...] ...)."}
+ {:id :vars/self-calls-direct
+  :area :namespaces
+  :reason "Once a var of a namespace module is given a value at run time (with-redefs, alter-var-root, a def inside an expression), calls between the module's vars go through the var table, but a fn's calls of itself stay inside its own body, like recur: (alter-var-root #'f (fn [old] (fn [n] (if (zero? n) :new (old n))))) never reaches the new fn from old's recursion (JVM: the recursive call goes through the var)."
+  :design "designs/03 §2.1a, §2.2"
+  :alternative "Make the recursion go through a value you control: have the fn take itself as an argument, or recur on a helper the new value can wrap."}
  {:id :namespaces/symbols
   :area :namespaces
   :reason "A namespace is its symbol: *ns*, in-ns, the-ns, find-ns and create-ns deal in symbols (there are no Namespace objects), and *ns* prints as the bare name."
@@ -109,7 +134,17 @@
   :area :collections
   :reason "A transient wraps the persistent value (BEAM terms are immutable): conj!, assoc! and the other bang ops return the next transient, so code that uses their return values, as Clojure requires, works; a transient used again after persistent!, or an old transient used after a bang op, is not detected and simply holds the value it held. Transients cost what persistent updates cost."
   :design "designs/03 §1.1"
-  :alternative "Use the return value of every bang op (as Clojure demands anyway); there is no speed to gain from transients here, so plain persistent ops are equally fine."} {:id :collections/exact-keys
+  :alternative "Use the return value of every bang op (as Clojure demands anyway); there is no speed to gain from transients here, so plain persistent ops are equally fine."} {:id :collections/map-entry-vectors
+  :area :collections
+  :reason "A map entry is a two-element vector; there is no separate MapEntry type. So map-entry? is true of any two-element vector, key and val take one, and empty of an entry is [] (JVM: map-entry? is false of a vector, key/val of a vector throw, empty of a MapEntry is nil)."
+  :design "designs/03 §1.1"
+  :alternative "Do not use map-entry? to tell entries from pairs you built; key and val work on both."}
+ {:id :sorted/comparator-calls
+  :area :collections
+  :reason "Sorted maps and sets are balanced trees of their own, not the JVM's red-black PersistentTreeMap: building or updating one calls the comparator a different number of times (fewer, typically). Order, lookup and equality are the same."
+  :design "designs/03 §1.3"
+  :alternative "Keep comparators free of side effects; do not count their calls."}
+ {:id :collections/exact-keys
   :area :collections
   :reason "Hash maps and sets are Erlang maps keyed by the exact term: two keys that are = but differ in representation (a list and a vector with the same elements) or in metadata are different keys, so (get {[1 2] :a} '(1 2)) is nil and assoc of such a key adds an entry instead of replacing the stored one. Keys that are numbers, strings, keywords, symbols or collections of one kind behave as on the JVM."
   :design "designs/03 §1.3"

@@ -67,10 +67,14 @@ lazy_seq__no_chunking_test() ->
 %% `def' itself (defn- passes :private in defn's attr-map instead).
 symbol__no_metadata_test() ->
     setup_ns(),
+    %% a symbol value has none
+    ?assertEqual(nil, ev("(meta '^:foo bar)")),
+    ?assertEqual(':threw', ev("(try (with-meta 'x {:a 1}) :ok (catch Throwable e :threw))")),
+    %% a def name keeps it, also through a defining macro
     ev("(defn ^:private via-macro [] 1)"),
     ev("(def ^:private direct 1)"),
     {ok, #{vars := #{'via-macro' := V1, direct := V2}}} = clj2_ns:info('t.evidence'),
-    ?assertEqual(false, maps:get(private, V1)),
+    ?assertEqual(true, maps:get(private, V1)),
     ?assertEqual(true, maps:get(private, V2)).
 
 %% JVM: \a is a java.lang.Character.
@@ -102,14 +106,23 @@ number__beam_semantics_test() ->
                  ev("(try ##NaN (catch ArithmeticException e (:type (ex-data e))))")),
     ?assertEqual(':ArithmeticException',
                  ev("(try (+ 1 ##Inf) (catch ArithmeticException e (:type (ex-data e))))")),
-    %% no type check: Erlang term order (numbers before atoms), no throw
-    ?assertEqual(false, ev("(< nil 1)")).
+    %% casts do not range-check
+    ?assertEqual(128, ev("(byte 128)")).
 
 %% JVM: an ArityException when the call runs.
 fn__arity_at_compile_time_test() ->
     setup_ns(),
     ev("(defn one-arg [x] x)"),
     ?assertError({clj2_compile, _, {link, {arity, _, 'one-arg', 2}}}, ev("(fn [] (one-arg 1 2))")).
+
+%% JVM: an alias no namespace has is a compile error ("No such namespace").
+interop__erlang_module_calls_test() ->
+    setup_ns(),
+    %% compiles: zzq names an Erlang module; calling it fails (undef)
+    ev("(defn calls-unknown [] (zzq-no-such/union #{1} #{2}))"),
+    ?assertError(undef, ev("(calls-unknown)")),
+    %% the same head is how Erlang is called
+    ?assertEqual([3, 2, 1], ev("(lists/reverse '(1 2 3))")).
 
 %% JVM: each evaluation of a fn form is a distinct object.
 fn__structural_identity_test() ->
@@ -146,6 +159,22 @@ namespaces__hot_code_two_versions_test() ->
     ev("(defn hv [] 2)"),
     ?assertEqual(1, ev("(held)")),                       % the old version's code
     ?assertEqual(2, ev("(hv)")).
+
+%% JVM: with-redefs of a core fn reaches the user code calling it.
+vars__core_direct_linked_test() ->
+    setup_ns(),
+    ?assertError({'clojure.lang.ExceptionInfo', _,
+                  #{':message' := <<"Can't change the root of clojure.core/inc", _/binary>>}},
+                 ev("(with-redefs [inc (fn [x] x)] (inc 1))")),
+    ?assertEqual(2, ev("(inc 1)")).
+
+%% JVM: a fn's call of itself goes through its var.
+vars__self_calls_direct_test() ->
+    setup_ns(),
+    {ok, _} = clj2_compiler:load_ns(<<"(ns t.selfcall) (defn down [n] (if (= n 0) :done (down (- n 1))))">>),
+    ev("(alter-var-root (var t.selfcall/down) (fn [old] (fn [n] (if (= n 0) :new (old n)))))"),
+    ?assertEqual(':new', ev("(t.selfcall/down 0)")),
+    ?assertEqual(':done', ev("(t.selfcall/down 2)")).     % JVM: :new, through the var
 
 %% JVM: *ns* is a clojure.lang.Namespace object, printed #namespace[...].
 namespaces__symbols_test() ->
@@ -226,6 +255,30 @@ seqs__class_model_test() ->
     ?assertEqual('clojure.lang.LazySeq', ev("(class (range 5))")),
     ?assertEqual(true, lists:member(ev("(class (cons 1 [2]))"),
                                     ['clojure.lang.PersistentList', 'clojure.lang.LazySeq'])).
+
+%% JVM: map-entry? is false of a vector; key of a vector throws.
+collections__map_entry_vectors_test() ->
+    setup_ns(),
+    ?assertEqual(true, ev("(map-entry? [:a 1])")),
+    ?assertEqual(':a', ev("(key [:a 1])")).
+
+%% JVM: 12301 comparator calls (PersistentTreeMap, red-black).
+sorted__comparator_calls_test() ->
+    setup_ns(),
+    N = ev("(let [c (atom 0) cmp (fn [a b] (swap! c inc) (compare a b))]"
+           " (into (sorted-map-by cmp) (map (fn [i] [i i]) (range 1024))) @c)"),
+    ?assert(N =/= 12301).
+
+%% JVM: an undeclared forward reference is a compile error.
+vars__forward_references_test() ->
+    setup_ns(),
+    {ok, _} = clj2_compiler:load_ns(<<"(ns t.fwdref) (defn a [] (b)) (defn b [] 42)">>),
+    ?assertEqual(42, ev("(t.fwdref/a)")).
+
+%% JVM: defmacro expands to (do (defn ...) (. (var m) (setMacro)) (var m)).
+macros__defmacro_form_test() ->
+    setup_ns(),
+    ?assertEqual(<<"(defmacro mm [a] a)">>, ev("(pr-str (macroexpand-1 (quote (defmacro mm [a] a))))")).
 
 collections__exact_keys_test() ->
     setup_ns(),
