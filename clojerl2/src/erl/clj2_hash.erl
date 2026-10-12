@@ -50,11 +50,19 @@ hasheq({sorted_map, _, {_, _, _}} = S) ->
 hasheq({sorted_set, _, {_, _, _}} = S) -> hash_unordered(clj2_sorted:to_list(S));
 hasheq(L) when is_list(L) -> hash_ordered(clj2_coll:to_list(L));
 hasheq({lazy_seq, _, _} = L) -> hash_ordered(clj2_coll:to_list(L));
-%% a defrecord: (bit-xor (hash 'ns.R) map-hasheq), as its generated hasheq
-hasheq({Tag, _, M}) when is_atom(Tag), is_map(M), Tag =/= set, Tag =/= map ->
-    signed(u(symbol_hash(atom_to_list(Tag))) bxor u(map_hash(maps:to_list(M))));
-hasheq({transient, _, _} = T) -> erlang:phash2(T);
+%% a deftype or defrecord with its own hashCode (asked every time)
+hasheq({Tag, _, _} = X) when is_atom(Tag), Tag =/= set, Tag =/= map, Tag =/= vector,
+                             element(1, X) =/= transient ->
+    case clj2_proto:object_method(X, hashCode) of
+        {ok, F} -> clj2_rt:invoke(F, [X]);
+        error -> type_hasheq(X)
+    end;
 hasheq(X) -> erlang:phash2(X).
+
+%% a defrecord: (bit-xor (hash 'ns.R) map-hasheq), as its generated hasheq
+type_hasheq({Tag, _, M}) when is_atom(Tag), is_map(M), Tag =/= set, Tag =/= map ->
+    signed(u(symbol_hash(atom_to_list(Tag))) bxor u(map_hash(maps:to_list(M))));
+type_hasheq(X) -> erlang:phash2(X).
 
 %% @doc Object.hashCode as the JVM's classes define it (.hashCode, %h,
 %% hash-combine's second argument): not hasheq

@@ -123,6 +123,9 @@ impl_unit({extend, A, TypeSym, ProtoSym, Methods}, Ns, NsVars, Ctx, Opts) ->
     {Mod, Forms}.
 
 %% The protocol a symbol names: `ns.P' for the var P of namespace ns.
+%% Object's methods (toString, hashCode, equals) are a protocol of their own
+protocol_id(_A, Sym, _Ns, _NsVars, _Ctx) when Sym =:= 'Object'; Sym =:= 'java.lang.Object' ->
+    'java.lang.Object';
 protocol_id(A, Sym, Ns, NsVars, #{aliases := Al, refers := Rf}) ->
     {PNs, Name} =
         case string:split(atom_to_list(Sym), "/") of
@@ -320,6 +323,10 @@ define_var({def, A, Name, Meta, Init} = T, Ns, Opts) ->
     end.
 
 define_var_module({def, _, Name, _, _} = T, Ns, Opts) ->
+    Old = case clj2_ns:info(Ns) of
+              {ok, #{vars := #{Name := OI}}} -> OI;
+              _ -> none
+          end,
     Ctx = ns_ctx(Ns, Opts),
     M = var_module(Ns, Name),
     {Forms, St} = compile_tops([T], Ns, M, maps:get(own, Ctx), false, Ctx#{unit => ns}, Opts),
@@ -345,7 +352,15 @@ define_var_module({def, _, Name, _, _} = T, Ns, Opts) ->
             end;
         {error, Why} -> erlang:error({clj2_redefine, {Why, Ns, Name}})
     end,
-    clj2_ns:put_var(Ns, Name, (maps:get(Name, maps:get(vars, St)))#{module => M}),
+    New = (maps:get(Name, maps:get(vars, St)))#{module => M},
+    clj2_ns:put_var(Ns, Name, New),
+    %% code compiled while the var was not a fn (declare, a value) reads
+    %% the var table: it gets the fn too (a fun of the module's export,
+    %% so later redefinitions reach it as well)
+    case {Old, New} of
+        {#{kind := OK}, #{kind := fn}} when OK =/= fn -> clj2_var:set_root(M, Name, clj2_rt:var_fn(M, Name, New));
+        _ -> ok
+    end,
     clj2_rt:var(Ns, Name).
 
 %% @doc The module of a var defined at the REPL. Module names must be

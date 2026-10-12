@@ -68,6 +68,14 @@ kernel_form(S) when is_atom(S) ->
     end;
 kernel_form(_) -> none.
 
+%% ... unless the namespace has its own var of that name (clojure.pprint's
+%% deftype, with clojure.core's excluded)
+kernel_form(S, E) ->
+    case maps:get(own_names, E, #{}) of
+        #{S := _} -> none;
+        _ -> kernel_form(S)
+    end.
+
 %% St may carry: ns, aliases, refers (namespace context for
 %% syntax-quote) and expand (the macro capability).
 run(Forms, St) when is_list(Forms) ->
@@ -130,7 +138,7 @@ top1(F, A0, E) ->
                 def -> def_form(Rest, A, E);
                 ns -> [ns_form(Rest, A)];
                 S when is_atom(S) ->
-                    case kernel_form(S) of
+                    case kernel_form(S, E) of
                         defmacro -> [defmacro_form(Rest, A, E)];
                         defprotocol -> defprotocol_form(Rest, A, E);
                         'extend-type' -> extend_type_form(Rest, A, E, none);
@@ -255,30 +263,53 @@ defmacro_form([N | Rest0], A, E) ->
                                      end;
                          [] -> {#{}, Rest0}
                      end,
-    Rest2 = case Rest1 of
-                [M | R2] -> case clj2_form:map_pairs(unwrap(M)) of
-                                false -> Rest1;
-                                _ when R2 =:= [] -> Rest1;
-                                _ -> R2
-                            end;
-                [] -> syntax(A, bad_defmacro)
-            end,
-    Clauses = case clj2_form:vector_items(unwrap(hd(Rest2))) of
-                  false -> Rest2;                                % ([p] b) ...
-                  _ -> [Rest2]                                   % [p] b ...
+    {Lead, Rest2} = case Rest1 of
+                        [M | R2] -> case clj2_form:map_pairs(unwrap(M)) of
+                                        false -> {#{}, Rest1};
+                                        _ when R2 =:= [] -> {#{}, Rest1};
+                                        Ps0 -> {attr_meta(Ps0), R2}
+                                    end;
+                        [] -> {#{}, Rest1}
+                    end,
+    %% (defmacro m ([a] ...) {:k 1}): a trailing attr-map after the arities
+    {Rest3, Trail} = case Rest2 of
+                         [] -> {[], #{}};
+                         _ ->
+                             case {clj2_form:vector_items(unwrap(hd(Rest2))), clj2_form:map_pairs(unwrap(lists:last(Rest2)))} of
+                                 {false, Ps1} when Ps1 =/= false -> {lists:droplast(Rest2), attr_meta(Ps1)};
+                                 _ -> {Rest2, #{}}
+                             end
+                     end,
+    Clauses = case Rest3 of
+                  [] -> [];
+                  _ -> case clj2_form:vector_items(unwrap(hd(Rest3))) of
+                           false -> Rest3;                       % ([p] b) ...
+                           _ -> [Rest3]                          % [p] b ...
+                       end
               end,
     WithEnv = [case unwrap(C) of
                    [Ps | Body] ->
                        case clj2_form:vector_items(unwrap(Ps)) of
                            false -> syntax(pos(C, A), bad_defmacro_params);
-                           Items -> [clj2_coll:vector(['&form', '&env' | Items]) | Body]
+                           Items -> [clj2_coll:vector(['&form', '&env' | [clj2_form:to_data(I) || I <- Items]]) | Body]
                        end;
                    _ -> syntax(pos(C, A), bad_defmacro)
                end || C <- Clauses],
-    Fn = fn([Name | WithEnv], A, E),
+    %% destructured params: clojure.core/fn takes them apart
+    Plain = lists:all(fun(C) -> lists:all(fun(P) -> is_atom(unwrap(P)) end,
+                                          clj2_form:vector_items(unwrap(hd(C)))) end, WithEnv),
+    Fn = case Plain of
+             true -> fn([Name | WithEnv], A, E);
+             false -> form(['clojure.core/fn', Name | WithEnv], A, E)
+         end,
     Arglists = [clj2_form:to_data(hd(unwrap(C))) || C <- Clauses],
-    {def, A, Name, (maps:merge(#{':arglists' => Arglists}, maps:merge(name_meta(N), Meta1)))#{':macro' => true}, Fn};
+    Meta = lists:foldl(fun(M, Acc) -> maps:merge(Acc, M) end, #{':arglists' => Arglists},
+                       [name_meta(N), Meta1, Lead, Trail]),
+    {def, A, Name, Meta#{':macro' => true}, Fn};
 defmacro_form([], A, _E) -> syntax(A, bad_defmacro).
+
+%% an attr-map's pairs as var metadata (constants: keys and values as data)
+attr_meta(Pairs) -> maps:from_list([{clj2_form:to_data(K), clj2_form:to_data(V)} || {K, V} <- Pairs]).
 
 %% (ns name docstring? (:require spec ...)*)
 ns_form([N | Clauses], A) ->
@@ -418,6 +449,7 @@ form({regex, _, Src}, A, _E) when is_binary(Src) ->
     catch error:R -> syntax(A, {bad_regex, Src, R})
     end;
 form({uuid, _, S} = U, A, _E) when is_binary(S) -> {const, A, U};
+form({tagged, [], inst, S}, A, _E) when is_binary(S) -> {const, A, clj2_inst:parse(S)};
 form({tagged, [], uuid, S}, A, _E) when is_binary(S) ->
     try {const, A, clj2_string:uuid(S)}
     catch error:_ -> syntax(A, {bad_uuid, S})
@@ -475,7 +507,7 @@ coll(Ctor, Items, _X, A, E) ->
         false -> {invoke, A, {sym, A, qsym(clj2_coll, Ctor)}, [{list, A, Nodes}]}
     end.
 
-list_form(quote, _, [D], _F, A, E) -> {const, A, kws(clj2_form:to_data(D), E)};
+list_form(quote, _, [D], _F, A, E) -> {const, A, kws(quoted_data(D, A, E), E)};
 list_form('if', _, [C, T], _F, A, E) -> {'if', A, form(C, A, E), form(T, A, E), {const, A, nil}};
 list_form('if', _, [C, T, El], _F, A, E) -> {'if', A, form(C, A, E), form(T, A, E), form(El, A, E)};
 list_form('do', _, Body, _F, A, E) -> body(Body, A, E);
@@ -484,7 +516,14 @@ list_form('let*', _, [Bs | Body], _F, A, E) ->
     {'let', A, Binds, body(Body, A, E1)};
 list_form('loop*', _, [Bs | Body], _F, A, E) ->
     {Binds, E1} = bindings(Bs, A, E),
-    {loop, A, Binds, body(Body, A, E1)};
+    case Binds of
+        [_, _ | _] ->
+            %% the inits run in order, each seeing the names before it (as
+            %% let*): bound by a let*, then the loop rebinds the names
+            {'let', A, Binds, {loop, A, [{bind, BA, S, {sym, BA, S}} || {bind, BA, S, _} <- Binds],
+                               body(Body, A, E1)}};
+        _ -> {loop, A, Binds, body(Body, A, E1)}
+    end;
 list_form(recur, _, Args, _F, A, E) -> {recur, A, [form(X, A, E) || X <- Args]};
 list_form('fn*', _, Rest, _F, A, E) -> fn(Rest, A, E);
 list_form('letfn*', _, [Bs | Body], _F, A, E) ->
@@ -553,7 +592,7 @@ list_form_atom(S, Head, [Obj | Args] = All, F, A, E = #{locals := Ls}) when not 
 list_form_atom(S, Head, Args, F, A, E) -> list_form_plain(S, Head, Args, F, A, E).
 
 list_form_plain(S, Head, Args, F, A, E) ->
-    case kernel_form(S) of
+    case kernel_form(S, E) of
         none -> list_form_call(S, Head, Args, F, A, E);
         K -> syntax(A, {not_at_top_level, K})
     end.
@@ -596,8 +635,10 @@ list_form_call(S, Head, Args, F, A, E) ->
 %% Offer a call to the driver's macro capability. Locals and keywords
 %% are never macros.
 macroexpand(S, F, A, E = #{locals := Ls, expand := Expand}) ->
+    %% a kernel form's name is a macro when the namespace defines its own
     case Expand =:= none orelse is_map_key(S, Ls) orelse is_keyword(S)
-         orelse lists:member(S, specials()) of
+         orelse (lists:member(S, specials()) andalso kernel_form(S, E) =/= none)
+         orelse lists:member(S, specials() -- kernel_forms()) of
         true -> none;
         false ->
             Env = clj2_coll:hash_map_kv(lists:append([[L, nil] || L <- maps:keys(Ls)])),
@@ -621,10 +662,19 @@ carry_name_meta(F, X) ->
         [_, {clj2_loc, L, C, Sym, M} | _] when is_atom(Sym), is_map(M), map_size(M) > 0 ->
             case X of
                 [H, Sym | Rest] when is_atom(H) -> [H, {clj2_loc, L, C, Sym, M} | Rest];
-                _ -> X
+                %% a def of the name deeper in the expansion ((defonce ^:private x ..)
+                %% is (when-not (bound? #'x) (def x ..)))
+                _ -> element(1, carry_into_def(X, Sym, {clj2_loc, L, C, Sym, M}))
             end;
         _ -> X
     end.
+
+carry_into_def([def, Sym | Rest], Sym, W) -> {[def, W | Rest], true};
+carry_into_def(L, Sym, W) when is_list(L) ->
+    lists:mapfoldl(fun(X, true) -> {X, true};
+                      (X, false) -> carry_into_def(X, Sym, W)
+                   end, false, L);
+carry_into_def(X, _, _) -> {X, false}.
 
 %% A form as the value a macro receives. Clojure's reader has already
 %% expanded `#(...)' and syntax-quote by then, so they are expanded
@@ -654,6 +704,8 @@ form_data({syntax_quote, [], T}, A, E) -> sq_data(T, A, E, gensym_suffix(A));
 form_data({fnstar, [], [{arity, [], [Ps, Body]}]}, A, E) ->
     ['fn*', form_data(Ps, A, E), form_data(Body, A, E)];
 form_data({deref, [], X}, A, E) -> ['clojure.core/deref', form_data(X, A, E)];
+form_data({unquote, [], X}, A, E) -> ['clojure.core/unquote', form_data(X, A, E)];
+form_data({unquote_splicing, [], X}, A, E) -> ['clojure.core/unquote-splicing', form_data(X, A, E)];
 form_data(L, A, E) when is_list(L) -> [form_data(X, A, E) || X <- L];
 form_data({vector, [], Items}, A, E) when is_list(Items) ->
     clj2_coll:vector([form_data(X, A, E) || X <- Items]);
@@ -663,40 +715,66 @@ form_data({set, [], Items}, A, E) when is_list(Items) ->
     clj2_coll:hash_set([form_data(X, A, E) || X <- Items]);
 form_data(X, _A, _E) -> clj2_form:to_data(X).
 
+%% a quoted form as data: a syntax-quote or unquote inside it reads as the
+%% JVM reader makes it; anything else as clj2_form:to_data does
+quoted_data(D, A, E) ->
+    case has_quote_forms(D) of
+        true -> form_data(D, A, E);
+        false -> clj2_form:to_data(D)
+    end.
+
+has_quote_forms({Tag, [], _}) when Tag =:= syntax_quote; Tag =:= unquote; Tag =:= unquote_splicing -> true;
+has_quote_forms(W) when ?CLJ2_IS_LOC(W) -> has_quote_forms(?CLJ2_LOC_FORM(W));
+has_quote_forms(L) when is_list(L) -> lists:any(fun has_quote_forms/1, L);
+has_quote_forms({Tag, [], Items}) when (Tag =:= vector orelse Tag =:= set), is_list(Items) ->
+    lists:any(fun has_quote_forms/1, Items);
+has_quote_forms({map, [], Pairs}) when is_list(Pairs) ->
+    lists:any(fun({K, V}) -> has_quote_forms(K) orelse has_quote_forms(V) end, Pairs);
+has_quote_forms(_) -> false.
+
+%% A syntax-quote as data: the construction code the JVM reader makes of
+%% it ((clojure.core/seq (clojure.core/concat (clojure.core/list ..) ..)),
+%% (clojure.core/apply clojure.core/vector ..) ...): what read-string,
+%% quote and a nested syntax-quote see. Literals stand for themselves.
 sq_data(W, _A, E, G) when ?CLJ2_IS_LOC(W) -> sq_data(?CLJ2_LOC_FORM(W), anno(W), E, G);
 sq_data({unquote, [], X}, A, E, _G) -> form_data(X, A, E);
+sq_data(['clojure.core/unquote', X], A, E, _G) -> form_data(X, A, E);
+%% ``x: the inner expansion, quoted again
+sq_data({syntax_quote, [], T}, A, E, G) -> sq_data(sq_data(T, A, E, gensym_suffix(A) ++ "i"), A, E, G);
+sq_data({fnstar, [], _} = F, A, E, G) -> sq_data(form_data(F, A, E), A, E, G);
+%% #'x and @x are the lists (var x) and (clojure.core/deref x) to a syntax-quote
+sq_data({var, [], X}, A, E, G) -> sq_data([var, X], A, E, G);
+sq_data({deref, [], X}, A, E, G) -> sq_data(['clojure.core/deref', X], A, E, G);
 sq_data({unquote_splicing, [], _}, A, _E, _G) -> syntax(A, splice_outside_list);
 sq_data(S, _A, E, G) when is_atom(S) ->
     case sq_symbol(S, E, G) of
-        Q when Q =:= nil; Q =:= true; Q =:= false -> Q;
+        %% only keywords, numbers, characters and strings stand for
+        %% themselves; nil and booleans are quoted, as on the JVM
+        Q when Q =:= nil; Q =:= true; Q =:= false -> [quote, Q];
         Q -> case is_keyword(Q) of
                  true -> Q;
                  false -> [quote, Q]
              end
     end;
-sq_data([], _A, _E, _G) -> [quote, []];
-sq_data(L, A, E, G) when is_list(L) ->
-    [_, Cons] = sq_data_seq(L, A, E, G),
-    [qsym(clj2_coll, sq_concat), Cons];
+sq_data([], _A, _E, _G) -> ['clojure.core/list'];
+sq_data(L, A, E, G) when is_list(L) -> ['clojure.core/seq', sq_data_seq(L, A, E, G)];
 sq_data(X, A, E, G) ->
+    Apply = fun(F, Items) -> ['clojure.core/apply', F, ['clojure.core/seq', sq_data_seq(Items, A, E, G)]] end,
     case {clj2_form:vector_items(X), clj2_form:map_pairs(X), clj2_form:set_items(X)} of
-        {Items, _, _} when Items =/= false ->
-            [qsym(clj2_coll, vector), sq_data_seq(Items, A, E, G)];
+        {Items, _, _} when Items =/= false -> Apply('clojure.core/vector', Items);
         {_, Pairs, _} when Pairs =/= false ->
-            [qsym(clj2_coll, hash_map_kv), sq_data_seq(lists:append([[K, V] || {K, V} <- Pairs]), A, E, G)];
-        {_, _, Items} when Items =/= false ->
-            [qsym(clj2_coll, hash_set), sq_data_seq(Items, A, E, G)];
+            Apply('clojure.core/hash-map', lists:append([[K, V] || {K, V} <- Pairs]));
+        {_, _, Items} when Items =/= false -> Apply('clojure.core/hash-set', Items);
         _ -> clj2_form:to_data(X)
     end.
 
 %% (clj2_coll/concat (cons part1 (cons part2 '()))), each part a seqable
 sq_data_seq(Items, A, E, G) ->
-    Parts = [case unwrap(I) of
-                 {unquote_splicing, [], X} -> form_data(X, pos(I, A), E);
-                 _ -> [qsym(clj2_coll, cons), sq_data(I, pos(I, A), E, G), [quote, []]]
-             end || I <- Items],
-    Cons = lists:foldr(fun(P, Acc) -> [qsym(clj2_coll, cons), P, Acc] end, [quote, []], Parts),
-    [qsym(clj2_coll, concat), Cons].
+    ['clojure.core/concat' | [case unwrap(I) of
+                                  {unquote_splicing, [], X} -> form_data(X, pos(I, A), E);
+                                  ['clojure.core/unquote-splicing', X] -> form_data(X, pos(I, A), E);
+                                  _ -> ['clojure.core/list', sq_data(I, pos(I, A), E, G)]
+                              end || I <- Items]].
 
 %% (do) → nil; (do e) → e; otherwise a do node.
 body([], A, _E) -> {const, A, nil};
@@ -825,7 +903,7 @@ defprotocol_form([N | Rest0], A, E = #{ns := Ns}) ->
                            end,
                     {MName, pos(S, A), Params, MDoc};
                 _ -> syntax(pos(S, A), bad_protocol_method)
-            end || S <- Rest, not is_binary(unwrap(S)), not is_keyword(unwrap(S))],
+            end || S <- drop_options(Rest), not is_binary(unwrap(S))],
     Methods = [{def, MA, MName, #{},
                 fn([MName | [dispatch_clause(Proto, MName, P, MA) || P <- Params]], MA, E)}
                || {MName, MA, Params, _} <- Sigs],
@@ -841,6 +919,16 @@ defprotocol_form([N | Rest0], A, E = #{ns := Ns}) ->
                                   ':methods', clj2_coll:vector([M || {M, _, _, _} <- Sigs])]),
     [{def, A, Name, Doc, {const, A, Info}} | Methods];
 defprotocol_form([], A, _E) -> syntax(A, bad_defprotocol).
+
+%% (defprotocol P "doc" :extend-via-metadata true (m [x]) ...): the
+%% option pairs are not methods
+drop_options([X | Rest]) ->
+    case {is_keyword(unwrap(X)), Rest} of
+        {true, [_ | Rest1]} -> drop_options(Rest1);
+        {true, []} -> [];
+        {false, _} -> [X | drop_options(Rest)]
+    end;
+drop_options([]) -> [].
 
 dispatch_clause(Proto, MName, ParamsVec, A) ->
     case [unwrap(X) || X <- clj2_form:vector_items(unwrap(ParamsVec))] of
@@ -902,8 +990,26 @@ method_tops(Specs, A, E, Fields) ->
                             false -> Acc ++ [{MName, SA, Clauses}]
                         end
                 end, [], Specs),
-    [{method, MA, MName, fn([with_fields(C, Fields) || C <- Cs], MA, E)}
+    [{method, MA, MName, fn([with_fields(destructured_params(C), Fields) || C <- Cs], MA, E)}
      || {MName, MA, Cs} <- Grouped].
+
+%% a method param that is a pattern ([k v], {:keys [a]}) becomes a fresh
+%% name, taken apart by clojure.core/let inside the body
+destructured_params([Params | Body]) ->
+    Items = clj2_form:vector_items(unwrap(Params)),
+    {Ps, Binds, _} = lists:foldl(
+                       fun(P, {Acc, Bs, I}) ->
+                               case unwrap(P) of
+                                   S when is_atom(S) -> {[S | Acc], Bs, I};
+                                   _ ->
+                                       G = list_to_atom("p__" ++ integer_to_list(I) ++ "__auto__"),
+                                       {[G | Acc], Bs ++ [clj2_form:to_data(P), G], I + 1}
+                               end
+                       end, {[], [], 1}, Items),
+    case Binds of
+        [] -> [Params | Body];
+        _ -> [clj2_coll:vector(lists:reverse(Ps)), ['clojure.core/let', clj2_coll:vector(Binds) | Body]]
+    end.
 
 %% In deftype/defrecord methods the fields are locals: the clause takes
 %% `this' as a fresh name and binds the user's name and every field not
@@ -948,9 +1054,11 @@ deftype_form(Kind, [N, FieldsVec | Specs], A, E = #{ns := Ns}) ->
              fn([[clj2_coll:vector(['m__auto__']),
                   [qsym(clj2_proto, record), [quote, Tag], [quote, Kws], 'm__auto__']]], A, E)}
             || Kind =:= defrecord],
-    Defs ++ case Specs of
+    %% leading option pairs (:no-print true :load-ns false) are not specs
+    Specs1 = drop_options(Specs),
+    Defs ++ case Specs1 of
                 [] -> [];
-                _ -> extend_type_form([Name | Specs], A, E, {Kind, Fields})
+                _ -> extend_type_form([Name | Specs1], A, E, {Kind, Fields})
             end;
 deftype_form(Kind, _, A, _E) -> syntax(A, {bad_form, Kind}).
 
@@ -1043,11 +1151,16 @@ squote(T, A, E) ->
 
 sq(W, _A, E, G) when ?CLJ2_IS_LOC(W) -> sq(?CLJ2_LOC_FORM(W), anno(W), E, G);
 sq({unquote, [], X}, A, E, _G) -> form(X, A, E);
+%% (clojure.core/unquote x) as data is an unquote too (a nested
+%% syntax-quote's construction code carries ~'~x so)
+sq(['clojure.core/unquote', X], A, E, _G) -> form(X, A, E);
 sq({unquote_splicing, [], _}, A, _E, _G) -> syntax(A, splice_outside_list);
 sq(S, A, E, G) when is_atom(S) -> {const, A, sq_symbol(S, E, G)};
 sq([], A, _E, _G) -> {const, A, []};
 sq(L, A, E, G) when is_list(L) -> sq_seq(L, A, E, G, list);
-sq({syntax_quote, [], _}, A, _E, _G) -> unsupported(A, nested_syntax_quote);
+%% a syntax-quote inside one: its construction code, syntax-quoted
+sq({syntax_quote, [], T}, A, E, G) -> sq(sq_data(T, A, E, G ++ "i"), A, E, G);
+sq({fnstar, [], _} = F, A, E, G) -> sq(form_data(F, A, E), A, E, G);
 sq(X, A, E, G) ->
     case {clj2_form:vector_items(X), clj2_form:map_pairs(X), clj2_form:set_items(X)} of
         {Items, _, _} when Items =/= false ->
@@ -1064,6 +1177,7 @@ sq(X, A, E, G) ->
 sq_seq(Items, A, E, G, Wrap) ->
     Parts = [case unwrap(I) of
                  {unquote_splicing, [], X} -> {splice, form(X, pos(I, A), E)};
+                 ['clojure.core/unquote-splicing', X] -> {splice, form(X, pos(I, A), E)};
                  _ -> {one, sq(I, pos(I, A), E, G)}
              end || I <- Items],
     case lists:all(fun({one, {const, _, _}}) -> true; (_) -> false end, Parts) of
@@ -1104,7 +1218,9 @@ sq_symbol1(S, Str, Own, _E, Ns, Aliases, Refers, G) ->
          orelse lists:member(S, specials() -- kernel_forms()) of
         true -> S;
         false ->
-            case lists:suffix("#", Str) of
+            case lists:suffix("#", Str) orelse hd(Str) =:= $% of
+                %% x# and #()'s %, %1, %& (the JVM reads those as gensyms too)
+                true when hd(Str) =:= $% -> list_to_atom(Str ++ G);
                 true -> list_to_atom(lists:droplast(Str) ++ G);
                 false ->
                     case string:split(Str, "/") of

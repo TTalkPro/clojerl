@@ -50,16 +50,24 @@
         ]).
 
 %% @doc A vector of the elements of an Erlang list.
-vector(L) when is_list(L) -> {vector, nil, list_to_tuple(L)}.
+%% (a list may end in a lazy tail: concat's, in a syntax-quote template)
+vector(L) when is_list(L) ->
+    try {vector, nil, list_to_tuple(L)}
+    catch error:badarg -> {vector, nil, list_to_tuple(to_list(L))}
+    end.
 
 %% @doc A map from a flat `[K1, V1, K2, V2, ...]' list; later keys win.
 hash_map_kv(KVs) -> {map, nil, kv(KVs, #{})}.
 
 kv([], M) -> M;
-kv([K, V | Rest], M) -> kv(Rest, M#{K => V});
-kv([_], _) -> erlang:error({clj2_odd_map_literal}).
+kv([K, V | Rest], M) when is_list(Rest) -> kv(Rest, M#{K => V});
+kv([_], _) -> erlang:error({clj2_odd_map_literal});
+kv(L, M) -> kv(to_list(L), M).                       % a lazy tail (apply's rest)
 
-hash_set(L) when is_list(L) -> {set, nil, maps:from_keys(L, nil)}.
+hash_set(L) when is_list(L) ->
+    try {set, nil, maps:from_keys(L, nil)}
+    catch error:badarg -> {set, nil, maps:from_keys(to_list(L), nil)}
+    end.
 
 vec_to_list({vector, _, T}) -> tuple_to_list(T).
 
@@ -294,6 +302,16 @@ conj({map, _, _} = M, X) when is_list(X); element(1, X) =:= lazy_seq; element(1,
                               (is_tuple(X) andalso tuple_size(X) =:= 3 andalso is_atom(element(1, X))
                                andalso is_map(element(3, X)) andalso element(1, X) =/= set) ->
     conj_entries(M, X);
+%% a record takes an entry or a map's entries (assoc), as a map does
+conj({Tag, _, M} = R, X) when is_atom(Tag), is_map(M), Tag =/= set, Tag =/= transient ->
+    case X of
+        nil -> R;
+        {vector, _, {K, V}} -> assoc(R, K, V);
+        {vector, _, _} ->
+            erlang:error(clj2_rt:ex_info(<<"Vector arg to map conj must be a pair">>,
+                                         hash_map_kv([':type', ':IllegalArgumentException']), nil));
+        _ -> lists:foldl(fun(E, Acc) -> conj(Acc, E) end, R, to_list(X))
+    end;
 conj(C, X) -> erlang:error({clj2_cannot_conj, C, X}).
 
 %% each entry in turn: one that is not an entry fails before the rest of
@@ -373,9 +391,18 @@ equals({Tag, _, {_, _, _}} = S, X) when Tag =:= sorted_map; Tag =:= sorted_set -
 equals(X, {Tag, _, {_, _, _}} = S) when Tag =:= sorted_map; Tag =:= sorted_set -> equals(unsort(X), unsort(S));
 %% records: same type, equal fields (metadata ignored)
 equals({map, _, _}, {map, _, _}) -> false;                  % sizes differ
-equals({Tag, _, A}, {Tag, _, B}) when is_atom(Tag), is_map(A), is_map(B) ->
+%% a deftype or defrecord with its own equals
+equals({Tag, _, _} = A, B) when is_atom(Tag), Tag =/= map, Tag =/= set, Tag =/= vector,
+                                Tag =/= lazy_seq, Tag =/= decimal, Tag =/= ratio ->
+    case clj2_proto:object_method(A, equals) of
+        {ok, F} -> clj2_rt:invoke(F, [A, B]) =:= true;
+        error -> equals_value(A, B)
+    end;
+equals(A, B) -> equals_value(A, B).
+
+equals_value({Tag, _, A}, {Tag, _, B}) when is_atom(Tag), is_map(A), is_map(B) ->
     equals({map, nil, A}, {map, nil, B});
-equals(A, B) ->
+equals_value(A, B) ->
     case is_sequential(A) andalso is_sequential(B) of
         true -> seq_equals(to_list(A), to_list(B));
         false -> false

@@ -568,7 +568,11 @@
   ([x message] `(when-not ~x (throw (new AssertionError (str "Assert failed: " ~message "\n" (pr-str '~x)))))))
 
 ;; namespaces are compiled as a unit: defonce is def
-(defmacro defonce [name expr] `(def ~name ~expr))
+(defmacro defonce
+  "Defines name to expr only when the var has no root yet."
+  [name expr]
+  ;; if, not when-not: a special form keeps the name's metadata on the def
+  `(if (bound? (var ~name)) nil (def ~name ~expr)))
 
 (defmacro time [expr]
   `(let [start# (erlang/monotonic_time 1000000)
@@ -848,7 +852,12 @@
   ([child parent] (isa? (deref global-hierarchy) child parent))
   ([h child parent]
    (or (= child parent)
+       ;; classes: a superclass or an interface it implements, as the JVM's
+       ;; isAssignableFrom, or one of its supers derived from parent
+       (clj2_class/is_subclass child parent)
        (contains? (get (get h :ancestors) child #{}) parent)
+       (and (clj2_class/is_class child)
+            (some (fn [s] (contains? (get (get h :ancestors) s #{}) parent)) (clj2_class/supers_list child)))
        (and (vector? parent) (vector? child)
             (= (count parent) (count child))
             (loop [ret true i 0]

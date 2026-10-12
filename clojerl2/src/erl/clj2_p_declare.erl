@@ -51,7 +51,13 @@ run(Tops0, St) ->
 %% one assigns its root where it stands, and the var keeps its value in
 %% the var table (settable/1). A later (def x) without a value changes
 %% nothing. → {Tops, #{Name => true}}
-redefinitions(Tops) ->
+redefinitions(Tops0) ->
+    %% a declaration ((def x), what declare makes) gives way to a later
+    %% def of the same name: the var exists from compile time either way
+    Valued = [N || {def, _, N, M, Init} <- Tops0, Init =/= nil, not is_map_key('$hoisted', M)],
+    Tops = [T || T <- Tops0,
+                 not (element(1, T) =:= def andalso element(5, T) =:= nil andalso
+                      not is_map_key('$hoisted', element(4, T)) andalso lists:member(element(3, T), Valued))],
     {Rev, _, Names} =
         lists:foldl(
           fun({def, A, N, M, Init} = T, {Acc, Seen, Re}) when not is_map_key('$hoisted', M) ->

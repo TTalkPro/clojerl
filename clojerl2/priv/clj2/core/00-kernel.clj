@@ -373,7 +373,8 @@
 
 (defmacro comment [& body] nil)
 ;; forward references are resolved per namespace (designs/03 §2.1)
-(defmacro declare [& names] nil)
+(defmacro declare [& names]
+  `(do ~@(mapcat (fn* [n] (list (list 'def n) (list 'clj2_rt/merge_var_meta (list 'var n) {:declared true}))) names)))
 (defmacro when [test & body] `(if ~test (do ~@body)))
 (defmacro when-not [test & body] `(if ~test nil (do ~@body)))
 (defmacro if-not ([test then] `(if ~test nil ~then)) ([test then else] `(if ~test ~else ~then)))
@@ -577,6 +578,11 @@
          fdecl (if doc (next fdecl) fdecl)
          attr (if (map? (first fdecl)) (first fdecl) nil)
          fdecl (if attr (next fdecl) fdecl)
+         ;; ([x] ...) ([x y] ...) {:k v}: a trailing attr-map, merged over
+         trail (if (if (seq? (first fdecl)) (map? (lists/last (clj2_coll/to_list fdecl))) false)
+                 (lists/last (clj2_coll/to_list fdecl)) nil)
+         fdecl (if trail (lists/droplast (clj2_coll/to_list fdecl)) fdecl)
+         attr (if trail (clj2_coll/conj (if attr attr {}) trail) attr)
          sigs (if (vector? (first fdecl)) (list (first fdecl)) (map first fdecl))
          f (cons 'clojure.core/fn (cons name fdecl))]
     (list 'def name (clj2_rt/defn_meta doc attr sigs) f)))

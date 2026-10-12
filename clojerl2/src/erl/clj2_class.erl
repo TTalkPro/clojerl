@@ -18,7 +18,8 @@
 -module(clj2_class).
 
 -export([class_of/1, type_of/1, is_instance/2, supers/1, bases/1, is_class/1,
-         resolve/1, resolve_simple/1, ancestry/1, exception_class/1, exception_matches/2]).
+         resolve/1, resolve_simple/1, ancestry/1, exception_class/1, exception_matches/2,
+         is_subclass/2, supers_list/1]).
 
 %%====================================================================
 %% Values → classes
@@ -48,6 +49,7 @@ class_of({sorted_map, _, {_, _, _}}) -> 'clojure.lang.PersistentTreeMap';
 class_of({sorted_set, _, {_, _, _}}) -> 'clojure.lang.PersistentTreeSet';
 class_of({ratio, _, _}) -> 'clojure.lang.Ratio';
 class_of({decimal, _, _}) -> 'java.math.BigDecimal';
+class_of({'java.util.Date', _, Ms}) when is_integer(Ms) -> 'java.util.Date';
 class_of({clj2_fn, _, _}) -> 'clojure.lang.AFunction';
 class_of({fnmeta, _, _}) -> 'clojure.lang.AFunction';
 class_of({clj2_reduced, _}) -> 'clojure.lang.Reduced';
@@ -170,6 +172,14 @@ is_class(C) when is_atom(C) ->
     {G, I} = graph(),
     is_map_key(C, G) orelse is_map_key(C, I) orelse record_or_type(C) =/= none;
 is_class(_) -> false.
+
+supers_list(C) -> maps:keys(supers(C)).
+
+%% @doc (isa? Child Parent) for classes: Parent is Child or one of its
+%% supers (Class.isAssignableFrom)
+is_subclass(C, P) when is_atom(C), is_atom(P), C =/= nil, P =/= nil ->
+    is_class(C) andalso is_class(P) andalso is_map_key(P, supers(C));
+is_subclass(_, _) -> false.
 
 %% @doc A symbol in code that names a class → that class, or error. Bare
 %% names are java.lang's (imported by default), clojure.lang's are not.

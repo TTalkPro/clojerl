@@ -43,6 +43,7 @@ invoke({clj2_fn, Fixed, Var} = F, Args) ->
 invoke(F, Args) when is_function(F) ->
     erlang:error({clj2_arity, length(Args), F});
 invoke({multifn, _, _} = MF, Args) -> clj2_multi:invoke(MF, Args);
+invoke({promise, _, _} = P, [V]) -> clj2_ref:deliver(P, V);          % a promise delivers when called
 invoke({fnmeta, _, F}, Args) -> invoke(F, Args);
 invoke({transient, _, C}, Args) -> invoke(C, Args);                       % lookup on a transient
 invoke({var, _, {_, _}} = V, Args) -> invoke(clj2_ref:deref(V), Args);     % a var calls its value
@@ -103,6 +104,12 @@ str1(I) when is_integer(I) -> integer_to_binary(I);
 str1(F) when is_float(F) -> clj2_print:float_str(F);
 str1({Tag, _, S}) when (Tag =:= regex orelse Tag =:= uuid), is_binary(S) -> S;
 str1({'java.lang.StringBuilder', _, _} = B) -> clj2_jvm:builder_text(B);
+%% a deftype or defrecord with its own toString
+str1({Tag, _, _} = X) when is_atom(Tag) ->
+    case clj2_proto:object_method(X, toString) of
+        {ok, F} -> invoke(F, [X]);
+        error -> clj2_print:pr_str(X)
+    end;
 str1(X) -> clj2_print:pr_str(X).                         % collections, records, ...
 
 is_keyword(X) -> is_atom(X) andalso X =/= nil andalso X =/= true andalso X =/= false
@@ -113,7 +120,7 @@ identical(X, Y) -> X =:= Y.
 %% @doc ifn?: what invoke takes (fns, keywords, symbols, maps, sets,
 %% vectors, vars, multimethods, transients of those)
 is_ifn(X) when is_atom(X) -> X =/= nil andalso X =/= true andalso X =/= false;
-is_ifn({Tag, _, _}) when Tag =:= map; Tag =:= set; Tag =:= vector; Tag =:= var; Tag =:= multifn;
+is_ifn({Tag, _, _}) when Tag =:= map; Tag =:= set; Tag =:= vector; Tag =:= var; Tag =:= multifn; Tag =:= promise;
                          Tag =:= sorted_map; Tag =:= sorted_set; Tag =:= transient -> true;
 is_ifn(X) -> is_fn(X).
 
@@ -183,9 +190,48 @@ gensym(Prefix) ->
     binary_to_atom(<<(str1(Prefix))/binary, (integer_to_binary(erlang:unique_integer([positive])))/binary>>).
 
 %% @doc (apply f a b args): the last argument is a seqable.
+%% @doc (apply f a b args): args is realized only as far as choosing the
+%% arity needs (one past the largest fixed arity); a variadic fn gets
+%% the rest of it lazily, so an infinite tail works as on the JVM
 apply(F, Args) ->
     {Init, [Last]} = lists:split(length(Args) - 1, Args),
-    invoke(F, Init ++ clj2_coll:to_list(Last)).
+    case arity_shape(F) of
+        {Fixed, Min} ->
+            Need = max(lists:max([0 | Fixed]), case Min of nil -> 0; _ -> Min end) + 1 - length(Init),
+            {Taken, Tail} = take_seq(Last, max(Need, 0), []),
+            All = Init ++ Taken,
+            case clj2_coll:seq(Tail) of
+                nil -> invoke(F, All);
+                More when Min =/= nil ->
+                    {Req, Extra} = lists:split(Min, All),
+                    erlang:apply(variadic_fun(F), Req ++ [lists:foldr(fun(X, Acc) -> [X | Acc] end, More, Extra)]);
+                %% the count, as the JVM's: past 20 it is "> 20"
+                More -> erlang:error({clj2_arity, length(All) + bounded_count(More, 21 - length(All)), F})
+            end;
+        unknown -> invoke(F, Init ++ clj2_coll:to_list(Last))
+    end.
+
+%% the fixed arities and the variadic minimum (nil: none) of a fn value
+arity_shape(F) when is_function(F) -> {[element(2, erlang:fun_info(F, arity))], nil};
+arity_shape({clj2_fn, Fixed, nil}) -> {maps:keys(Fixed), nil};
+arity_shape({clj2_fn, Fixed, {Min, _}}) -> {maps:keys(Fixed), Min};
+arity_shape(_) -> unknown.
+
+variadic_fun({clj2_fn, _, {_, Fun}}) -> Fun.
+
+bounded_count(_, N) when N =< 0 -> 0;
+bounded_count(S, N) ->
+    case clj2_coll:seq(S) of
+        nil -> 0;
+        [_ | T] -> 1 + bounded_count(T, N - 1)
+    end.
+
+take_seq(S, 0, Acc) -> {lists:reverse(Acc), S};
+take_seq(S, N, Acc) ->
+    case clj2_coll:seq(S) of
+        nil -> {lists:reverse(Acc), nil};
+        [H | T] -> take_seq(T, N - 1, [H | Acc])
+    end.
 
 %% @doc `/' on integers stays exact when it divides, else a float
 %% (no ratio arithmetic yet: registered divergence).
@@ -592,8 +638,13 @@ defn_meta(Doc, Attr, Sigs) ->
 
 %% @doc Merge evaluated metadata into a var's (def with expression values)
 merge_var_meta({var, _, {Ns, Name}} = V, {map, _, M}) ->
-    {ok, #{vars := #{Name := I}}} = clj2_ns:info(Ns),
-    clj2_ns:set_var_meta(V, {map, nil, maps:merge(maps:get(meta, I, #{}), M)}),
+    case clj2_ns:info(Ns) of
+        {ok, #{vars := #{Name := I}}} ->
+            clj2_ns:set_var_meta(V, {map, nil, maps:merge(maps:get(meta, I, #{}), M)});
+        %% a compile-time segment's var is not registered (the namespace's
+        %% own module registers it, with its metadata, when it loads)
+        _ -> ok
+    end,
     V.
 
 is_var({var, _, {_, _}}) -> true;

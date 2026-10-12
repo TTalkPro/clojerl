@@ -26,7 +26,7 @@
 %%%-------------------------------------------------------------------
 -module(clj2_proto).
 
--export([extend_tag/1, new_table/0
+-export([type_method/3, object_method/2, extend_tag/1, new_table/0
         , type_tag/1
         , designator/2
         , impl_module/2
@@ -262,6 +262,43 @@ loaded(Protocol, Tag, Mod) ->
     ok.
 
 satisfies(Protocol, X) -> find_impl(Protocol, X) =/= error.
+
+%% @doc (.m x args) on a deftype or defrecord: the method m of a protocol
+%% (or interface) its type implements, as a JVM class's method is
+%% {ok, Result} | error
+type_method(X, Method, Args) ->
+    Tag = type_tag(X),
+    Arity = length(Args) + 1,
+    Impls = [I || {{_P, T}, {ok, I}} <- ets:tab2list(?TAB), T =:= Tag],
+    call_first(Impls, Method, Arity, [X | Args]).
+
+call_first([], _, _, _) -> error;
+call_first([{fns, Fns} | Rest], M, Arity, All) ->
+    case Fns of
+        #{M := F} -> {ok, clj2_rt:invoke(F, All)};
+        _ -> call_first(Rest, M, Arity, All)
+    end;
+call_first([Mod | Rest], M, Arity, All) when is_atom(Mod) ->
+    _ = code:ensure_loaded(Mod),
+    case erlang:function_exported(Mod, M, Arity) of
+        true -> {ok, erlang:apply(Mod, M, All)};
+        false -> call_first(Rest, M, Arity, All)
+    end;
+call_first([_ | Rest], M, Arity, All) -> call_first(Rest, M, Arity, All).
+
+%% @doc A deftype/defrecord's own Object method (toString, hashCode,
+%% equals) → {ok, Fun} taking the value (and the other arguments)
+object_method({Tag, _, _} = X, Method) when is_atom(Tag) ->
+    case binary:match(atom_to_binary(Tag), <<".">>) =/= nomatch andalso find_impl('java.lang.Object', X) of
+        {ok, {fns, Fns}} -> case Fns of #{Method := F} -> {ok, F}; _ -> error end;
+        {ok, Mod} when is_atom(Mod) ->
+            case [A || {M, A} <- Mod:module_info(exports), M =:= Method] of
+                [Ar | _] -> {ok, erlang:make_fun(Mod, Method, Ar)};
+                [] -> error
+            end;
+        _ -> error
+    end;
+object_method(_, _) -> error.
 
 %%====================================================================
 %% deftype / defrecord values

@@ -199,8 +199,8 @@ errors_test_() ->
     , ?_assertEqual({syntax, {not_at_top_level, ns}}, cerr("(let* [a 1] (ns t.nope))"))
       %% a tagged literal with no reader function compiles, and raises when
       %% evaluated (so a file that mentions one still loads)
-    , ?_assertEqual(<<"No reader function for tag inst">>,
-                    ev("(try #inst \"2020-01-01\" (catch Throwable e (ex-message e)))"))
+    , ?_assertEqual(<<"No reader function for tag foo">>,
+                    ev("(try #foo \"2020-01-01\" (catch Throwable e (ex-message e)))"))
     , ?_assertMatch({syntax, {bad_regex, <<"(">>, _}}, cerr("#\"(\""))
       %% positions are reported
     , ?_assertError({clj2_compile, {2, 3}, {resolve, {unresolved_symbol, nope}}},
