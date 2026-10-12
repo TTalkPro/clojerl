@@ -16,11 +16,80 @@
 %% pr/2 mixes UTF-8 binaries with code-point lists (io_lib output):
 %% only unicode:characters_to_binary/1 joins those correctly. A string
 %% that is not valid UTF-8 (bytes from outside) is kept byte for byte.
-pr_str(X) -> chars(pr(X, true)).
+pr_str(X) -> with_limits(fun() -> chars(pr(X, true)) end).
 
 %% print/println: like pr, but strings (at any depth) print bare, as JVM
 %% Clojure does with *print-readably* false: (print ["a"]) shows [a].
-print_str(X) -> chars(pr(X, false)).
+print_str(X) -> with_limits(fun() -> chars(pr(X, false)) end).
+
+%% *print-length*, *print-level* and *print-namespace-maps*, read once per
+%% top-level print and kept in the process dictionary (with the depth)
+%% for the nested values; none set: no context, the plain path
+-define(CTX, clj2_print_limits).
+
+with_limits(F) ->
+    case get(?CTX) of
+        undefined ->
+            Len = dyn('*print-length*'), Level = dyn('*print-level*'),
+            NsMaps = dyn('*print-namespace-maps*') =:= true,
+            case Len =:= nil andalso Level =:= nil andalso not NsMaps of
+                true -> F();
+                false ->
+                    put(?CTX, {Len, Level, NsMaps, 0}),
+                    try F() after erase(?CTX) end
+            end;
+        _ -> F()
+    end.
+
+dyn(Name) -> try clj2_var:deref('clojure.core', Name) catch _:_ -> nil end.
+
+%% a collection's printed items, between Open and Close: past
+%% *print-level* it is #, past *print-length* items it ends in ...
+%% (an infinite seq is walked only that far)
+coll(Open, Close, Sep, Items, ItemFun) ->
+    case get(?CTX) of
+        undefined -> [Open, join([ItemFun(X) || X <- clj2_coll:to_list(Items)], Sep), Close];
+        {_, Level, _, D} when Level =/= nil, D >= Level -> <<"#">>;
+        {Len, Level, NsMaps, D} = Ctx ->
+            put(?CTX, {Len, Level, NsMaps, D + 1}),
+            try
+                {Xs, More} = take(Items, Len, []),
+                Parts = [ItemFun(X) || X <- Xs] ++ [<<"...">> || More],
+                [Open, join(Parts, Sep), Close]
+            after
+                put(?CTX, Ctx)
+            end
+    end.
+
+take(S, nil, _) -> {clj2_coll:to_list(S), false};
+take(S, 0, Acc) -> {lists:reverse(Acc), clj2_coll:seq(S) =/= nil};
+take(S, N, Acc) ->
+    case clj2_coll:seq(S) of
+        nil -> {lists:reverse(Acc), false};
+        [H | T] -> take(T, N - 1, [H | Acc])
+    end.
+
+%% #:ns{...} for a map whose keys are all keywords or symbols of one
+%% namespace, under *print-namespace-maps*
+ns_map_prefix(Keys) ->
+    case get(?CTX) of
+        {_, _, true, _} when Keys =/= [] ->
+            Nss = lists:usort([key_ns(K) || K <- Keys]),
+            case Nss of
+                [Ns] when is_binary(Ns) -> {ok, Ns};
+                _ -> none
+            end;
+        _ -> none
+    end.
+
+key_ns(K) when is_atom(K), K =/= nil, K =/= true, K =/= false -> clj2_rt:namespace(K);
+key_ns(_) -> nil.
+
+strip_ns(K) ->
+    case clj2_rt:is_keyword(K) of
+        true -> list_to_atom(":" ++ binary_to_list(clj2_rt:name(K)));
+        false -> binary_to_atom(clj2_rt:name(K))
+    end.
 
 chars(P) ->
     case unicode:characters_to_binary(P) of
@@ -45,14 +114,14 @@ pr({decimal, _, _} = D, _) -> [clj2_decimal:to_string(D), $M];        % print ke
 pr([], _) -> <<"()">>;
 pr(L, R) when is_list(L) -> seq_str(L, R);
 pr({lazy_seq, _, _} = L, R) -> seq_str(L, R);
-pr({vector, _, T}, R) when is_tuple(T) -> [$[, join([pr(X, R) || X <- tuple_to_list(T)], " "), $]];
+pr({vector, _, T}, R) when is_tuple(T) -> coll($[, $], " ", tuple_to_list(T), fun(X) -> pr(X, R) end);
 pr({map, _, M}, R) when is_map(M) -> map_str(M, R);
 %% sorted ones print in their order
 pr({sorted_map, _, {_, _, _}} = S, R) ->
-    [${, join([[pr(K, R), $\s, pr(V, R)] || {vector, _, {K, V}} <- clj2_sorted:to_list(S)], ", "), $}];
+    entries_str([{K, V} || {vector, _, {K, V}} <- clj2_sorted:to_list(S)], R);
 pr({sorted_set, _, {_, _, _}} = S, R) ->
-    [<<"#{">>, join([pr(X, R) || X <- clj2_sorted:to_list(S)], " "), $}];
-pr({set, _, M}, R) when is_map(M) -> [<<"#{">>, join([pr(X, R) || X <- lists:sort(maps:keys(M))], " "), $}];
+    coll(<<"#{">>, $}, " ", clj2_sorted:to_list(S), fun(X) -> pr(X, R) end);
+pr({set, _, M}, R) when is_map(M) -> coll(<<"#{">>, $}, " ", lists:sort(maps:keys(M)), fun(X) -> pr(X, R) end);
 pr({delay, _, _}, _) -> <<"#object[clojure.lang.Delay]">>;
 pr({multifn, _, {Ns, Name}}, _) ->
     [<<"#object[clojure.lang.MultiFn ">>, atom_to_binary(Ns), $/, atom_to_binary(Name), $]];
@@ -66,6 +135,7 @@ pr({tagged, [], T, nil}, _) when T =:= 'NaN'; T =:= 'Inf'; T =:= '-Inf' -> [<<"#
 pr({tagged, [], Tag, F}, R) when is_atom(Tag) -> [$#, atom_to_binary(Tag), $\s, pr(F, R)];
 pr({bigdec, [], B}, _) when is_binary(B) -> [B, $M];
 pr({fnmeta, _, F}, R) -> pr(F, R);
+pr({'java.util.Date', _, Ms} = D, _) when is_integer(Ms) -> [<<"#inst \"">>, clj2_inst:to_string(D), $"];
 pr({tagged_literal, _, #{':tag' := T, ':form' := F}}, R) -> [$#, pr(T, R), $\s, pr(F, R)];
 pr({reader_conditional, _, #{':form' := F, ':splicing?' := S}}, R) ->
     [case S of true -> <<"#?@">>; false -> <<"#?">> end, pr(F, R)];
@@ -107,11 +177,18 @@ ref_status(X) ->
         end,
     clj2_coll:hash_map_kv([':status', Status, ':val', Val]).
 
-seq_str(L, R) -> [$(, join([pr(X, R) || X <- clj2_coll:to_list(L)], " "), $)].
+seq_str(L, R) -> coll($(, $), " ", L, fun(X) -> pr(X, R) end).
 
-map_str(M, R) ->
-    %% hash maps print in key order: deterministic output
-    [${, join([[pr(K, R), $\s, pr(V, R)] || {K, V} <- lists:sort(maps:to_list(M))], ", "), $}].
+%% hash maps print in key order: deterministic output
+map_str(M, R) -> entries_str(lists:sort(maps:to_list(M)), R).
+
+entries_str(Entries, R) ->
+    case ns_map_prefix([K || {K, _} <- Entries]) of
+        {ok, Ns} ->
+            [<<"#:">>, Ns, coll(${, $}, ", ", [{strip_ns(K), V} || {K, V} <- Entries],
+                                fun({K, V}) -> [pr(K, R), $\s, pr(V, R)] end)];
+        none -> coll(${, $}, ", ", Entries, fun({K, V}) -> [pr(K, R), $\s, pr(V, R)] end)
+    end.
 
 join([], _) -> [];
 join([X], _) -> [X];

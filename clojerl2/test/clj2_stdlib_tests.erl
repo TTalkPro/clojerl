@@ -126,9 +126,10 @@ unsupported_literals_test() ->
     setup(),
     ?assertEqual(':ArithmeticException', ev("(try ##NaN (catch ArithmeticException e (:type (ex-data e))))")),
     ?assertEqual(<<"1.5M">>, ev("(pr-str 1.5M)")),            % a BigDecimal now (clojerl2-037)
-    ?assertEqual(<<"No reader function for tag inst">>,
-                 ev("(try #inst \"2010-11-12\" (catch Throwable e (ex-message e)))")),
-    ?assertEqual(<<"##NaN 4.0M #inst \"x\"">>, ev("(pr-str '##NaN '4.0M '#inst \"x\")")),
+    ?assertEqual(<<"No reader function for tag foo">>,
+                 ev("(try #foo \"2010-11-12\" (catch Throwable e (ex-message e)))")),
+    ?assertEqual(1289520000000, ev("(inst-ms #inst \"2010-11-12\")")),   % #inst is a Date (clojerl2-039)
+    ?assertEqual(<<"##NaN 4.0M #foo \"x\"">>, ev("(pr-str '##NaN '4.0M '#foo \"x\")")),
     ?assertEqual(':one', ev("(case 1 ##Inf :inf 4.0M :bd 1 :one :d)")),
     ?assertEqual(':d', ev("(case 4 ##Inf :inf ##-Inf :ninf :d)")),
     %% a macro sees them as read
@@ -259,6 +260,48 @@ nested_redefinition_and_name_meta_test() ->
     ?assertEqual([true, <<"d1">>, true, true],
                  plain(ev("[(:private (meta #'nm-p1)) (:doc (meta #'nm-p2)) (:private (meta #'nm-p3)) (:private (meta #'nm-p4))]"))).
 
+
+%% clojerl2-039: clojure.edn, clojure.math, clojure.pprint, clojure.repl,
+%% #inst, *print-length*/*print-level*
+stdlib_namespaces_test() ->
+    setup(),
+    ev("(require '[clojure.edn :as edn] '[clojure.math :as m] '[clojure.pprint :as pp] 'clojure.repl)"),
+    ?assertEqual([[6, 8], ':end', <<"Invalid constituent character: @">>, <<"No reader function for tag foo">>],
+                 plain(ev("[(edn/read-string {:readers {'w (fn [v] (* 2 v))}} \"[#w 3 #w 4]\")"
+                          " (edn/read-string {:eof :end} \"\")"
+                          " (try (edn/read-string \"a@b\") (catch RuntimeException e (ex-message e)))"
+                          " (try (edn/read-string \"#foo 1\") (catch RuntimeException e (ex-message e)))]"))),
+    ?assertEqual([5, <<"long overflow">>], plain(ev("[(long (m/hypot 3 4)) (try (m/add-exact Long/MAX_VALUE 1) (catch ArithmeticException e (ex-message e)))]"))),
+    ?assertEqual(<<"{:aaaa 1111111111,\n :bbbb 2222222222,\n :cccc 3333333333,\n :dddd 4444444444,\n :eeee 5555555555,\n :ffff 66666666666}\n">>,
+                 ev("(with-out-str (pp/pprint {:aaaa 1111111111 :bbbb 2222222222 :cccc 3333333333 :dddd 4444444444 :eeee 5555555555 :ffff 66666666666}))")),
+    ?assertEqual([<<"3.14">>, <<"1, 2, 3">>, <<"1,234,567">>],
+                 plain(ev("[(pp/cl-format nil \"~,2f\" 3.14159) (pp/cl-format nil \"~{~a~^, ~}\" [1 2 3]) (pp/cl-format nil \"~:d\" 1234567)]"))),
+    ?assertEqual([<<"[1 2 ...]">>, <<"[:a [:b #]]">>], plain(ev("[(binding [*print-length* 2] (pr-str [1 2 3])) (binding [*print-level* 2] (pr-str [:a [:b [:c]]]))]"))),
+    ?assertEqual(true, ev("(clojure.string/includes? (with-out-str (clojure.repl/doc when)) \"Macro\")")),
+    ?assertEqual(<<"#inst \"2020-06-01T08:00:00.000-00:00\"">>, ev("(pr-str #inst \"2020-06-01T10:00:00+02:00\")")).
+
+%% clojerl2-038: compiler forms
+compiler_forms_test() ->
+    setup(),
+    ?assertEqual([1, 2, 3], plain(ev("(loop* [a 1 b (+ a 1) c (+ b 1)] [a b c])"))),
+    ?assertEqual([0, 1, 2], plain(ev("(take 3 (apply (fn [& xs] xs) (range)))"))),
+    ?assertEqual(true, ev("(= (read-string \"`(a ~b)\") '(clojure.core/seq (clojure.core/concat (clojure.core/list (quote t.stdlib/a)) (clojure.core/list b))))")),
+    ?assertEqual([42, false], plain(ev("[``42 (nil? ``nil)]"))),
+    ev("(defmacro sq38-outer [n] `(defmacro ~(symbol (str \"sq38-\" n)) [x# y#] `(vector ~y# ~x#)))"),
+    ev("(sq38-outer one)"),
+    ?assertEqual([2, 1], plain(ev("(sq38-one 1 2)"))),
+    ev("(defmacro m38 [& [a & more]] (list 'quote [a (vec more)]))"),
+    ?assertEqual([1, [2, 3]], plain(ev("(m38 1 2 3)"))),
+    ev("(defn tam38 ([x] x) ([x y] y) {:extra 7})"),
+    ?assertEqual(7, ev("(:extra (meta #'tam38))")),
+    ev("(defonce once38 1)"), ev("(defonce once38 2)"),
+    ?assertEqual(1, ev("once38")),
+    ev("(declare decl38)"),
+    ?assertEqual(true, ev("(:declared (meta #'decl38))")),
+    {ok, _} = clj2_compiler:load_ns(<<"(ns t.dt38) (defprotocol P (mk [this pair]))"
+                                      " (deftype T [n] :no-print true P (mk [this [k v]] [n k v]) Object (toString [_] (str \"T\" n)))">>),
+    ?assertEqual([1, ':a', ':b'], plain(ev("(t.dt38/mk (t.dt38/->T 1) [:a :b])"))),
+    ?assertEqual(<<"T1">>, ev("(str (t.dt38/->T 1))")).
 
 %% clojerl2-035: Erlang errors get the JVM class of the failing call;
 %% core fns check their arguments as the JVM does

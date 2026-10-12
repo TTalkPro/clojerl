@@ -103,6 +103,7 @@
             , file          :: file:filename_all() | undefined
             , args = []     :: [frame()]
             , features = [':clje'] :: [atom()]
+            , edn = false   :: boolean()     % EDN's reader (clojure.edn)
             }).
 
 %%====================================================================
@@ -207,9 +208,12 @@ new_state(Src, Opts) ->
     case to_bin(Src) of
         {error, Msg} -> {error, {1, 1}, Msg};
         {ok, Bin} ->
-            {Bin1, Line} = skip_shebang(Bin),
+            {Bin1, Line} = case opt_edn(Opts) of
+                               true -> {Bin, 1};               % EDN has no #!
+                               false -> skip_shebang(Bin)
+                           end,
             {ok, #st{src = Bin1, line = Line, file = opt_file(Opts),
-                     features = opt_features(Opts)}}
+                     features = opt_features(Opts), edn = opt_edn(Opts)}}
     end.
 
 to_bin(Src) when is_binary(Src) ->
@@ -236,6 +240,9 @@ opt_file(Opts) when is_list(Opts) ->
     end;
 opt_file(_) ->
     undefined.
+
+opt_edn(#{edn := true}) -> true;
+opt_edn(_) -> false.
 
 opt_features(#{features := Fs}) when is_list(Fs) -> Fs;
 opt_features(Opts) when is_list(Opts) ->
@@ -323,6 +330,7 @@ skip_to_eol(St0) ->
     case peek(St0) of
         eof -> St0;
         {ok, $\n} -> St0;
+        {ok, $\r} -> St0;                       % \r ends a comment too (JVM)
         {ok, _} -> skip_to_eol(advance(St0))
     end.
 
@@ -371,6 +379,10 @@ wrap(_Loc, {clj2_loc, _Line, _Col, _Form, _Meta} = Wrapper) ->
 wrap({Line, Col}, Form) ->
     ?CLJ2_LOC(Line, Col, Form).
 
+%% EDN (clojure.edn): ' is a symbol constituent; ` ~ @ start nothing
+read_form0(Ch, #st{edn = true} = St) when Ch =:= $'; Ch =:= $% -> read_token_form(St);
+read_form0(Ch, #st{edn = true} = St) when Ch =:= $`; Ch =:= $~; Ch =:= $@ ->
+    mk_err(St, <<"Invalid leading character: ", Ch/utf8>>);
 read_form0(Ch, St) ->
     case Ch of
         $'  -> read_quote(St);
@@ -808,10 +820,13 @@ read_char(St0) ->
 
 read_char_token(St1, Backslash) ->
     {Token, St2} = scan_token(St1, []),
-    case char_value(to_bin_safe(Token), Backslash) of
-        {error, _, _} = Error -> Error;
-        {ok, Codepoint} -> {ok, Codepoint, St2}
-    end.
+    edn_constituents(St1, Token,
+                     fun() ->
+                             case char_value(to_bin_safe(Token), Backslash) of
+                                 {error, _, _} = Error -> Error;
+                                 {ok, Codepoint} -> {ok, Codepoint, St2}
+                             end
+                     end).
 
 read_braced_char(St0, Brace, Backslash) ->
     case scan_braced_hex(St0, []) of
@@ -912,9 +927,10 @@ hex_digits(Bin) ->
     end.
 
 octal_digits(Bin) ->
-    case [C || C <- binary_to_list(Bin), C >= $0, C =< $7] of
-        [] -> error;
-        List -> {ok, List}
+    List = binary_to_list(Bin),
+    case List =/= [] andalso lists:all(fun(C) -> C >= $0 andalso C =< $7 end, List) of
+        true -> {ok, List};
+        false -> error
     end.
 
 scan_hex(St0, 0, Acc) -> {lists:reverse(Acc), St0};
@@ -940,16 +956,45 @@ read_keyword(St0) ->
     %% plain atom would collide with the symbol `foo', and the compiler
     %% must be able to tell self-evaluating keywords apart from symbols.
     {Marker, St2} = read_marker(St1, <<>>),
+    case St0#st.edn andalso Marker =/= <<>> of
+        true ->
+            {Chars0, _} = scan_token(St2, []),
+            mk_err(St0, <<"Invalid token: :", Marker/binary, (to_bin_safe(Chars0))/binary>>);
+        false -> read_keyword1(St0, Marker, St2)
+    end.
+
+read_keyword1(St0, Marker, St2) ->
     case scan_token(St2, []) of
         {[], _} ->
             mk_err(St2, <<"invalid keyword: expected a name after ':'">>);
         {Chars, St3} ->
+            %% :/foo and :a/b/c are not keywords
+            Name0 = to_bin_safe(Chars),
+            BadKw = binary:first(Name0) =:= $/ andalso Name0 =/= <<"/">>
+                orelse (length(binary:matches(Name0, <<"/">>)) > 1 andalso not is_ns_slash(Name0)),
+            case BadKw of
+                true -> mk_err(St0, <<"Invalid token: :", Name0/binary>>);
+                false -> edn_constituents(St0, Chars, fun() -> keyword_atom(St2, Marker, Chars, St3) end)
+            end
+    end.
+
+keyword_atom(St2, Marker, Chars, St3) ->
+    begin
             Name = unicode:characters_to_binary([":", Marker, Chars]),
             case atom_name(Name) of
                 {ok, Atom} -> {ok, Atom, St3};
                 error -> mk_err(St2, <<"invalid keyword: ", Name/binary>>)
             end
     end.
+
+%% EDN: ` ~ @ are not constituents of a token (the source reader ends the
+%% token there); a token holding one is an error
+edn_constituents(#st{edn = true} = St, Chars, Then) ->
+    case [C || C <- Chars, C =:= $@ orelse C =:= $` orelse C =:= $~] of
+        [Bad | _] -> mk_err(St, <<"Invalid constituent character: ", Bad/utf8>>);
+        [] -> Then()
+    end;
+edn_constituents(_St, _Chars, Then) -> Then().
 
 read_marker(St, Acc) ->
     case peek(St) of
@@ -971,11 +1016,37 @@ read_token_form(St) ->
         true ->
             {Token, St1} = scan_token(St, []),
             case interpret_number(Token, St) of
+                {error, _, _} when St#st.edn ->
+                    Bin = to_bin_safe(Token),
+                    case re:run(Bin, "^[+-]?[0-9]+/0+$") of
+                        {match, _} -> mk_err(St, <<"Divide by zero">>);
+                        nomatch -> mk_err(St, <<"Invalid number: ", Bin/binary>>)
+                    end;
                 {error, _, _} = Error -> Error;
                 {ok, Value} -> {ok, Value, St1}
             end;
         false ->
             {Token, St1} = scan_token(St, []),
+            edn_constituents(St, Token, fun() -> symbol_token(St, Token, St1) end)
+    end.
+
+symbol_token(St, Token, St1) ->
+    Bin0 = to_bin_safe(Token),
+    %% a name cannot end in / or begin with one, nor hold two (but / and
+    %% ns// are names)
+    Slashes = length(binary:matches(Bin0, <<"/">>)),
+    Bad = byte_size(Bin0) > 1 andalso Bin0 =/= <<"//">> andalso
+        (binary:last(Bin0) =:= $/ andalso not is_ns_slash(Bin0) orelse binary:first(Bin0) =:= $/
+         orelse (Slashes > 1 andalso not is_ns_slash(Bin0))),
+    case Bad of
+        true -> mk_err(St, <<"Invalid token: ", Bin0/binary>>);
+        false -> symbol_token1(St, Token, St1)
+    end.
+
+is_ns_slash(B) -> binary:part(B, byte_size(B) - 2, 2) =:= <<"//">>.
+
+symbol_token1(St, Token, St1) ->
+    begin
             case to_bin_safe(Token) of
                 <<>> ->
                     mk_err(St, <<"invalid token at this position">>);
@@ -1008,6 +1079,9 @@ next_is_digit(St) ->
 
 scan_token(St0, Acc) ->
     case peek(St0) of
+        %% EDN reads ` ~ @ into the token (and then rejects it)
+        {ok, C} when St0#st.edn, (C =:= $@ orelse C =:= $` orelse C =:= $~) ->
+            scan_token(advance(St0), [C | Acc]);
         {ok, C} ->
             case ?IS_TERMINATING(C) of
                 true -> {lists:reverse(Acc), St0};
@@ -1067,7 +1141,14 @@ build_number(ratio, [Num, Den], _Bin) ->
     Den1 = list_to_integer(Den),
     case Den1 of
         0 -> {error, <<"divide by zero in ratio literal">>};
-        _ -> {ok, {ratio, signed_int(Num), Den1}}
+        %% in lowest terms; a whole number is an integer (4/2 is 2)
+        _ ->
+            N = signed_int(Num),
+            G = gcd(abs(N), Den1),
+            case Den1 div G of
+                1 -> {ok, N div G};
+                D -> {ok, {ratio, N div G, D}}
+            end
     end;
 build_number(bigint, [Digits], _Bin) ->
     %% BEAM integers are arbitrary precision already.
@@ -1151,6 +1232,17 @@ read_dispatch(St0) ->
     St1 = advance(St0),
     case peek(St1) of
         eof -> mk_err(St1, <<"EOF while reading dispatch macro">>);
+        %% #<...> is how the JVM prints what cannot be read back
+        {ok, $<} -> mk_err(St1, <<"Unreadable form">>);
+        %% #! comments to the end of the line (a shebang, anywhere; not EDN)
+        {ok, $!} when not St0#st.edn -> {skip, skip_to_eol(St1)};
+        {ok, $!} -> mk_err(St1, <<"No dispatch macro for: !">>);
+        %% #^ is ^, the old spelling of metadata
+        {ok, $^} -> read_meta(St1);
+        %% EDN has only sets, discard, namespaced maps, ##, metadata and tags
+        {ok, C} when St0#st.edn, (C =:= $" orelse C =:= $( orelse C =:= $' orelse
+                                  C =:= $? orelse C =:= $= orelse C =:= $@) ->
+            mk_err(St1, <<"No dispatch macro for: ", C/utf8>>);
         {ok, $" } -> read_regex(St1);
         {ok, ${} -> read_set(St1);
         {ok, $(} -> read_fn(St1);
@@ -1163,7 +1255,11 @@ read_dispatch(St0) ->
             case one_form(St2) of
                 eof -> mk_err(St2, <<"EOF while reading form after #_">>);
                 {error, _, _} = Error -> Error;
-                {ok, _Discarded, St3} -> {skip, St3}
+                {ok, Discarded, St3} ->
+                    %% EDN still reads what #_ discards (its tags must
+                    %% resolve): clj2_edn checks these after the read
+                    St0#st.edn andalso put(clj2_edn_discards, [Discarded | discards()]),
+                    {skip, St3}
             end;
         {ok, C} when C =:= $=; C =:= $^ ->
             mk_err(St1, <<"unsupported dispatch macro: #", C/utf8>>);
@@ -1356,4 +1452,13 @@ strip_colons(Bin) ->
     case Bin of
         <<":", Rest/binary>> -> strip_colons(Rest);
         _ -> Bin
+    end.
+
+gcd(A, 0) -> A;
+gcd(A, B) -> gcd(B, A rem B).
+
+discards() ->
+    case get(clj2_edn_discards) of
+        undefined -> [];
+        L -> L
     end.

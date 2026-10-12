@@ -75,7 +75,10 @@ read_string(S) when is_binary(S) ->
     case clj2_reader:read_all(S) of
         {ok, [F | _], _} -> clj2_p_parse:data_form(F, current_ns());
         {ok, [], _} -> erlang:error({clj2_read, <<"EOF while reading">>});
-        {error, Where, Msg} -> erlang:error({clj2_read, Where, Msg})
+        %% a read error is the JVM's RuntimeException (a ReaderException
+        %% there) with the reader's message
+        {error, _Where, Msg} ->
+            erlang:error(clj2_rt:ex_info(Msg, clj2_coll:hash_map_kv([':type', ':RuntimeException']), nil))
     end.
 
 %% @doc (load-string s): evaluate every form; the last value.

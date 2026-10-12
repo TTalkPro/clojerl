@@ -14,6 +14,7 @@
 %%% UTF-8 throughout: writers collect chardata and encode once.
 %%%-------------------------------------------------------------------
 -module(clj2_io).
+-export([set_write_hook/1]).
 
 -export([out/0, write/1, write/2, read_line/0, read_line/1]).
 -export([with_out_str/1, with_in_str/2, string_writer/0, contents/1, string_reader/1, close/1]).
@@ -31,7 +32,28 @@ in() -> device('*in*', standard_io).
 
 write(Chars) -> write(out(), Chars).
 
-write(Dev, Chars) -> ok = io:put_chars(Dev, unicode:characters_to_binary(Chars)), nil.
+write(Dev, Chars) when is_pid(Dev); is_atom(Dev) ->
+    ok = io:put_chars(Dev, unicode:characters_to_binary(Chars)), nil;
+%% *out* bound to a writer value (clojure.pprint's pretty writer, a
+%% StringBuilder ...): the registered write hook takes it, else its .write
+write(W, Chars) ->
+    S = unicode:characters_to_binary(Chars),
+    Handled = case persistent_term:get({?MODULE, write_hook}, nil) of
+                  nil -> false;
+                  Hook -> clj2_rt:invoke(Hook, [S]) =:= true
+              end,
+    %% a writer value: the hook, its own -write (clojure.pprint's writers),
+    %% else .write
+    Handled orelse
+        case clj2_proto:type_method(W, '-write', [S]) of
+            {ok, _} -> true;
+            error -> clj2_jvm:method(W, write, [S])
+        end,
+    nil.
+
+%% @doc (__set-pprint-write-hook! f): f takes each string written to a
+%% *out* that is not an io device, and answers true when it wrote it
+set_write_hook(F) -> persistent_term:put({?MODULE, write_hook}, F), nil.
 
 %% @doc (read-line): the next line of *in* without its line terminator, or
 %% nil at the end
@@ -141,10 +163,20 @@ get_request(_, Rest) -> {{error, enotsup}, Rest}.
 %% a nil path is the JVM's IllegalArgumentException, not a file named "nil"
 %% (file:read_file/write_file take atoms as names)
 slurp(nil, _Opts) -> nil_path(<<"Reader">>);
+%% a reader (an io device: java.io.StringReader, clojure.java.io/reader):
+%% everything it has left
+slurp(Dev, _Opts) when is_pid(Dev) -> read_rest(Dev, []);
 slurp(Path, _Opts) ->
     case file:read_file(Path) of
         {ok, Bin} -> Bin;
         {error, Why} -> erlang:error(file_error(Path, Why))
+    end.
+
+read_rest(Dev, Acc) ->
+    case io:get_chars(Dev, '', 4096) of
+        eof -> unicode:characters_to_binary(lists:reverse(Acc));
+        {error, _} -> unicode:characters_to_binary(lists:reverse(Acc));
+        Chars -> read_rest(Dev, [Chars | Acc])
     end.
 
 %% @doc (spit path content & {:append bool})

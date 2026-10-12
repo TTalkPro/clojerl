@@ -164,10 +164,25 @@ math_fn(floorDiv, [X, Y]) -> floor_div(X, Y);
 math_fn(floorMod, [X, Y]) -> X - floor_div(X, Y) * Y;
 math_fn(toRadians, [X]) -> X * math:pi() / 180;
 math_fn(toDegrees, [X]) -> X * 180 / math:pi();
-math_fn(addExact, [X, Y]) -> X + Y;
-math_fn(multiplyExact, [X, Y]) -> X * Y;
-math_fn(subtractExact, [X, Y]) -> X - Y;
-math_fn(negateExact, [X]) -> -X;
+math_fn(addExact, [X, Y]) -> clj2_math:exact(add, X, Y);
+math_fn(multiplyExact, [X, Y]) -> clj2_math:exact(multiply, X, Y);
+math_fn(subtractExact, [X, Y]) -> clj2_math:exact(subtract, X, Y);
+math_fn(negateExact, [X]) -> clj2_math:exact(negate, X);
+math_fn(incrementExact, [X]) -> clj2_math:exact(increment, X);
+math_fn(decrementExact, [X]) -> clj2_math:exact(decrement, X);
+math_fn(nextUp, [X]) -> clj2_math:next_up(X);
+math_fn(nextDown, [X]) -> clj2_math:next_down(X);
+math_fn(nextAfter, [X, Y]) -> clj2_math:next_after(X, Y);
+math_fn(ulp, [X]) -> clj2_math:ulp(X);
+math_fn(getExponent, [X]) -> clj2_math:get_exponent(X);
+math_fn(scalb, [X, N]) -> clj2_math:scalb(X, N);
+math_fn(copySign, [X, Y]) -> clj2_math:copy_sign(X, Y);
+math_fn('IEEEremainder', [X, Y]) -> clj2_math:ieee_remainder(X, Y);
+math_fn(sinh, [X]) -> math:sinh(X);
+math_fn(cosh, [X]) -> math:cosh(X);
+math_fn(tanh, [X]) -> math:tanh(X);
+math_fn(expm1, [X]) -> math:exp(X) - 1;
+math_fn(log1p, [X]) -> math:log(1 + X);
 math_fn(M, Args) -> no_member('java.lang.Math', M, Args).
 
 floor_div(X, Y) when (X >= 0) =:= (Y > 0) -> X div Y;
@@ -403,6 +418,7 @@ method(S, M, Args) when is_binary(S) -> string_method_checked(S, M, Args);
 method({'clojure.lang.ExceptionInfo', _, _} = E, M, Args) -> exception_method(E, M, Args);
 method({'java.lang.StringBuilder', _, _} = B, M, Args) -> builder_method(B, M, Args);
 method({decimal, _, _} = D, M, Args) -> decimal_method(D, M, Args);
+method({'java.util.Date', _, Ms}, getTime, []) -> Ms;
 method({var, _, {_, _}} = V, M, Args) -> var_method(V, M, Args);
 method(X, toString, []) -> to_string(X);
 method(X, equals, [Y]) -> clj2_coll:equals(X, Y);
@@ -417,12 +433,27 @@ method(N, M, []) when is_number(N), M =:= doubleValue; is_number(N), M =:= float
 method(N, compareTo, [O]) when is_number(N) -> sign(N - O);
 method({atom, _, _} = A, get, []) -> clj2_ref:deref(A);
 method({atom, _, _} = A, reset, [V]) -> clj2_ref:reset(A, V);
+%% an io device as a java.io.Writer: write (a string, or a char's code
+%% point, as Writer.write(int)), append, flush
+method(P, write, [X]) when is_pid(P) -> clj2_io:write(P, writer_chars(X)), nil;
+method(P, write, [X, Off, Len]) when is_pid(P), is_binary(X) ->
+    clj2_io:write(P, string:slice(X, Off, Len)), nil;
+method(P, append, [X]) when is_pid(P) -> clj2_io:write(P, writer_chars(X)), P;
+method(P, flush, []) when is_pid(P) -> nil;
 method(X, M, Args) ->
     case clj2_coll:is_any_map(X) orelse clj2_coll:is_any_set(X) orelse clj2_coll:is_vector(X)
          orelse is_list(X) orelse is_tuple(X) andalso element(1, X) =:= lazy_seq of
         true -> coll_method(X, M, Args);
-        false -> no_member(clj2_class:class_of(X), M, Args)
+        false ->
+            %% a deftype/defrecord: a method of what it implements
+            case clj2_proto:is_type_value(X) andalso clj2_proto:type_method(X, M, Args) of
+                {ok, R} -> R;
+                _ -> no_member(clj2_class:class_of(X), M, Args)
+            end
     end.
+
+writer_chars(C) when is_integer(C) -> [C];
+writer_chars(X) -> to_string(X).
 
 
 %% a String method; an argument of the wrong class is a ClassCastException
@@ -453,6 +484,12 @@ string_method(S, charAt, [I]) ->
 string_method(S, substring, [B]) -> substring(S, B, string:length(S));
 string_method(S, substring, [B, E]) -> substring(S, B, E);
 string_method(S, subSequence, [B, E]) -> substring(S, B, E);
+%% indexOf(int ch): a code point, as a char
+string_method(S, indexOf, [C]) when is_integer(C) -> idx(clj2_string:index_of(S, unicode:characters_to_binary([C]), 0));
+string_method(S, indexOf, [C, From]) when is_integer(C) ->
+    idx(clj2_string:index_of(S, unicode:characters_to_binary([C]), From));
+string_method(S, lastIndexOf, [C]) when is_integer(C) ->
+    idx(clj2_string:last_index_of(S, unicode:characters_to_binary([C]), nil));
 string_method(S, indexOf, [X]) -> idx(clj2_string:index_of(S, X, 0));
 string_method(S, indexOf, [X, From]) -> idx(clj2_string:index_of(S, X, From));
 string_method(S, lastIndexOf, [X]) -> idx(clj2_string:last_index_of(S, X, nil));
@@ -624,6 +661,8 @@ simple_name(C) ->
     [Last | _] = lists:reverse(string:split(atom_to_binary(C), ".", all)), Last.
 
 construct('java.lang.Object', []) -> {'java.lang.Object', nil, make_ref()};
+construct('java.util.Date', []) -> clj2_inst:now();
+construct('java.util.Date', [Ms]) when is_integer(Ms) -> clj2_inst:from_millis(Ms);
 construct('java.math.BigDecimal', [X]) -> clj2_decimal:from(X);
 construct('java.math.BigDecimal', [X, {math_context, _, _} = MC]) -> clj2_decimal:round(clj2_decimal:from(X), MC);
 construct('java.math.MathContext', [P]) -> clj2_decimal:math_context(P, nil);

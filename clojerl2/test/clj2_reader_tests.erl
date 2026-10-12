@@ -155,7 +155,10 @@ ratios_test_() ->
       , {<<"-1/2">>, {1,1}, {ratio, -1, 2}}
       , {<<"+1/2">>, {1,1}, {ratio, 1, 2}}
       , {<<"22/7">>, {1,1}, {ratio, 22, 7}}
-      , {<<"0/5">>,  {1,1}, {ratio, 0, 5}}
+      %% in lowest terms, a whole number an integer (as the JVM reader)
+      , {<<"0/5">>,  {1,1}, 0}
+      , {<<"6/4">>,  {1,1}, {ratio, 3, 2}}
+      , {<<"4/2">>,  {1,1}, 2}
       ]).
 
 %%%====================================================================
@@ -492,9 +495,11 @@ shebang_test() ->
                  clj2_reader:read(<<"#!/usr/bin/env clojerl\n1">>, #{})).
 
 %% `#!` is only a shebang at offset 0; elsewhere it is a tagged literal.
+%% #! comments to the end of the line anywhere, as on the JVM
 tagged_shebang_test() ->
-    {ok, F, _, <<>>} = clj2_reader:read(<<" #!/usr/bin env">>, #{}),
-    ?assertEqual({tagged, [], '!/usr/bin', env}, clj2_reader:strip(F)).
+    ?assertMatch({eof, _}, clj2_reader:read(<<" #!/usr/bin env">>, #{})),
+    {ok, F, _, _} = clj2_reader:read(<<"[1 #! two\n 3]">>, #{}),
+    ?assertEqual({vector, [], [1, 3]}, clj2_reader:strip(F)).
 
 symbolic_values_test_() ->
     all_forms(

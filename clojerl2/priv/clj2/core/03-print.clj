@@ -34,3 +34,21 @@
 (defmacro with-in-str [s & body]
   `(clj2_io/with_in_str ~s (fn [] ~@body)))
 
+
+;; clojure.pprint's hooks: core printing reaches a pretty writer bound to
+;; *out* through the write hook (clj2_io:write/2); routing is the body as is
+(defn __set-pprint-write-hook! [f] (clj2_io/set_write_hook f))
+(defn __with-pprint-routing [f] (f))
+
+;; as clojure.core's core_print: under *print-namespace-maps*, a map whose
+;; keys are all qualified idents of one namespace → [ns map-without-it]
+(defn- lift-ns [m]
+  (when *print-namespace-maps*
+    (loop [ns nil [[k v :as entry] & entries] (seq m) lm {}]
+      (if entry
+        (when (qualified-ident? k)
+          (let [strip (if (symbol? k) (symbol (name k)) (keyword (name k)))]
+            (if ns
+              (when (= ns (namespace k)) (recur ns entries (assoc lm strip v)))
+              (recur (namespace k) entries (assoc lm strip v)))))
+        [ns (apply conj (empty m) lm)]))))

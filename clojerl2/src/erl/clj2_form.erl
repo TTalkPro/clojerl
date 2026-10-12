@@ -39,6 +39,8 @@ to_data({set, _, M} = X) when is_map(M) -> X;
 to_data({var, [], X}) -> [var, to_data(X)];                 % #'x is (var x)
 to_data({regex, [], Src}) -> {regex, nil, Src};              % a pattern value
 to_data({tagged, [], uuid, S}) when is_binary(S) -> clj2_string:uuid(S);
+to_data({tagged, [], inst, S}) when is_binary(S) -> clj2_inst:parse(S);
+to_data({'java.util.Date', _, _} = X) -> X;
 %% ##NaN, 1.5M, #inst ...: kept as they are read; evaluated, they raise
 %% (clj2_p_parse), and as a case constant they match nothing
 to_data({tagged, [], Tag, F}) when is_atom(Tag) -> {tagged, [], Tag, to_data(F)};

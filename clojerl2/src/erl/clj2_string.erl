@@ -11,7 +11,8 @@
 -export([upper/1, lower/1, capitalize/1, trim/1, triml/1, trimr/1, trim_newline/1,
          is_blank/1, starts_with/2, ends_with/2, includes/2, index_of/3, last_index_of/3,
          reverse/1, join/2, split/3, split_lines/1, replace/4, escape/2, re_quote_replacement/1]).
--export([char/1, is_char/1, char_name/1, char_escape/1]).
+-export([char/1, is_char/1, char_name/1, char_escape/1, codepoint_str/1]).
+
 -export([random_uuid/0, parse_uuid/1, uuid/1, is_uuid/1]).
 
 chars(S) -> unicode:characters_to_list(S).
@@ -273,3 +274,7 @@ uuid(S) ->
 
 is_uuid({uuid, _, _}) -> true;
 is_uuid(_) -> false.
+
+%% @doc A one-character string of a code point (a char, here: :char/integer)
+codepoint_str(C) when is_integer(C) -> unicode:characters_to_binary([C]);
+codepoint_str(S) when is_binary(S) -> S.

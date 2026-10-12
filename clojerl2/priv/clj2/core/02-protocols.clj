@@ -61,4 +61,5 @@
 ;; Inst: what inst-ms reads (no #inst type of its own here; a type extends it)
 (defprotocol Inst (inst-ms* [inst]))
 (defn inst-ms [inst] (inst-ms* inst))
+(extend-protocol Inst java.util.Date (inst-ms* [d] (clj2_inst/millis d)))
 (defn inst? [x] (satisfies? Inst x))
