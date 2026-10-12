@@ -3,7 +3,7 @@
 语料:`test/corpus.edn`(jolt `test/chez/corpus.edn` @ 6c2685e,EPL-2.0;`:expected` 经 `make corpus-regen` 以 JVM Clojure 1.12.5 重新生成),只计 `:portability :common` 条目。
 生成:`make corpus`;门控:`make certify`(对照 `test/corpus-known-failures.edn`)。判定见 `src/erl/clj2_corpus.erl`。
 
-**通过 3613 / 4841(74.6%)**
+**通过 3614 / 4841(74.7%)**
 
 ## 按 core 分层
 
@@ -12,7 +12,7 @@
 | 层 | 通过 | 条目 | 通过率 |
 |---|---|---|---|
 | 00-kernel | 1522 | 1934 | 79% |
-| 01-core | 1909 | 2529 | 75% |
+| 01-core | 1910 | 2529 | 76% |
 | 02-protocols | 85 | 188 | 45% |
 | 03-print | 93 | 186 | 50% |
 | 04-repl | 4 | 4 | 100% |
@@ -41,7 +41,7 @@
 | set | 62 | 80 | 78% |
 | metadata | 61 | 75 | 81% |
 | functions | 70 | 70 | 100% |
-| exceptions | 51 | 66 | 77% |
+| exceptions | 52 | 66 | 79% |
 | destructure | 60 | 64 | 94% |
 | transient | 55 | 63 | 87% |
 | forms | 56 | 63 | 89% |
@@ -165,7 +165,7 @@
 
 | cause | 条目 |
 |---|---|
-| `:pending/triage` | 357 |
+| `:pending/triage` | 356 |
 | `:pending/compiler` | 178 |
 | `:pending/missing-core-var` | 118 |
 | `:pending/reader` | 105 |
@@ -196,7 +196,7 @@
 | 类别 | 条目 |
 |---|---|
 | threw (unexpected) | 453 |
-| wrong value | 385 |
+| wrong value | 384 |
 | compile: unresolved symbol | 134 |
 | compile: syntax | 57 |
 | compile: error | 44 |
@@ -227,47 +227,47 @@
 | `read` | 9 |
 | `print-method` | 8 |
 | `inst-ms` | 7 |
-| `read+string` | 6 |
 | `reader-conditional` | 6 |
+| `read+string` | 6 |
 | `ref-min-history` | 5 |
 | `line-seq` | 4 |
 | `tagged-literal` | 4 |
-| `StringWriter.` | 3 |
-| `sorted-set?` | 3 |
-| `alter-var-root` | 3 |
-| `chunk-buffer` | 3 |
 | `ref-max-history` | 3 |
+| `__reader-features` | 3 |
+| `alter-var-root` | 3 |
+| `chunk-first` | 3 |
+| `chunk-buffer` | 3 |
+| `sorted-set?` | 3 |
+| `StringWriter.` | 3 |
 | `thread-bound?` | 3 |
 | `bigdec` | 3 |
-| `chunk-first` | 3 |
-| `__reader-features` | 3 |
 | `keyword-identical?` | 2 |
 | `refer` | 2 |
 | `ref?` | 2 |
-| `xml-seq` | 2 |
-| `inst-ms*` | 2 |
 | `sorted-map?` | 2 |
 | `Inst` | 2 |
-| `print-dup` | 1 |
-| `get-proxy-class` | 1 |
-| `ref-history-count` | 1 |
-| `InputStream` | 1 |
-| `use` | 1 |
-| `defstruct` | 1 |
+| `xml-seq` | 2 |
+| `inst-ms*` | 2 |
 | `undefined?` | 1 |
-| `test` | 1 |
-| `iterator-seq` | 1 |
-| `get-thread-bindings` | 1 |
-| `a` | 1 |
-| `file-seq` | 1 |
-| `object?` | 1 |
-| `with-redefs-fn` | 1 |
-| `init-proxy` | 1 |
-| `bogus-head` | 1 |
 | `update-proxy` | 1 |
-| `refer-clojure` | 1 |
-| `java.net.URL.` | 1 |
 | `construct-proxy` | 1 |
 | `corpus.e3887` | 1 |
-| `ns-imports` | 1 |
+| `ref-history-count` | 1 |
+| `use` | 1 |
+| `object?` | 1 |
+| `InputStream` | 1 |
+| `java.net.URL.` | 1 |
+| `test` | 1 |
+| `refer-clojure` | 1 |
+| `print-dup` | 1 |
+| `defstruct` | 1 |
+| `get-proxy-class` | 1 |
+| `a` | 1 |
 | `java.nio.file.attribute.FileAttribute` | 1 |
+| `init-proxy` | 1 |
+| `with-redefs-fn` | 1 |
+| `ns-imports` | 1 |
+| `iterator-seq` | 1 |
+| `get-thread-bindings` | 1 |
+| `file-seq` | 1 |
+| `bogus-head` | 1 |

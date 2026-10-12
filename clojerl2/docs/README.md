@@ -24,7 +24,7 @@ clojerl2 还在开发中。下面是诚实的现状,不是路线图。
 - 字符串与 IO:正则(Java 语法,`re-find`/`re-seq`/`re-matches`…)、`clojure.string`、`format`/`printf`(java.util.Formatter 语法)、`*out*`/`*in*`/`*err*` 重定向、`with-out-str`/`with-in-str`、`slurp`/`spit`、UUID;
 - 字符串是 UTF-8,中文可直接使用。
 
-**还没有的**(括号里是 corpus 中因此失败的条目数,见 [corpus 基线](../notes/corpus-baseline.md);corpus 通过 3613 / 4841):
+**还没有的**(括号里是 corpus 中因此失败的条目数,见 [corpus 基线](../notes/corpus-baseline.md);corpus 通过 3614 / 4841):
 - 尚未移植的 clojure.core 函数,或已有函数缺少某些元数(arity),例如部分 transducer 形式(118)
 - reader 尚不接受的写法:部分数字语法、转义等(105)
 - 编译器尚不接受的形式:fn 体内的 `def`、部分 `letfn`/`set!`/`.`/`new` 用法等(178 + 11)
