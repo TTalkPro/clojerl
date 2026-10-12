@@ -138,6 +138,9 @@ get_request(_, Rest) -> {{error, enotsup}, Rest}.
 %%====================================================================
 
 %% @doc (slurp path): the file's text (UTF-8)
+%% a nil path is the JVM's IllegalArgumentException, not a file named "nil"
+%% (file:read_file/write_file take atoms as names)
+slurp(nil, _Opts) -> nil_path(<<"Reader">>);
 slurp(Path, _Opts) ->
     case file:read_file(Path) of
         {ok, Bin} -> Bin;
@@ -145,6 +148,7 @@ slurp(Path, _Opts) ->
     end.
 
 %% @doc (spit path content & {:append bool})
+spit(nil, _Content, _Opts) -> nil_path(<<"Writer">>);
 spit(Path, Content, Opts) ->
     Modes = case clj2_coll:get(Opts, ':append') of
                 true -> [append];
@@ -154,6 +158,10 @@ spit(Path, Content, Opts) ->
         ok -> nil;
         {error, Why} -> erlang:error(file_error(Path, Why))
     end.
+
+nil_path(What) ->
+    erlang:error(clj2_rt:ex_info(<<"Cannot open <nil> as a ", What/binary, ".">>,
+                                 clj2_coll:hash_map_kv([':type', ':IllegalArgumentException']), nil)).
 
 file_error(Path, Why) ->
     clj2_rt:ex_info(iolist_to_binary([Path, ": ", atom_to_binary(Why)]),

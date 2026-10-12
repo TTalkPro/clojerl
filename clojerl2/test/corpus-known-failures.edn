@@ -310,7 +310,6 @@
   {:suite "exceptions / host faults are throwables" :label "clojure.string on nil is a NullPointerException" :cause :pending/triage}
   {:suite "exceptions / host faults are throwables" :label "clojure.string/blank? on a non-string is a ClassCastException" :cause :pending/triage}
   {:suite "exceptions / host faults are throwables" :label "name and namespace of nil are NullPointerExceptions" :cause :pending/triage}
-  {:suite "exceptions / host faults are throwables" :label "spit to nil is an IllegalArgumentException" :cause :pending/triage}
   {:suite "exceptions / recur across try" :label "recur across locking" :cause :pending/ref-types}
   {:suite "exceptions / wrong-class throws" :label "ArrayList get out of range" :cause :pending/triage}
   {:suite "exceptions / wrong-class throws" :label "conj of a non-pair vector onto a map" :cause :pending/triage}
