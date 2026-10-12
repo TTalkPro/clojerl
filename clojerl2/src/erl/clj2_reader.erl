@@ -600,7 +600,7 @@ arg_name(N) -> list_to_atom("%" ++ integer_to_list(N)).
 frame_args({_Auto, _ByIndex, undefined, 0}) -> [];
 frame_args({_Auto, ByIndex, Variadic, Count}) ->
     lists:append([[maps:get(K, ByIndex) || K <- lists:seq(1, Count)],
-                  case Variadic of undefined -> []; _ -> [Variadic] end]).
+                  case Variadic of undefined -> []; _ -> ['&', Variadic] end]).
 
 %%--------------------------------------------------------------------
 %% Collections
