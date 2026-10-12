@@ -579,6 +579,35 @@
 (defn create-ns [name] (clj2_ns/ensure name) name)
 (defn ns-name [ns] (the-ns ns))
 
+;; Reflection over the registry (clj2_rt_eval): a var is {var meta
+;; {ns name}}; ns-resolve finds what the compiler would find (own vars,
+;; refers, aliases, clojure.core's public vars, a class name).
+(defn ns-resolve
+  ([ns sym]
+   (when (nil? sym) (throw (new NullPointerException "resolve: nil symbol")))
+   (clj2_rt_eval/resolve (the-ns ns) sym))
+  ([ns env sym] (when-not (contains? env sym) (ns-resolve ns sym))))
+(defn resolve
+  ([sym] (ns-resolve *ns* sym))
+  ([env sym] (ns-resolve *ns* env sym)))
+(defn requiring-resolve [sym] (clj2_rt_eval/requiring_resolve sym))
+(defn find-var [sym] (clj2_rt_eval/find_var sym))
+(defn ns-publics [ns] (clj2_rt_eval/ns_publics (the-ns ns)))
+(defn ns-interns [ns] (clj2_rt_eval/ns_interns (the-ns ns)))
+(defn ns-map [ns] (clj2_rt_eval/ns_map (the-ns ns)))
+(defn ns-refers [ns] (clj2_rt_eval/ns_refers (the-ns ns)))
+(defn ns-aliases [ns] (clj2_rt_eval/ns_aliases (the-ns ns)))
+(defn ns-unmap [ns sym] (clj2_rt_eval/ns_unmap (the-ns ns) sym))
+(defn ns-unalias [ns sym] (clj2_ns/remove_alias (the-ns ns) sym) nil)
+(defn intern
+  ([ns name] (clj2_rt_eval/intern (the-ns ns) name))
+  ([ns name val] (clj2_rt_eval/intern (the-ns ns) name val)))
+(defn remove-ns [sym] (clj2_rt_eval/remove_ns sym))
+(defn bound?
+  "True when every var has a root or a binding in this process."
+  [& vars]
+  (every? (fn [v] (clj2_jvm/method v 'isBound ())) vars))
+
 ;;;; ------------------------------------------------------------------
 ;;;; Refs and STM: not provided (designs/03 §5.2). BEAM has no
 ;;;; multi-object transactional memory and faking one would lie; these
@@ -755,8 +784,10 @@
 (defn derive
   ([tag parent]
    (hier-assert (namespace parent) "(namespace parent)")
-   (hier-assert (and (or (keyword? tag) (symbol? tag)) (namespace tag))
-                "(and (instance? clojure.lang.Named tag) (namespace tag))")
+   ;; a class (a record or deftype name) needs no namespace, as on the JVM
+   (hier-assert (or (clj2_class/is_class tag)
+                    (and (or (keyword? tag) (symbol? tag)) (namespace tag)))
+                "(or (class? tag) (and (instance? clojure.lang.Named tag) (namespace tag)))")
    (swap! global-hierarchy derive tag parent) nil)
   ([h tag parent]
    (hier-assert (not= tag parent) "(not= tag parent)")
@@ -1136,7 +1167,8 @@
 (defn transient [coll]
   (if (or (vector? coll) (map? coll) (set? coll))
     (clj2_rt/transient coll)
-    (throw (ex-info (str "transient: not an editable collection: " (clj2_print/pr_str coll))
+    ;; the class, not the value: printing a lazy seq would realize it
+    (throw (ex-info (str "class " (clj2_class/class_of coll) " cannot be cast to class clojure.lang.IEditableCollection")
                     {:type :ClassCastException}))))
 (defn transient? [x] (clj2_rt/is_transient x))
 (defn persistent! [t] (clj2_rt/persistent t))

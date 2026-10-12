@@ -150,6 +150,9 @@ code_path_load_test() ->
     {ok, Ns, M, Bin} = clj2_compiler:compile_ns(<<"(ns t.path) (def k 7)">>),
     ok = file:write_file(filename:join(Dir, atom_to_list(M) ++ ".beam"), Bin),
     true = code:add_patha(Dir),
+    %% compiling it created the namespace (its ns form does); a fresh VM
+    %% has no such entry, which is what the code path load is for
+    clj2_ns:remove(Ns),
     try
         ?assertEqual(error, maybe_registered(Ns)),
         ?assertMatch({ok, #{vars := #{k := _}}}, clj2_ns:info(Ns)),

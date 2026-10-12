@@ -27,6 +27,9 @@
 
 -export([ ensure_started/0
         , register/3
+        , register/4
+        , remove_var/2
+        , remove_alias/2
         , ensure/1
         , find_ns/1
         , put_var/3
@@ -65,9 +68,16 @@ ensure_started() ->
     end.
 
 %% @doc Register (or re-register, on reload) a namespace.
-register(Ns, Module, Vars) when is_atom(Ns), is_atom(Module), is_map(Vars) ->
+register(Ns, Module, Vars) ->
+    register(Ns, Module, Vars, #{}).
+
+%% @doc Register a namespace with the aliases and refers its `ns' form
+%% declared (`#{aliases => #{Alias => Ns}, refers => #{Sym => Ns}}'), so
+%% ns-aliases / ns-refers / resolve see them at run time.
+register(Ns, Module, Vars, Ctx) when is_atom(Ns), is_atom(Module), is_map(Vars), is_map(Ctx) ->
     ensure_started(),
-    gen_server:call(?MODULE, {register, Ns, #{module => Module, vars => Vars}}).
+    gen_server:call(?MODULE, {register, Ns, maps:merge(maps:with([aliases, refers], Ctx),
+                                                       #{module => Module, vars => Vars})}).
 
 %% @doc Make sure `Ns' has an entry (in-ns, ns at the REPL); a namespace
 %% that has none yet gets an empty one (no module of its own).
@@ -97,6 +107,16 @@ set_var_meta({var, _, {Ns, Name}}, M) ->
 put_ctx(Ns, Aliases, Refers) ->
     ensure(Ns),
     gen_server:call(?MODULE, {put_ctx, Ns, Aliases, Refers}).
+
+%% @doc (ns-unmap ns sym): forget one var of `Ns'.
+remove_var(Ns, Name) when is_atom(Ns), is_atom(Name) ->
+    ensure_started(),
+    gen_server:call(?MODULE, {remove_var, Ns, Name}).
+
+%% @doc (ns-unalias ns sym): forget one alias of `Ns'.
+remove_alias(Ns, Alias) when is_atom(Ns), is_atom(Alias) ->
+    ensure_started(),
+    gen_server:call(?MODULE, {remove_alias, Ns, Alias}).
 
 %% @doc Forget a namespace and its var roots.
 remove(Ns) ->
@@ -186,10 +206,13 @@ init([]) ->
     {ok, #{}}.
 
 handle_call({register, Ns, Entry}, _From, S) ->
-    Ctx = case lookup(Ns) of
-              {ok, Old} -> maps:with([aliases, refers], Old);
+    %% what the module declares, over what was added at the REPL before
+    Old = case lookup(Ns) of
+              {ok, O} -> O;
               error -> #{}
           end,
+    Ctx = #{aliases => maps:merge(maps:get(aliases, Old, #{}), maps:get(aliases, Entry, #{})),
+            refers => maps:merge(maps:get(refers, Old, #{}), maps:get(refers, Entry, #{}))},
     true = ets:insert(?TAB, {Ns, maps:merge(Entry, Ctx)}),
     true = ets:delete(?FAIL_TAB, Ns),
     {reply, ok, S};
@@ -207,6 +230,18 @@ handle_call({put_ctx, Ns, Aliases, Refers}, _From, S) ->
     {ok, E} = lookup(Ns),
     true = ets:insert(?TAB, {Ns, E#{aliases => maps:merge(maps:get(aliases, E, #{}), Aliases),
                                     refers => maps:merge(maps:get(refers, E, #{}), Refers)}}),
+    {reply, ok, S};
+handle_call({remove_var, Ns, Name}, _From, S) ->
+    case lookup(Ns) of
+        {ok, E = #{vars := Vars}} -> true = ets:insert(?TAB, {Ns, E#{vars := maps:remove(Name, Vars)}});
+        error -> ok
+    end,
+    {reply, ok, S};
+handle_call({remove_alias, Ns, Alias}, _From, S) ->
+    case lookup(Ns) of
+        {ok, E} -> true = ets:insert(?TAB, {Ns, E#{aliases => maps:remove(Alias, maps:get(aliases, E, #{}))}});
+        error -> ok
+    end,
     {reply, ok, S};
 handle_call({remove, Ns}, _From, S) ->
     case ets:lookup(?TAB, Ns) of

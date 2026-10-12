@@ -19,6 +19,9 @@
 -export([current_ns/0, set_current_ns/1, in_ns/1, save_ns/0, restore_ns/1]).
 -export([eval/1, read_string/1, load_string/1, macroexpand_1/1, macroexpand/1]).
 -export([alias/2]).
+-export([resolve/2, ns_publics/1, ns_interns/1, ns_map/1, ns_aliases/1, ns_refers/1,
+         find_var/1, intern/2, intern/3, intern_value/2, ns_unmap/2, remove_ns/1,
+         requiring_resolve/1]).
 -export([require/1, load_specs/2, ensure_loaded/1, load_file/1, load_ns_file/1,
          source_path/0, set_source_path/1, find_source/1]).
 
@@ -206,3 +209,154 @@ alias(As, Ns) ->
     clj2_ns:info(Ns) =/= error orelse erlang:error({clj2_require, {not_found, Ns, source_path()}}),
     clj2_ns:put_ctx(current_ns(), #{As => Ns}, #{}),
     nil.
+
+%%====================================================================
+%% Namespace reflection (resolve, ns-publics ...)
+%%====================================================================
+
+%% @doc (ns-resolve ns sym): the var `sym' names in `ns' -- its own, one
+%% it refers, one reached through an alias, or clojure.core's public one
+%% -- as the compiler would resolve it; a class for a class name; else
+%% nil. The namespace is a symbol (there are no Namespace objects).
+resolve(Ns, Sym) when is_atom(Ns), is_atom(Sym) ->
+    case string:split(atom_to_list(Sym), "/") of
+        [[_ | _] = Q, [_ | _] = N] ->
+            QA = list_to_atom(Q),
+            var_of(maps:get(QA, ctx(Ns, aliases), QA), list_to_atom(N));
+        _ ->
+            case var_of(Ns, Sym) of
+                nil ->
+                    case maps:find(Sym, ctx(Ns, refers)) of
+                        {ok, RNs} -> var_of(RNs, Sym);
+                        error ->
+                            case Ns =/= 'clojure.core' andalso public_var_of('clojure.core', Sym) of
+                                {var, _, _} = V -> V;
+                                _ ->
+                                    case clj2_class:resolve(Sym) of
+                                        {ok, C} -> C;
+                                        error -> nil
+                                    end
+                            end
+                    end;
+                V -> V
+            end
+    end.
+
+%% the var Ns/Name, or nil
+var_of(Ns, Name) ->
+    case clj2_ns:info(Ns) of
+        {ok, #{vars := #{Name := _}}} -> clj2_rt:var(Ns, Name);
+        _ -> nil
+    end.
+
+public_var_of(Ns, Name) ->
+    case clj2_ns:info(Ns) of
+        {ok, #{vars := #{Name := I}}} ->
+            case maps:get(private, I, false) of
+                true -> nil;
+                false -> clj2_rt:var(Ns, Name)
+            end;
+        _ -> nil
+    end.
+
+ctx(Ns, Key) ->
+    case clj2_ns:info(Ns) of
+        {ok, E} -> maps:get(Key, E, #{});
+        error -> #{}
+    end.
+
+vars_of(Ns, Pred) ->
+    case clj2_ns:info(Ns) of
+        {ok, #{vars := Vars}} -> [{N, clj2_rt:var(Ns, N)} || {N, I} <- lists:sort(maps:to_list(Vars)), Pred(I)];
+        error -> []
+    end.
+
+sym_map(Pairs) -> clj2_coll:hash_map_kv(lists:append([[K, V] || {K, V} <- Pairs])).
+
+%% @doc (ns-publics ns): symbol → var of the public vars
+ns_publics(Ns) -> sym_map(vars_of(Ns, fun(I) -> not maps:get(private, I, false) end)).
+
+%% @doc (ns-interns ns): symbol → var of every var
+ns_interns(Ns) -> sym_map(vars_of(Ns, fun(_) -> true end)).
+
+%% @doc (ns-aliases ns): alias symbol → namespace symbol
+ns_aliases(Ns) -> sym_map(maps:to_list(ctx(Ns, aliases))).
+
+%% @doc (ns-refers ns): symbol → var of what `ns' refers, clojure.core's
+%% public vars (the implicit refer-clojure) included
+ns_refers(Ns) -> sym_map(refer_pairs(Ns)).
+
+refer_pairs('clojure.core') -> [];
+refer_pairs(Ns) ->
+    Core = vars_of('clojure.core', fun(I) -> not maps:get(private, I, false) end),
+    Explicit = [{S, clj2_rt:var(R, S)} || {S, R} <- maps:to_list(ctx(Ns, refers))],
+    maps:to_list(maps:merge(maps:from_list(Core), maps:from_list(Explicit))).
+
+%% @doc (ns-map ns): the refers under the interns
+ns_map(Ns) ->
+    sym_map(maps:to_list(maps:merge(maps:from_list(refer_pairs(Ns)),
+                                    maps:from_list(vars_of(Ns, fun(_) -> true end))))).
+
+%% @doc (find-var 'ns/name): the var, nil when the namespace has no such
+%% var; an unqualified symbol or an unknown namespace is an
+%% IllegalArgumentException
+find_var(Sym) when is_atom(Sym) ->
+    case string:split(atom_to_list(Sym), "/") of
+        [[_ | _] = Q, [_ | _] = N] ->
+            Ns = list_to_atom(Q),
+            case clj2_ns:info(Ns) of
+                {ok, _} -> var_of(Ns, list_to_atom(N));
+                error -> illegal_argument(<<"No such namespace: ", (atom_to_binary(Ns))/binary>>)
+            end;
+        _ -> illegal_argument(<<"Symbol must be namespace-qualified">>)
+    end.
+
+illegal_argument(Msg) ->
+    erlang:error(clj2_rt:ex_info(Msg, clj2_coll:hash_map_kv([':type', ':IllegalArgumentException']), nil)).
+
+%% @doc (intern ns name) / (intern ns name val): a var in `ns', as (def
+%% name val) evaluated there would make it, so it compiles and links
+%% like any other. The value travels through the var table: a module's
+%% init cannot take a closure as a literal.
+intern(Ns, Name) when is_atom(Ns), is_atom(Name) ->
+    clj2_ns:ensure(Ns),
+    _ = clj2_compiler:eval({forms, [[def, Name]]}, #{ns => Ns}),
+    clj2_rt:var(Ns, Name).
+
+intern(Ns, Name, Val) when is_atom(Ns), is_atom(Name) ->
+    clj2_ns:ensure(Ns),
+    Key = erlang:unique_integer([positive]),
+    clj2_var:set_root({intern, Key}, Name, Val),
+    _ = clj2_compiler:eval({forms, [[def, Name, ['clj2_rt_eval/intern_value', Key, [quote, Name]]]]}, #{ns => Ns}),
+    clj2_rt:var(Ns, Name).
+
+%% @private the value an interned var's init takes (once)
+intern_value(Key, Name) ->
+    clj2_var:take_root({intern, Key}, Name).
+
+%% @doc (ns-unmap ns sym): the var is gone from the namespace
+ns_unmap(Ns, Name) when is_atom(Ns), is_atom(Name) ->
+    clj2_ns:remove_var(Ns, Name),
+    nil.
+
+%% @doc (remove-ns sym): the namespace symbol when it existed, else nil
+remove_ns(Ns) when is_atom(Ns) ->
+    case clj2_ns:find_ns(Ns) of
+        true -> clj2_ns:remove(Ns), Ns;
+        false -> nil
+    end.
+
+%% @doc (requiring-resolve 'ns/name): resolve, loading the namespace
+%% when it is not loaded yet; an unqualified symbol is an
+%% IllegalArgumentException
+requiring_resolve(Sym) when is_atom(Sym) ->
+    case string:split(atom_to_list(Sym), "/") of
+        [[_ | _] = Q, [_ | _]] ->
+            case resolve(current_ns(), Sym) of
+                nil ->
+                    load(list_to_atom(Q), false),
+                    resolve(current_ns(), Sym);
+                V -> V
+            end;
+        _ -> illegal_argument(<<"Not a qualified symbol: ", (atom_to_binary(Sym))/binary>>)
+    end.

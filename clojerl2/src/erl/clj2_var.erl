@@ -16,6 +16,7 @@
 -export([ new_table/0
         , root/2
         , set_root/3
+        , take_root/2
         , deref/2
         , push_binding/3
         , pop_binding/2
@@ -47,6 +48,14 @@ set_root(M, Name, V) ->
     clj2_ns:ensure_started(),
     true = ets:insert(?TAB, {{M, Name}, V}),
     V.
+
+%% @doc Root value of a var, removed from the table (an interned var's
+%% init takes its value this way).
+take_root(M, Name) ->
+    case ets:take(?TAB, {M, Name}) of
+        [{_, V}] -> V;
+        [] -> erlang:error({clj2_unbound_var, M, Name})
+    end.
 
 %% @doc Value of a dynamic var: innermost binding of this process,
 %% else the root.

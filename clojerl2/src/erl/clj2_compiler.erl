@@ -383,6 +383,9 @@ expand_ns(Src, Opts) ->
                        || {ns_decl, A, _, _, _} = T <- Tops, Acc =/= [] orelse T =/= hd(Tops)],
                   C0 = case Tops of
                            [{ns_decl, _, Ns, Reqs, _} | _] ->
+                               %% the namespace exists from its ns form on
+                               %% (a macro expanding in it may resolve names)
+                               clj2_ns:ensure(Ns),
                                clj2_rt_eval:set_current_ns(Ns),
                                requires(Ns, Reqs, C);
                            [{eval, _, {invoke, _, {sym, _, Req}, Args}}]
@@ -596,6 +599,11 @@ compile_tops(Tops, Ns, M, Prior, Register, Ctx, Opts) ->
     Vars = maps:merge(Prior, Declared),
     St2 = St1#{ns := Ns, vars := Vars, unit => Unit, module => M, register => Register,
                impl_of => maps:get(impl_of, Ctx, none),
+               %% what the module's init registers besides its vars: the
+               %% explicit aliases and refers (the implicit clojure.core
+               %% refer is known to the registry already)
+               ns_aliases => maps:get(aliases, Ctx, #{}),
+               ns_refers => maps:filter(fun(_, R) -> R =/= 'clojure.core' end, maps:get(refers, Ctx, #{})),
                scope => scope(St1, Ns, Vars, Unit, M, Ctx)},
     clj2_np:run(back(Opts), Tops1, pass_opts(Opts, St2)).
 

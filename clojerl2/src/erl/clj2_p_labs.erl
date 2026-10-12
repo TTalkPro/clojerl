@@ -174,7 +174,11 @@ init_fun(Ns, M, Vars, Steps, A, Register, St) ->
     {[C, R, S], St1} = fresh_n(['C', 'R', 'S'], St),
     Reg = case Register of
               false -> {elit, A, ok};
-              true -> {eremote, A, clj2_ns, register, [{elit, A, Ns}, {elit, A, M}, {elit, A, Vars}]}
+              true -> {eremote, A, clj2_ns, register,
+                       [{elit, A, Ns}, {elit, A, M}, {elit, A, Vars},
+                        %% the ns form's aliases and refers, for ns-aliases/resolve
+                        {elit, A, #{aliases => maps:get(ns_aliases, St, #{}),
+                                    refers => maps:get(ns_refers, St, #{})}}]}
           end,
     FailName = case Register of
                    true -> Ns;
