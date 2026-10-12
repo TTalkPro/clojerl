@@ -456,12 +456,12 @@ pending_legend() ->
      {':pending/sorted-colls', <<"sorted maps and sets are not implemented yet.">>, <<"clojerl2-021 follow-up">>},
      {':pending/transients', <<"transient/persistent! and the bang ops are not implemented yet.">>, <<"clojerl2-021 follow-up">>},
      {':pending/host-types', <<"class/type/instance? and other host type queries are not implemented yet; JVM class names need a mapping onto clj2 type tags; host classes and members not shimmed yet (Thread, Math statics, Keyword methods ...).">>, <<"clojerl2-021 follow-up">>},
-     {':pending/stdlib-namespaces', <<"clojure.string, clojure.set, clojure.walk, clojure.edn, clojure.math ... are not ported yet.">>, <<"clojerl2-021 follow-up">>},
+     {':pending/stdlib-namespaces', <<"A standard library namespace or var not ported yet (clojure.data, clojure.zip, clojure.datafy ...). (clojure.edn, clojure.math, clojure.pprint and clojure.repl came with clojerl2-039.)">>, <<"clojerl2-039">>},
      {':pending/missing-core-var', <<"A clojure.core var, or an arity of one, is not ported yet. (sorted-map?/sorted-set?, thread-bound?, get-thread-bindings, tagged-literal and reader-conditional, Inst/inst-ms, xml-seq, struct maps, the proxy stubs, conj! and read-string arities, test, bytes ... came with clojerl2-036.)">>, <<"clojerl2-036">>},
      {':pending/special-forms', <<"A special form (var, set!, ., new, letfn* ...) is not compiled yet.">>, <<"clojerl2-021 follow-up">>},
      {':pending/numbers', <<"A numeric gap that is not a registered divergence. (BigDecimal literals, arithmetic, with-precision, printing and the java.math.BigDecimal surface came with clojerl2-037.)">>, <<"clojerl2-037">>},
      {':pending/reader', <<"The reader rejects the source (reader conditionals, number syntax, escapes ...), or reports a read error unlike the JVM.">>, <<"clojerl2-021 follow-up">>},
-     {':pending/compiler', <<"The compiler rejects the entry (syntax, linking, recur, verify ...): a compiler gap or bug.">>, <<"clojerl2-021 follow-up">>},
+     {':pending/compiler', <<"The compiler rejects the entry: defrecord, extend-protocol and the like inside an expression (they are top-level forms here). (loop* inits in order, nested syntax-quote and its JVM construction code, destructured deftype/defmacro params, Object methods, deftype options, defprotocol options, trailing attr-maps, declare, defonce, lazy apply came with clojerl2-038.)">>, <<"clojerl2-038">>},
      {':pending/triage', <<"Runs but disagrees with the JVM (wrong value, unexpected or missing throw, timeout, crash), cause not yet known: a new failure lands here until it is triaged into a concrete cause or a registered divergence.">>, <<"clojerl2-033">>}].
 
 %% A first guess at a new failure's cause: a registered divergence when the
