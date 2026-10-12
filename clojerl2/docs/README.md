@@ -17,15 +17,16 @@ clojerl2 还在开发中。下面是诚实的现状,不是路线图。
 - 编译器、REPL、命令行 `bin/clojerl2`、rebar3 插件和编译缓存;
 - clojure.core 的大部分:序列与集合函数、惰性序列、transducer、解构、宏、协议(`defprotocol`/`extend-type`/`defrecord`)、`ns`/`require`/`eval`;
 - 引用类型:atom、volatile、agent、future、promise、`binding`/`bound-fn`(ref/STM 有意不提供);
+- 多方法与层次:`defmulti`/`defmethod`、`derive`/`isa?`/`prefer-method`,支持自定义层次;
+- 字符串与 IO:正则(Java 语法,`re-find`/`re-seq`/`re-matches`…)、`clojure.string`、`format`/`printf`(java.util.Formatter 语法)、`*out*`/`*in*`/`*err*` 重定向、`with-out-str`/`with-in-str`、`slurp`/`spit`、UUID;
 - 字符串是 UTF-8,中文可直接使用。
 
 **还没有的**(括号里是 corpus 中因此失败的条目数,见 [corpus 基线](../notes/corpus-baseline.md)):
-- 尚未移植的 clojure.core 函数,或已有函数缺少某些元数(arity),例如 transducer 形式(499)
-- 正则表达式、`format` 的大部分、字符串/字符函数、读写 IO(311)
-- `class`/`type`/`instance?` 等宿主类型查询(213)
-- 值上的元数据,即 `meta`/`with-meta`(135)
-- `clojure.string`、`clojure.set`、`clojure.walk` 等标准库命名空间(126)
-- 有序集合(116)、transient(79)、多方法与层级(79)、BigDecimal(66)
+- 尚未移植的 clojure.core 函数,或已有函数缺少某些元数(arity),例如 transducer 形式(507)
+- `class`/`type`/`instance?` 等宿主类型查询(222)
+- 值上的元数据,即 `meta`/`with-meta`(137)
+- `clojure.set`、`clojure.walk`、`clojure.edn` 等其余标准库命名空间(18)
+- 有序集合(116)、transient(79)、BigDecimal(66)
 - `alter-var-root`、`with-redefs`、`locking`(11)
 
-**与 JVM 有意不同的**:见 [differences.md](differences.md)。共 19 条,每条都有替代写法。
+**与 JVM 有意不同的**:见 [differences.md](differences.md)。共 21 条,每条都有替代写法。

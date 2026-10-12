@@ -25,6 +25,9 @@
         , with_frame/2
         , bound_fn/1
         , delete_roots/1
+        , push_frame/1
+        , pop_frame/0
+        , var_set/2
         ]).
 
 -define(TAB, clj2_var).
@@ -124,6 +127,37 @@ bound_fn(F) ->
                                       end,
                                with_frame(Frame, fun() -> clj2_rt:invoke(F, Args) end)
                        end}}.
+
+%% @doc (push-thread-bindings {#'v 1 ...}): bind as binding does, until
+%% the matching pop-thread-bindings (a frame stack in the process)
+push_frame(Map) ->
+    Bs = pairs(lists:append([[K, V] || {vector, _, {K, V}} <- clj2_coll:to_list(Map)])),
+    [push_binding(M, N, V) || {M, N, V} <- Bs],
+    put(clj2_binding_frames, [Bs | case get(clj2_binding_frames) of undefined -> []; Fs -> Fs end]),
+    nil.
+
+pop_frame() ->
+    case get(clj2_binding_frames) of
+        [Bs | Rest] ->
+            [pop_binding(M, N) || {M, N, _} <- lists:reverse(Bs)],
+            put(clj2_binding_frames, Rest),
+            nil;
+        _ -> erlang:error(clj2_rt:ex_info(<<"Pop without matching push">>,
+                                          clj2_coll:hash_map_kv([':type', ':IllegalStateException']), nil))
+    end.
+
+%% @doc (var-set v x): a with-local-vars var, or a dynamic var's binding
+var_set({local_var, _, Cell}, X) -> clj2_ref:reset(Cell, X);
+var_set({var, _, {Ns, Name}}, X) ->
+    {ok, #{module := NsMod, vars := #{Name := I}}} = clj2_ns:info(Ns),
+    M = maps:get(module, I, NsMod),
+    case get({clj2_dyn, M, Name}) of
+        [_ | _] -> set_binding(M, Name, X), X;
+        _ -> erlang:error(clj2_rt:ex_info(
+                            iolist_to_binary(["Can't change/establish root binding of: ", atom_to_binary(Name),
+                                              " with set"]),
+                            clj2_coll:hash_map_kv([':type', ':IllegalStateException']), nil))
+    end.
 
 delete_roots(M) ->
     ets:match_delete(?TAB, {{M, '_'}, '_'}).

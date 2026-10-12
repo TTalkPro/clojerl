@@ -55,10 +55,10 @@ clojerl2:基于 nanopass 的 Clojure on ERTS 全新实现。设计文档见 [des
 |---|---|---|---|
 | [clojerl2-015](tasks/clojerl2-015-var-ns.md) | Var/NS 运行时(直接链接) | 010 | 已完成 |
 | [clojerl2-016](tasks/clojerl2-016-protocols.md) | 协议(impl 模块 + 存在性缓存) | 015, 002 | 已完成 |
-| [clojerl2-017](tasks/clojerl2-017-multimethods.md) | 多方法(分派模块 absform 化) | 015 | 未开始 |
+| [clojerl2-017](tasks/clojerl2-017-multimethods.md) | 多方法(分派模块 absform 化) | 015 | 已完成(改为 ETS 方法表) |
 | [clojerl2-018](tasks/clojerl2-018-ref-types.md) | 引用类型(atom/agent/delay/future) | 015, 003 | 已完成 |
 | [clojerl2-019](tasks/clojerl2-019-lazy-seq.md) | 惰性序列(thunk + 记忆单元) | 003 | 已完成(clojerl 1.0 对比待补) |
-| [clojerl2-020](tasks/clojerl2-020-strings-io.md) | 字符串与 IO 原语层 | 010 | 未开始 |
+| [clojerl2-020](tasks/clojerl2-020-strings-io.md) | 字符串与 IO 原语层 | 010 | 已完成 |
 | [clojerl2-021](tasks/clojerl2-021-core-tiers.md) | core 全层移植(01-04 层) | 014, 015, 016 | 已完成 |
 | [clojerl2-022](tasks/clojerl2-022-corpus-conformance.md) | corpus + known-divergences 门控 CI | 021 | 已完成(次级来源 clojure-test-suite 未接入) |
 

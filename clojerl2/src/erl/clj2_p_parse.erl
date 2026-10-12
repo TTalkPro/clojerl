@@ -106,7 +106,7 @@ top(F, A0, E) ->
         [H | Rest] ->
             case unwrap(H) of
                 do -> lists:append([top(X, A, E) || X <- Rest]);
-                def -> [def_form(Rest, A, E)];
+                def -> def_form(Rest, A, E);
                 ns -> [ns_form(Rest, A)];
                 S when is_atom(S) ->
                     case kernel_form(S) of
@@ -132,14 +132,60 @@ def_form([N | Rest], A, E) ->
     def_form(binder(N, A), name_meta(N), Rest, A, E);
 def_form([], A, _E) -> syntax(A, bad_def).
 
-def_form(Name, Meta0, Rest, A, E) ->
-    case [unwrap(X) || X <- Rest] of
-        [] -> {def, A, Name, Meta0, nil};
-        [_] -> {def, A, Name, Meta0, form(hd(Rest), A, E)};
-        [Doc, _] when is_binary(Doc) ->
-            {def, A, Name, Meta0#{':doc' => Doc}, form(lists:last(Rest), A, E)};
-        _ -> syntax(A, bad_def)
+def_form(Name, Meta00, Rest, A, E) ->
+    Meta0 = maps:map(fun(_, V) -> clj2_form:to_data(V) end, Meta00),
+    {Meta, Init} =
+        case [unwrap(X) || X <- Rest] of
+            [] -> {Meta0, none};
+            [_] -> {Meta0, hd(Rest)};
+            [Doc, _] when is_binary(Doc) -> {Meta0#{':doc' => Doc}, lists:last(Rest)};
+            %% (def name {attr-map} init): what defn expands to
+            [M, _] ->
+                case clj2_form:map_pairs(M) of
+                    false -> syntax(A, bad_def);
+                    Pairs -> {maps:merge(Meta0, maps:from_list([{clj2_form:to_data(K), clj2_form:to_data(V)}
+                                                                || {K, V} <- Pairs])),
+                              lists:last(Rest)}
+                end;
+            _ -> syntax(A, bad_def)
+        end,
+    %% constant metadata is the var's from the start; any other value is
+    %% an expression, evaluated when the def runs (as on the JVM)
+    {Static, Dynamic} = maps:fold(fun(K, V, {S, D}) ->
+                                          case meta_const(K, V) of
+                                              {ok, C} -> {S#{K => C}, D};
+                                              error -> {S, [{K, V} | D]}
+                                          end
+                                  end, {#{}, []}, Meta),
+    Def = {def, A, Name, Static, case Init of none -> nil; _ -> form(Init, A, E) end},
+    case Dynamic of
+        [] -> [Def];
+        _ ->
+            Kvs = lists:append([[{const, A, K}, form(V, A, E)] || {K, V} <- lists:sort(Dynamic)]),
+            [Def, {eval, A, call(A, clj2_rt, merge_var_meta,
+                                 [{the_var, A, Name}, call(A, clj2_coll, hash_map_kv, [{list, A, Kvs}])])}]
     end.
+
+%% a metadata value that evaluates to itself (a quoted form: its data);
+%% a :tag stays the symbol it names
+meta_const(':tag', S) when is_atom(S) -> {ok, S};
+meta_const(_, V) -> meta_const(V).
+
+meta_const(V) when is_number(V); is_binary(V); V =:= nil; V =:= true; V =:= false -> {ok, V};
+meta_const([quote, X]) -> {ok, X};
+meta_const(V) when is_atom(V) ->
+    case is_keyword(V) of
+        true -> {ok, V};
+        false -> error
+    end;
+meta_const({Tag, _, _} = V) when Tag =:= vector; Tag =:= map; Tag =:= set ->
+    Items = clj2_coll:to_list(case Tag of map -> clj2_coll:vals(V); _ -> V end),
+    Keys = case Tag of map -> clj2_coll:to_list(clj2_coll:keys(V)); _ -> [] end,
+    case lists:all(fun(X) -> meta_const(X) =:= {ok, X} end, Items ++ Keys) of
+        true -> {ok, V};
+        false -> error
+    end;
+meta_const(_) -> error.
 
 name_meta(W) when ?CLJ2_IS_LOC(W) ->
     case ?CLJ2_LOC_META(W) of
@@ -182,7 +228,8 @@ defmacro_form([N | Rest0], A, E) ->
                    _ -> syntax(pos(C, A), bad_defmacro)
                end || C <- Clauses],
     Fn = fn([Name | WithEnv], A, E),
-    {def, A, Name, (maps:merge(name_meta(N), Meta1))#{':macro' => true}, Fn};
+    Arglists = [clj2_form:to_data(hd(unwrap(C))) || C <- Clauses],
+    {def, A, Name, (maps:merge(#{':arglists' => Arglists}, maps:merge(name_meta(N), Meta1)))#{':macro' => true}, Fn};
 defmacro_form([], A, _E) -> syntax(A, bad_defmacro).
 
 %% (ns name docstring? (:require spec ...)*)
@@ -236,6 +283,14 @@ require_spec(S, A) ->
 require_opts([], R, _A) -> R;
 require_opts([':as', Alias | Rest], R, A) when is_atom(Alias) ->
     require_opts(Rest, R#{as := Alias}, A);
+%% :refer :all: the namespace's public vars (it is loaded to know them)
+require_opts([':refer', ':all' | Rest], R = #{ns := Ns}, A) ->
+    ok = clj2_rt_eval:ensure_loaded(Ns),
+    Syms = case clj2_ns:info(Ns) of
+               {ok, #{vars := Vars}} -> [K || {K, I} <- maps:to_list(Vars), not maps:get(private, I, false)];
+               error -> syntax(A, {no_such_namespace, Ns})
+           end,
+    require_opts(Rest, R#{refer := Syms}, A);
 require_opts([':refer', V | Rest], R, A) ->
     case clj2_form:vector_items(V) of
         false -> syntax(A, bad_refer);
@@ -248,13 +303,23 @@ require_opts([Opt | _], _R, A) ->
 %% Forms
 %%====================================================================
 
+%% ^{...} on a vector, map or set literal: the value carries it (the
+%% metadata map is evaluated, as in Clojure)
+form({clj2_loc, _, _, Inner, Meta} = W, _Anno, E) when is_map(Meta), map_size(Meta) > 0,
+                                                     is_tuple(Inner),
+                                                     (element(1, Inner) =:= vector orelse
+                                                      element(1, Inner) =:= map orelse
+                                                      element(1, Inner) =:= set) ->
+    A = anno(W),
+    MetaForm = {map, [], [{K, V} || {K, V} <- lists:sort(maps:to_list(Meta))]},
+    {invoke, A, {sym, A, 'clj2_rt/with_meta'}, [form(Inner, A, E), form(MetaForm, A, E)]};
 form(W, _Anno, E) when ?CLJ2_IS_LOC(W) ->
     form(?CLJ2_LOC_FORM(W), anno(W), E);
 form(X, A, _E) when is_integer(X); is_float(X); is_binary(X) -> {const, A, X};
 form(X, A, _E) when X =:= nil; X =:= true; X =:= false -> {const, A, X};
-form(X, A, _E) when is_atom(X) ->
+form(X, A, E) when is_atom(X) ->
     case is_keyword(X) of
-        true -> {const, A, X};
+        true -> {const, A, kw(X, E)};
         false -> {sym, A, X}
     end;
 form({ratio, _, _} = X, A, _E) -> {const, A, X};
@@ -286,17 +351,36 @@ form(X, A, E) ->
         _ -> unsupported(A, {literal, element(1, X)})
     end.
 
+dup([]) -> none;
+dup([X | Xs]) ->
+    case lists:any(fun(Y) -> clj2_coll:equals(X, Y) end, Xs) of
+        true -> {dup, X};
+        false -> dup(Xs)
+    end.
+
 %% A collection literal: a constant when every element is one, else
 %% built at run time (clj2_coll).
 coll(Ctor, Items, _X, A, E) ->
     Nodes = [form(I, A, E) || I <- Items],
+    %% a set element or map key written twice is an error, as the JVM
+    %% reader has it (Duplicate key: k)
+    Keys = case Ctor of
+               hash_set -> Nodes;
+               hash_map_kv -> [K || {K, _} <- pairs_of(Nodes)];
+               vector -> []
+           end,
+    Consts = [V || {const, _, V} <- Keys],
+    case dup(Consts) of
+        none -> ok;
+        {dup, D} -> syntax(A, {duplicate_key, clj2_print:pr_str(D)})
+    end,
     case lists:all(fun({const, _, _}) -> true; (_) -> false end, Nodes) of
         %% built from the elements' values: `{:a '(1)}' holds the list (1)
         true -> {const, A, clj2_coll:Ctor([V || {const, _, V} <- Nodes])};
         false -> {invoke, A, {sym, A, qsym(clj2_coll, Ctor)}, [{list, A, Nodes}]}
     end.
 
-list_form(quote, _, [D], _F, A, _E) -> {const, A, clj2_form:to_data(D)};
+list_form(quote, _, [D], _F, A, E) -> {const, A, kws(clj2_form:to_data(D), E)};
 list_form('if', _, [C, T], _F, A, E) -> {'if', A, form(C, A, E), form(T, A, E), {const, A, nil}};
 list_form('if', _, [C, T, El], _F, A, E) -> {'if', A, form(C, A, E), form(T, A, E), form(El, A, E)};
 list_form('do', _, Body, _F, A, E) -> body(Body, A, E);
@@ -339,18 +423,66 @@ list_form(var, _, [S0], _F, A, _E) ->
         S when is_atom(S), S =/= nil, S =/= true, S =/= false -> {the_var, A, S};
         _ -> syntax(A, {bad_special_form, var, 1})
     end;
+list_form('.', _, [Target, Member | Rest], _F, A, E) -> dot(Target, Member, Rest, A, E);
+list_form('..', _, [X, M | Ms], _F, A, E) ->
+    form(lists:foldl(fun(Mi, Acc) -> ['.', Acc, Mi] end, ['.', X, M], Ms), A, E);
+list_form(new, _, [C | Args], _F, A, E) ->
+    case unwrap(C) of
+        S when is_atom(S) -> {invoke, A, {sym, A, list_to_atom(atom_to_list(S) ++ ".")}, [form(X, A, E) || X <- Args]};
+        _ -> syntax(A, {bad_special_form, new, length(Args) + 1})
+    end;
 list_form(Special, _, _Args, _F, A, _E) when Special =:= '.'; Special =:= new;
                                              Special =:= 'set!'; Special =:= var;
                                              Special =:= 'deftype*'; Special =:= 'reify*';
                                              Special =:= 'receive*' ->
     unsupported(A, {special_form, Special});
 list_form(S, Head, Args, F, A, E) when is_atom(S) ->
+    list_form_atom(S, Head, Args, F, A, E);
+list_form(_, Head, Args, _F, A, E) ->
+    {invoke, A, form(Head, A, E), [form(X, A, E) || X <- Args]}.
+
+%% (.method obj args) / (.-field obj): member access on obj
+list_form_atom(S, Head, [Obj | Args] = All, F, A, E = #{locals := Ls}) when not is_map_key(S, Ls) ->
+    case atom_to_list(S) of
+        "." ++ [C | _] = Name when C =/= $. -> dot(Obj, list_to_atom(tl(Name)), Args, A, E);
+        _ -> list_form_plain(S, Head, All, F, A, E)
+    end;
+list_form_atom(S, Head, Args, F, A, E) -> list_form_plain(S, Head, Args, F, A, E).
+
+list_form_plain(S, Head, Args, F, A, E) ->
     case kernel_form(S) of
         none -> list_form_call(S, Head, Args, F, A, E);
         K -> syntax(A, {not_at_top_level, K})
-    end;
-list_form(_, Head, Args, _F, A, E) ->
-    {invoke, A, form(Head, A, E), [form(X, A, E) || X <- Args]}.
+    end.
+
+%% (. Target member args) / (. Target (member args)): a static member
+%% when Target names a JVM class (and is not a local), else an instance
+%% one. A member -name is a field. All go through clj2_jvm.
+dot(Target, Member0, Rest, A, E = #{locals := Ls}) ->
+    {Member, Args} = case unwrap(Member0) of
+                         [M | MArgs] when Rest =:= [] -> {unwrap(M), MArgs};
+                         M -> {M, Rest}
+                     end,
+    is_atom(Member) orelse syntax(A, {bad_special_form, '.', length(Rest) + 2}),
+    {Field, Name} = case atom_to_list(Member) of
+                        "-" ++ [_ | _] = N -> {true, list_to_atom(tl(N))};
+                        N -> {false, list_to_atom(N)}
+                    end,
+    Class = case unwrap(Target) of
+                T when is_atom(T), not is_map_key(T, Ls) ->
+                    case clj2_class:resolve(T) of
+                        {ok, C} -> C;
+                        error -> none
+                    end;
+                _ -> none
+            end,
+    Args1 = [form(X, A, E) || X <- Args],
+    case {Class, Field} of
+        {none, true} -> call(A, clj2_jvm, instance_field, [form(Target, A, E), {const, A, Name}]);
+        {none, false} -> call(A, clj2_jvm, method, [form(Target, A, E), {const, A, Name}, {list, A, Args1}]);
+        {_, true} -> call(A, clj2_jvm, field, [{const, A, Class}, {const, A, Name}]);
+        _ -> call(A, clj2_jvm, static, [{const, A, Class}, {const, A, Name}, {list, A, Args1}])
+    end.
 
 list_form_call(S, Head, Args, F, A, E) ->
     case macroexpand(S, F, A, E) of
@@ -405,7 +537,9 @@ sq_data(S, _A, E, G) when is_atom(S) ->
              end
     end;
 sq_data([], _A, _E, _G) -> [quote, []];
-sq_data(L, A, E, G) when is_list(L) -> sq_data_seq(L, A, E, G);
+sq_data(L, A, E, G) when is_list(L) ->
+    [_, Cons] = sq_data_seq(L, A, E, G),
+    [qsym(clj2_coll, sq_concat), Cons];
 sq_data(X, A, E, G) ->
     case {clj2_form:vector_items(X), clj2_form:map_pairs(X), clj2_form:set_items(X)} of
         {Items, _, _} when Items =/= false ->
@@ -547,14 +681,26 @@ defprotocol_form([N | Rest0], A, E = #{ns := Ns}) ->
                     MName = binder(M, pos(S, A)),
                     Params = [P || P <- Specs, clj2_form:vector_items(unwrap(P)) =/= false],
                     Params =/= [] orelse syntax(pos(S, A), {protocol_method_without_params, MName}),
-                    {MName, pos(S, A), Params};
+                    MDoc = case [unwrap(D0) || D0 <- Specs, is_binary(unwrap(D0))] of
+                               [D1 | _] -> D1;
+                               [] -> nil
+                           end,
+                    {MName, pos(S, A), Params, MDoc};
                 _ -> syntax(pos(S, A), bad_protocol_method)
             end || S <- Rest, not is_binary(unwrap(S)), not is_keyword(unwrap(S))],
     Methods = [{def, MA, MName, #{},
                 fn([MName | [dispatch_clause(Proto, MName, P, MA) || P <- Params]], MA, E)}
-               || {MName, MA, Params} <- Sigs],
+               || {MName, MA, Params, _} <- Sigs],
+    %% :sigs as on the JVM: {:msig {:name msig :arglists ([this] ...) :doc .. :tag nil}}
+    SigMap = clj2_coll:hash_map_kv(
+               lists:append([[clj2_rt:keyword(atom_to_binary(M)),
+                              clj2_coll:hash_map_kv([':name', M, ':tag', nil, ':doc', MDoc,
+                                                     ':arglists', [clj2_form:to_data(P) || P <- Ps]])]
+                             || {M, _, Ps, MDoc} <- Sigs])),
     Info = clj2_coll:hash_map_kv([':name', Proto,
-                                  ':methods', clj2_coll:vector([M || {M, _, _} <- Sigs])]),
+                                  ':var', {var, nil, {Ns, Name}},
+                                  ':sigs', SigMap,
+                                  ':methods', clj2_coll:vector([M || {M, _, _, _} <- Sigs])]),
     [{def, A, Name, Doc, {const, A, Info}} | Methods];
 defprotocol_form([], A, _E) -> syntax(A, bad_defprotocol).
 
@@ -730,13 +876,23 @@ catch_clause(C, A, E) ->
         _ -> syntax(CA, bad_catch)
     end.
 
-%% Platform classes are the Erlang exception classes. `:default'
-%% (ClojureScript's spelling) and the JVM names catch every class.
+%% The Erlang exception classes :error :exit :throw; :default
+%% (ClojureScript's spelling), Exception and Throwable catch everything;
+%% any other class the JVM class model knows catches errors of that class
+%% or a subclass (clj2_class:exception_matches/2): (catch
+%% ArithmeticException e ...) catches badarith.
 catch_class(':error', _) -> error;
 catch_class(':exit', _) -> exit;
 catch_class(':throw', _) -> throw;
-catch_class(C, _) when C =:= ':default'; C =:= '_';
-                       C =:= 'Exception'; C =:= 'Throwable' -> any;
+catch_class(C, _) when C =:= ':default'; C =:= '_' -> any;
+%% everything, bound as a throwable (an Erlang error given its JVM class)
+catch_class(C, _) when C =:= 'Exception'; C =:= 'Throwable';
+                       C =:= 'java.lang.Exception'; C =:= 'java.lang.Throwable' -> throwable;
+catch_class(C, A) when is_atom(C) ->
+    case clj2_class:resolve(C) of
+        {ok, Class} -> Class;
+        error -> syntax(A, {bad_catch_class, C})
+    end;
 catch_class(C, A) -> syntax(A, {bad_catch_class, C}).
 
 %%====================================================================
@@ -752,7 +908,7 @@ sq({unquote, [], X}, A, E, _G) -> form(X, A, E);
 sq({unquote_splicing, [], _}, A, _E, _G) -> syntax(A, splice_outside_list);
 sq(S, A, E, G) when is_atom(S) -> {const, A, sq_symbol(S, E, G)};
 sq([], A, _E, _G) -> {const, A, []};
-sq(L, A, E, G) when is_list(L) -> sq_seq(L, A, E, G, fun(N) -> N end);
+sq(L, A, E, G) when is_list(L) -> sq_seq(L, A, E, G, list);
 sq({syntax_quote, [], _}, A, _E, _G) -> unsupported(A, nested_syntax_quote);
 sq(X, A, E, G) ->
     case {clj2_form:vector_items(X), clj2_form:map_pairs(X), clj2_form:set_items(X)} of
@@ -775,16 +931,21 @@ sq_seq(Items, A, E, G, Wrap) ->
     case lists:all(fun({one, {const, _, _}}) -> true; (_) -> false end, Parts) of
         true ->
             List = {const, A, [V || {one, {const, _, V}} <- Parts]},
-            case Wrap(List) of
-                List -> List;
-                Built -> {const, A, eval_const(Built)}
+            case Wrap of
+                list -> List;
+                _ -> {const, A, eval_const(Wrap(List))}
             end;
         false ->
             Args = [case P of
                         {one, N} -> {list, A, [N]};
                         {splice, N} -> N
                     end || P <- Parts],
-            Wrap(call(A, clj2_coll, concat, [{list, A, Args}]))
+            case Wrap of
+                %% (seq (concat ...)) as on the JVM: a spliced seq is
+                %% realized only when the walk reaches it
+                list -> call(A, clj2_coll, sq_concat, [{list, A, Args}]);
+                _ -> Wrap(call(A, clj2_coll, concat, [{list, A, Args}]))
+            end
     end.
 
 %% constant collections inside a syntax-quote are built now
@@ -795,7 +956,13 @@ eval_const({invoke, _, {sym, _, F}, [{const, _, L}]}) ->
 sq_symbol(S, E = #{ns := Ns, aliases := Aliases, refers := Refers}, G) ->
     Own = maps:get(own_names, E, #{}),
     Str = atom_to_list(S),
-    case is_keyword(S) orelse S =:= nil orelse S =:= true orelse S =:= false
+    case is_keyword(S) of
+        true -> kw(S, E);
+        false -> sq_symbol1(S, Str, Own, E, Ns, Aliases, Refers, G)
+    end.
+
+sq_symbol1(S, Str, Own, _E, Ns, Aliases, Refers, G) ->
+    case S =:= nil orelse S =:= true orelse S =:= false
          orelse lists:member(S, specials() -- kernel_forms()) of
         true -> S;
         false ->
@@ -808,6 +975,15 @@ sq_symbol(S, E = #{ns := Ns, aliases := Aliases, refers := Refers}, G) ->
                             case Aliases of
                                 #{QA := Full} -> qsym(Full, list_to_atom(N));
                                 _ -> S
+                            end;
+                        %% host member access, constructors and classes stay
+                        %% as written (.method, Name., .., String)
+                        ["." ++ _] -> S;
+                        _ when not is_map_key(S, Own), not is_map_key(S, Refers),
+                               hd(Str) >= $A, hd(Str) =< $Z ->
+                            case lists:last(Str) =:= $. orelse clj2_class:resolve(S) =/= error of
+                                true -> S;
+                                false -> qsym(Ns, S)
                             end;
                         _ when S =:= defmacro; S =:= defprotocol; S =:= deftype;
                                S =:= defrecord; S =:= 'extend-type';
@@ -842,6 +1018,31 @@ pos(W, _A) when ?CLJ2_IS_LOC(W) -> anno(W);
 pos(_, A) -> A.
 
 is_keyword(X) -> is_atom(X) andalso X =/= ':' andalso hd(atom_to_list(X)) =:= $:.
+
+%% ::name is :<this namespace>/name, ::alias/name :<the aliased one>/name
+kw(K, #{ns := Ns, aliases := Aliases}) ->
+    case atom_to_list(K) of
+        "::" ++ Rest ->
+            case string:split(Rest, "/") of
+                [[_ | _] = Q, [_ | _] = N] ->
+                    QA = list_to_atom(Q),
+                    case Aliases of
+                        #{QA := Full} -> list_to_atom(":" ++ atom_to_list(Full) ++ "/" ++ N);
+                        _ -> erlang:error({clj2_compile, {0, 0}, {syntax, {invalid_token, K}}})
+                    end;
+                _ -> list_to_atom(":" ++ atom_to_list(Ns) ++ "/" ++ Rest)
+            end;
+        _ -> K
+    end;
+kw(K, _) -> K.
+
+%% the keywords inside quoted data
+kws(K, E) when is_atom(K) -> kw(K, E);
+kws(L, E) when is_list(L) -> [kws(X, E) || X <- L];
+kws({vector, M, T}, E) when is_tuple(T) -> {vector, M, list_to_tuple([kws(X, E) || X <- tuple_to_list(T)])};
+kws({map, M, Map}, E) when is_map(Map) -> {map, M, maps:from_list([{kws(K, E), kws(V, E)} || {K, V} <- maps:to_list(Map)])};
+kws({set, M, Map}, E) when is_map(Map) -> {set, M, maps:from_list([{kws(K, E), nil} || K <- maps:keys(Map)])};
+kws(X, _) -> X.
 
 is_qualified(S) ->
     case string:split(atom_to_list(S), "/") of

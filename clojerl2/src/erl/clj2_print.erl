@@ -33,6 +33,9 @@ pr(nil, _) -> <<"nil">>;
 pr(true, _) -> <<"true">>;
 pr(false, _) -> <<"false">>;
 pr(A, _) when is_atom(A) -> atom_to_binary(A);               % symbols, keywords
+%% beyond a long, a BigInt: printed with its N (str leaves it off)
+pr(I, _) when is_integer(I), (I > 16#7FFFFFFFFFFFFFFF orelse I < -16#8000000000000000) ->
+    [integer_to_binary(I), $N];
 pr(I, _) when is_integer(I) -> integer_to_binary(I);
 pr(F, _) when is_float(F) -> float_str(F);
 pr(B, true) when is_binary(B) -> [$", escape(B), $"];
@@ -43,13 +46,21 @@ pr(L, R) when is_list(L) -> seq_str(L, R);
 pr({lazy_seq, _, _} = L, R) -> seq_str(L, R);
 pr({vector, _, T}, R) when is_tuple(T) -> [$[, join([pr(X, R) || X <- tuple_to_list(T)], " "), $]];
 pr({map, _, M}, R) when is_map(M) -> map_str(M, R);
+%% sorted ones print in their order
+pr({sorted_map, _, {_, _, _}} = S, R) ->
+    [${, join([[pr(K, R), $\s, pr(V, R)] || {vector, _, {K, V}} <- clj2_sorted:to_list(S)], ", "), $}];
+pr({sorted_set, _, {_, _, _}} = S, R) ->
+    [<<"#{">>, join([pr(X, R) || X <- clj2_sorted:to_list(S)], " "), $}];
 pr({set, _, M}, R) when is_map(M) -> [<<"#{">>, join([pr(X, R) || X <- lists:sort(maps:keys(M))], " "), $}];
 pr({delay, _, _}, _) -> <<"#object[clojure.lang.Delay]">>;
+pr({multifn, _, {Ns, Name}}, _) ->
+    [<<"#object[clojure.lang.MultiFn ">>, atom_to_binary(Ns), $/, atom_to_binary(Name), $]];
 pr({regex, _, Src}, _) when is_binary(Src) -> [<<"#\"">>, Src, $"];
 pr({uuid, _, S}, _) when is_binary(S) -> [<<"#uuid \"">>, S, $"];
 pr({var, _, {Ns, Name}}, _) when is_atom(Ns), is_atom(Name) ->
     [<<"#'">>, atom_to_binary(Ns), $/, atom_to_binary(Name)];
 pr({clj2_fn, _, _}, _) -> <<"#object[clojure.lang.AFunction]">>;
+pr({fnmeta, _, F}, R) -> pr(F, R);
 pr(F, _) when is_function(F) -> [<<"#object[">>, io_lib:format("~tp", [F]), $]];
 pr({Tag, _, _} = X, R) when Tag =:= atom; Tag =:= volatile; Tag =:= agent;
                              Tag =:= promise; Tag =:= future ->

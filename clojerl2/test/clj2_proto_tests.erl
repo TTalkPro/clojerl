@@ -80,8 +80,8 @@ protocols_test_() ->
        %% acceptance: no default → error; with a default → fallback
      , {"default fallback",
         fun() ->
-                ?assertError({clj2_no_protocol_impl, 't.shapes.Shape', area, integer},
-                             ev("(area 1)", 't.shapes')),
+                ?assertEqual(<<"No implementation of method: :area of protocol: #'t.shapes/Shape found for class: java.lang.Long">>,
+                             ev("(try (area 1) (catch IllegalArgumentException e (ex-message e)))", 't.shapes')),
                 ev("(extend-type default Shape (area [_] -1) (scale [x _] x))", 't.shapes'),
                 ?assertEqual(-1, ev("(area 1)", 't.shapes')),
                 ?assertEqual(true, ev("(satisfies? Shape :kw)", 't.shapes')),

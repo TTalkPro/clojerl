@@ -49,23 +49,235 @@ compiled_n(Src, Mode) ->
     case ets:lookup(?TAB, Key) of
         [{_, MP, N}] -> {MP, N};
         [] ->
-            Text = case Mode of
-                       search -> Src;
-                       whole -> <<"(?:", Src/binary, ")\\z">>
+            Pcre = try java_to_pcre(Src)
+                   catch throw:{bad_regex, Why0} -> bad_regex(Src, Why0, 0)
                    end,
-            case re:compile(Text, [unicode, ucp]) of
+            Text = case Mode of
+                       search -> Pcre;
+                       whole -> <<"(?:", Pcre/binary, ")\\z">>
+                   end,
+            %% no ucp: \w \d \s \b are ASCII, as in java.util.regex by default
+            case re:compile(Text, [unicode]) of
                 {ok, MP} ->
                     ets:info(?TAB, size) > ?CACHE_MAX andalso ets:delete_all_objects(?TAB),
                     N = group_count(Src),
                     ets:insert(?TAB, {Key, MP, N}),
                     {MP, N};
-                {error, {Why, At}} ->
-                    erlang:error(clj2_rt:ex_info(
-                                   iolist_to_binary(io_lib:format("Invalid regex ~ts at ~b: ~ts",
-                                                                  [Src, At, Why])),
-                                   clj2_coll:hash_map_kv([':pattern', Src]), nil))
+                {error, {Why, At}} -> bad_regex(Src, Why, At)
             end
     end.
+
+bad_regex(Src, Why, At) ->
+    erlang:error(clj2_rt:ex_info(
+                   unicode:characters_to_binary(io_lib:format("Invalid regex ~ts at ~b: ~ts", [Src, At, Why])),
+                   clj2_coll:hash_map_kv([':pattern', Src, ':type', ':PatternSyntaxException']), nil)).
+
+%%====================================================================
+%% Java regex syntax → PCRE
+%%
+%% java.util.regex and PCRE agree on most syntax; this rewrites where they
+%% differ (behaviour as java.util.regex.Pattern documents it):
+%%   \uXXXX and \0ooo (octal)       → \x{...}
+%%   \p{Alpha} ... (POSIX, ASCII)     → the ASCII set
+%%   \p{javaLowerCase} \p{IsLatin} \p{IsLu} \p{gc=Lu} \p{sc=Latin}
+%%                                    → PCRE properties
+%%   \p{Name} not a category/POSIX/java name → an error, as in Java
+%%   inline flags u d c U (Java)      → dropped
+%%   [\w-_]: a - next to a class escape is a literal -
+%%   [a[bc]]: a nested class is a union  → flattened
+%%   [a-z&&[^aeiou]]: intersection      → (?:(?=[^aeiou])[a-z])
+%%   [\b]                              → an error, as in Java
+%%====================================================================
+
+java_to_pcre(Src) -> unicode:characters_to_binary(out(unicode:characters_to_list(Src))).
+
+out([]) -> [];
+out("\\Q" ++ R) ->                                 % \Q...\E: literal, untouched
+    {Quoted, Rest} = quoted(R, []),
+    ["\\Q", Quoted, "\\E" | out(Rest)];
+out("\\u" ++ R) -> {Cp, Rest} = hex4(R), [hexchar(Cp) | out(Rest)];
+out("\\0" ++ R) -> {Cp, Rest} = octal(R), [hexchar(Cp) | out(Rest)];
+out("\\p{" ++ R) -> {Prop, Rest} = prop(R, false, false), [Prop | out(Rest)];
+out("\\P{" ++ R) -> {Prop, Rest} = prop(R, true, false), [Prop | out(Rest)];
+out([$\\, C | R]) -> [$\\, C | out(R)];
+out("(?" ++ R) -> {Flags, Rest} = flags(R), ["(?", Flags | out(Rest)];
+out("[" ++ R) -> {Class, Rest} = class(R), [Class | out(Rest)];
+out([C | R]) -> [C | out(R)].
+
+quoted("\\E" ++ R, Acc) -> {lists:reverse(Acc), R};
+quoted([C | R], Acc) -> quoted(R, [C | Acc]);
+quoted([], Acc) -> {lists:reverse(Acc), []}.
+
+hex4(R) ->
+    {H, Rest} = lists:split(min(4, length(R)), R),
+    length(H) =:= 4 andalso lists:all(fun is_hex/1, H) orelse throw({bad_regex, "Illegal Unicode escape sequence"}),
+    {list_to_integer(H, 16), Rest}.
+
+%% \0 then one to three octal digits (at most 0377)
+octal(R) ->
+    {Ds, Rest} = lists:splitwith(fun(C) -> C >= $0 andalso C =< $7 end, R),
+    Ds =/= [] orelse throw({bad_regex, "Illegal octal escape sequence"}),
+    {Take, Back} = lists:split(min(3, length(Ds)), Ds),
+    Take1 = case Take of
+                [D1, _, _] when D1 > $3 -> lists:sublist(Take, 2);
+                _ -> Take
+            end,
+    Extra = lists:nthtail(length(Take1), Take),
+    {list_to_integer(Take1, 8), Extra ++ Back ++ Rest}.
+
+is_hex(C) -> (C >= $0 andalso C =< $9) orelse (C >= $a andalso C =< $f) orelse (C >= $A andalso C =< $F).
+
+hexchar(Cp) -> "\\x{" ++ integer_to_list(Cp, 16) ++ "}".
+
+%% \p{...}: Neg for \P; InClass: produce class members, not a class
+prop(R, Neg, InClass) ->
+    {Name, Rest} = case string:split(R, "}") of
+                       [N, After] -> {N, After};
+                       _ -> throw({bad_regex, "Unclosed character family"})
+                   end,
+    {prop_text(Name, Neg, InClass), Rest}.
+
+prop_text(Name, Neg, InClass) ->
+    case posix(Name) of
+        {ok, Set} when InClass, not Neg -> Set;
+        {ok, Set} when InClass -> "&&[^" ++ Set ++ "]";            % handled by class/1
+        {ok, Set} when Neg -> "[^" ++ Set ++ "]";
+        {ok, Set} -> "[" ++ Set ++ "]";
+        error -> [$\\, case Neg of true -> $P; false -> $p end, ${, pcre_prop(Name), $}]
+    end.
+
+%% POSIX classes are ASCII in Java (without UNICODE_CHARACTER_CLASS)
+posix("Lower") -> {ok, "a-z"};
+posix("Upper") -> {ok, "A-Z"};
+posix("ASCII") -> {ok, "\\x00-\\x7F"};
+posix("Alpha") -> {ok, "a-zA-Z"};
+posix("Digit") -> {ok, "0-9"};
+posix("Alnum") -> {ok, "a-zA-Z0-9"};
+posix("Punct") -> {ok, "!-/:-@\\[-`{-~"};
+posix("Graph") -> {ok, "!-~"};
+posix("Print") -> {ok, " -~"};
+posix("Blank") -> {ok, " \\t"};
+posix("Cntrl") -> {ok, "\\x00-\\x1F\\x7F"};
+posix("XDigit") -> {ok, "0-9a-fA-F"};
+posix("Space") -> {ok, " \\t\\n\\x0B\\f\\r"};
+posix("javaWhitespace") -> {ok, "\\t-\\r\\x1C-\\x20\\x{1680}\\x{2000}-\\x{2006}\\x{2008}-\\x{200A}\\x{2028}\\x{2029}\\x{205F}\\x{3000}"};
+posix("IsHex_Digit") -> {ok, "\\p{Nd}A-Fa-f\\x{FF21}-\\x{FF26}\\x{FF41}-\\x{FF46}"};
+posix("IsWhite_Space") -> {ok, "\\t-\\r \\x{85}\\x{A0}\\x{1680}\\x{2000}-\\x{200A}\\x{2028}\\x{2029}\\x{202F}\\x{205F}\\x{3000}"};
+posix("javaLetterOrDigit") -> {ok, "\\p{L}\\p{Nd}"};
+posix(_) -> error.
+
+%% the PCRE name of a Java property
+pcre_prop("javaLowerCase") -> "Ll";
+pcre_prop("javaUpperCase") -> "Lu";
+pcre_prop("javaTitleCase") -> "Lt";
+pcre_prop("javaDigit") -> "Nd";
+pcre_prop("javaLetter") -> "L";
+pcre_prop("javaAlphabetic") -> "L";
+pcre_prop("IsAlphabetic") -> "L";
+pcre_prop("IsLetter") -> "L";
+pcre_prop("IsDigit") -> "Nd";
+pcre_prop("IsUppercase") -> "Lu";
+pcre_prop("IsLowercase") -> "Ll";
+pcre_prop("IsPunctuation") -> "P";
+pcre_prop("Is" ++ Rest) ->                                   % IsLu, IsLatin
+    case is_category(Rest) of
+        true -> Rest;
+        false -> Rest                                        % a script name
+    end;
+pcre_prop(Name) ->
+    case string:split(Name, "=") of
+        [Key, Value] ->
+            case string:lowercase(Key) of
+                K when K =:= "gc"; K =:= "general_category" ->
+                    is_category(Value) orelse throw({bad_regex, "Unknown character property name {" ++ Name ++ "}"}),
+                    Value;
+                K when K =:= "sc"; K =:= "script" -> Value;
+                _ -> throw({bad_regex, "Unknown Unicode property {name=<" ++ Key ++ ">, value=<" ++ Value ++ ">}"})
+            end;
+        [_] ->
+            is_category(Name) orelse throw({bad_regex, "Unknown character property name {" ++ Name ++ "}"}),
+            case Name of "LC" -> "L&"; _ -> Name end
+    end.
+
+is_category(N) ->
+    lists:member(N, ["L", "Lu", "Ll", "Lt", "Lm", "Lo", "LC", "L&", "M", "Mn", "Mc", "Me",
+                     "N", "Nd", "Nl", "No", "P", "Pc", "Pd", "Ps", "Pe", "Pi", "Pf", "Po",
+                     "S", "Sm", "Sc", "Sk", "So", "Z", "Zs", "Zl", "Zp",
+                     "C", "Cc", "Cf", "Co", "Cs", "Cn"]).
+
+%% (?flags) / (?flags:  — Java's u d c U have no PCRE counterpart here
+flags(R) ->
+    {Fl, Rest} = lists:splitwith(fun(C) -> lists:member(C, "idmsuxcU-") end, R),
+    case Rest of
+        [C | _] when C =:= $); C =:= $: ->
+            {[F || F <- Fl, not lists:member(F, "udcU")], Rest};
+        _ -> {Fl, Rest}                                       % (?= (?<name> ... untouched
+    end.
+
+%% A character class: [ already consumed. → {Text, Rest}
+class(R0) ->
+    {Neg, R1} = case R0 of
+                    "^" ++ T -> {true, T};
+                    _ -> {false, R0}
+                end,
+    {Parts, Rest} = class_items(R1, [], [], first),
+    %% Parts: a list of intersected operands, each a list of members
+    Text = case Parts of
+               [Members] -> ["[", neg(Neg), Members, "]"];
+               [First | Others] ->
+                   Inner = ["(?:", [["(?=[", O, "])"] || O <- Others], "[", First, "])"],
+                   case Neg of
+                       true -> ["(?:(?!", Inner, ")[\\s\\S])"];
+                       false -> Inner
+                   end
+           end,
+    {Text, Rest}.
+
+neg(true) -> "^";
+neg(false) -> "".
+
+%% Acc: members of the current operand (reversed); Ops: finished operands
+class_items("]" ++ R, Acc, Ops, Pos) when Pos =/= first ->
+    {lists:reverse([lists:reverse(Acc) | Ops]), R};
+class_items("&&" ++ R, Acc, Ops, _) -> class_items(R, [], [lists:reverse(Acc) | Ops], next);
+%% a nested class standing alone as an operand ([a-z&&[^aeiou]]): it is
+%% the operand, negation included
+class_items("[" ++ R, [], Ops, Pos) when Pos =:= first; Pos =:= next ->
+    {Neg, R1} = case R of "^" ++ T -> {true, T}; _ -> {false, R} end,
+    {Inner, Rest} = class_items(R1, [], [], first),
+    case Inner of
+        [M] when Neg -> class_items(Rest, lists:reverse("^" ++ M), Ops, next);
+        [M] -> class_items(Rest, lists:reverse(M), Ops, next);
+        _ -> throw({bad_regex, "Nested intersected character classes are not supported"})
+    end;
+class_items("[" ++ R, Acc, Ops, _) ->
+    %% a nested class: a union member (negated ones become an operand
+    %% intersected with the complement)
+    {Neg, R1} = case R of "^" ++ T -> {true, T}; _ -> {false, R} end,
+    {Inner, Rest} = class_items(R1, [], [], first),
+    case {Neg, Inner} of
+        {false, [M]} -> class_items(Rest, lists:reverse(M, Acc), Ops, next);
+        _ -> throw({bad_regex, "Nested negated or intersected character classes are not supported"})
+    end;
+class_items("\\b" ++ _, _, _, _) -> throw({bad_regex, "Illegal/unsupported escape sequence \\b in a class"});
+class_items("\\u" ++ R, Acc, Ops, _) -> {Cp, Rest} = hex4(R), class_items(Rest, lists:reverse(hexchar(Cp), Acc), Ops, next);
+class_items("\\0" ++ R, Acc, Ops, _) -> {Cp, Rest} = octal(R), class_items(Rest, lists:reverse(hexchar(Cp), Acc), Ops, next);
+class_items("\\p{" ++ R, Acc, Ops, _) -> {Prop, Rest} = prop(R, false, true), class_items(Rest, lists:reverse(Prop, Acc), Ops, shorthand);
+class_items("\\P{" ++ R, Acc, Ops, _) -> {Prop, Rest} = prop(R, true, true), class_items(Rest, lists:reverse(Prop, Acc), Ops, shorthand);
+class_items("\\Q" ++ R, Acc, Ops, _) ->
+    {Quoted, Rest} = quoted(R, []),
+    Quoted =/= [] orelse throw({bad_regex, "Empty \\Q\\E in a class"}),
+    class_items(Rest, lists:reverse(lists:append([[$\\, C] || C <- Quoted]), Acc), Ops, next);
+class_items([$\\, C | R], Acc, Ops, _) when C =:= $w; C =:= $W; C =:= $d; C =:= $D; C =:= $s; C =:= $S; C =:= $h; C =:= $H; C =:= $v; C =:= $V ->
+    class_items(R, [C, $\\ | Acc], Ops, shorthand);
+class_items([$\\, C | R], Acc, Ops, _) -> class_items(R, [C, $\\ | Acc], Ops, next);
+%% a - right after a class escape, or right before one, is a literal -
+class_items("-" ++ R, Acc, Ops, shorthand) -> class_items(R, [$-, $\\ | Acc], Ops, next);
+class_items("-\\" ++ [C | R], Acc, Ops, _) when C =:= $w; C =:= $W; C =:= $d; C =:= $D; C =:= $s; C =:= $S; C =:= $p; C =:= $P ->
+    class_items([$\\, C | R], [$-, $\\ | Acc], Ops, next);
+class_items([C | R], Acc, Ops, _) -> class_items(R, [C | Acc], Ops, next);
+class_items([], _, _, _) -> throw({bad_regex, "Unclosed character class"}).
+
 
 %% match → the whole match, or [whole g1 g2 ...] when the pattern has
 %% groups (an unmatched group is nil), as in Clojure

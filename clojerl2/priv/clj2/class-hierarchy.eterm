@@ -1,0 +1,553 @@
+%% JVM class graph for class/instance?/supers (clojerl2): each class with
+%% its direct supers. Extracted from jolt host/chez/java/class-hierarchy.ss
+%% @ 02ae9fd0 (EPL-2.0), which models the JVM's own hierarchy.
+%% {class, Name, [DirectSuper]} and {interface, Name}.
+{class, <<"clojure.lang.AFn">>, [<<"clojure.lang.IFn">>]}.
+{class, <<"clojure.lang.AFunction">>, [<<"clojure.lang.AFn">>, <<"clojure.lang.IObj">>, <<"java.util.Comparator">>, <<"clojure.lang.Fn">>, <<"java.io.Serializable">>]}.
+{class, <<"clojure.lang.AMapEntry">>, [<<"clojure.lang.APersistentVector">>, <<"clojure.lang.IMapEntry">>]}.
+{class, <<"clojure.lang.APersistentMap">>, [<<"clojure.lang.IPersistentMap">>, <<"java.util.Map">>, <<"java.lang.Iterable">>, <<"java.io.Serializable">>]}.
+{class, <<"clojure.lang.APersistentMap$KeySeq">>, [<<"clojure.lang.ASeq">>]}.
+{class, <<"clojure.lang.APersistentMap$ValSeq">>, [<<"clojure.lang.ASeq">>]}.
+{class, <<"clojure.lang.APersistentSet">>, [<<"clojure.lang.IPersistentSet">>, <<"java.util.Collection">>, <<"java.util.Set">>, <<"java.io.Serializable">>]}.
+{class, <<"clojure.lang.APersistentVector">>, [<<"clojure.lang.IPersistentVector">>, <<"java.lang.Iterable">>, <<"java.util.List">>, <<"java.util.RandomAccess">>, <<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"clojure.lang.APersistentVector$RSeq">>, [<<"clojure.lang.ASeq">>, <<"clojure.lang.Counted">>]}.
+{class, <<"clojure.lang.APersistentVector$SubVector">>, [<<"clojure.lang.APersistentVector">>, <<"clojure.lang.IObj">>, <<"java.util.List">>, <<"java.lang.Comparable">>]}.
+{class, <<"clojure.lang.ARef">>, [<<"clojure.lang.AReference">>, <<"clojure.lang.IRef">>]}.
+{class, <<"clojure.lang.AReference">>, [<<"clojure.lang.IReference">>]}.
+{class, <<"clojure.lang.ASeq">>, [<<"clojure.lang.ISeq">>, <<"clojure.lang.Sequential">>, <<"java.util.List">>, <<"java.io.Serializable">>]}.
+{class, <<"clojure.lang.ATransientMap">>, [<<"clojure.lang.AFn">>, <<"clojure.lang.ITransientMap">>, <<"clojure.lang.ITransientAssociative2">>]}.
+{class, <<"clojure.lang.ATransientSet">>, [<<"clojure.lang.AFn">>, <<"clojure.lang.ITransientSet">>]}.
+{class, <<"clojure.lang.Agent">>, [<<"clojure.lang.ARef">>]}.
+{class, <<"clojure.lang.ArityException">>, [<<"java.lang.IllegalArgumentException">>]}.
+{class, <<"clojure.lang.ArraySeq">>, [<<"clojure.lang.ASeq">>, <<"clojure.lang.Counted">>]}.
+{class, <<"clojure.lang.Associative">>, [<<"clojure.lang.IPersistentCollection">>, <<"clojure.lang.ILookup">>]}.
+{class, <<"clojure.lang.Atom">>, [<<"clojure.lang.ARef">>, <<"clojure.lang.IAtom2">>]}.
+{class, <<"clojure.lang.BigInt">>, [<<"java.lang.Number">>]}.
+{class, <<"clojure.lang.ChunkBuffer">>, [<<"clojure.lang.Counted">>]}.
+{class, <<"clojure.lang.ChunkedCons">>, [<<"clojure.lang.ASeq">>]}.
+{class, <<"clojure.lang.Compiler">>, []}.
+{class, <<"clojure.lang.Cons">>, [<<"clojure.lang.ASeq">>]}.
+{class, <<"clojure.lang.Cycle">>, [<<"clojure.lang.ASeq">>, <<"clojure.lang.IPending">>, <<"clojure.lang.IReduce">>]}.
+{class, <<"clojure.lang.Delay">>, [<<"clojure.lang.IDeref">>, <<"clojure.lang.IPending">>]}.
+{class, <<"clojure.lang.EdnReader$ReaderException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"clojure.lang.Compiler$CompilerException">>, [<<"java.lang.RuntimeException">>, <<"clojure.lang.IExceptionInfo">>]}.
+{class, <<"clojure.lang.ExceptionInfo">>, [<<"java.lang.RuntimeException">>, <<"clojure.lang.IExceptionInfo">>]}.
+{class, <<"clojure.lang.IAtom">>, []}.
+{class, <<"clojure.lang.IAtom2">>, [<<"clojure.lang.IAtom">>]}.
+{class, <<"clojure.lang.IBlockingDeref">>, []}.
+{class, <<"clojure.lang.IChunk">>, [<<"clojure.lang.Indexed">>]}.
+{class, <<"clojure.lang.IChunkedSeq">>, [<<"clojure.lang.ISeq">>, <<"clojure.lang.Sequential">>]}.
+{class, <<"clojure.lang.IDeref">>, [<<"java.util.function.Supplier">>, <<"java.util.function.BooleanSupplier">>, <<"java.util.function.IntSupplier">>, <<"java.util.function.LongSupplier">>, <<"java.util.function.DoubleSupplier">>]}.
+{class, <<"clojure.lang.IDrop">>, []}.
+{class, <<"clojure.lang.IFn">>, [<<"java.lang.Runnable">>, <<"java.util.concurrent.Callable">>]}.
+{class, <<"clojure.lang.IMapEntry">>, [<<"java.util.Map$Entry">>]}.
+{class, <<"clojure.lang.IObj">>, [<<"clojure.lang.IMeta">>]}.
+{class, <<"clojure.lang.IPersistentCollection">>, [<<"clojure.lang.Seqable">>]}.
+{class, <<"clojure.lang.IPersistentList">>, [<<"clojure.lang.Sequential">>, <<"clojure.lang.IPersistentStack">>]}.
+{class, <<"clojure.lang.IPersistentMap">>, [<<"java.lang.Iterable">>, <<"clojure.lang.Associative">>, <<"clojure.lang.Counted">>]}.
+{class, <<"clojure.lang.IPersistentSet">>, [<<"clojure.lang.IPersistentCollection">>, <<"clojure.lang.Counted">>]}.
+{class, <<"clojure.lang.IPersistentStack">>, [<<"clojure.lang.IPersistentCollection">>]}.
+{class, <<"clojure.lang.IPersistentVector">>, [<<"clojure.lang.Associative">>, <<"clojure.lang.Sequential">>, <<"clojure.lang.IPersistentStack">>, <<"clojure.lang.Reversible">>, <<"clojure.lang.Indexed">>]}.
+{class, <<"clojure.lang.IReduce">>, [<<"clojure.lang.IReduceInit">>]}.
+{class, <<"clojure.lang.IRef">>, [<<"clojure.lang.IDeref">>]}.
+{class, <<"clojure.lang.IReference">>, [<<"clojure.lang.IMeta">>]}.
+{class, <<"clojure.lang.ISeq">>, [<<"clojure.lang.IPersistentCollection">>]}.
+{class, <<"clojure.lang.ITransientAssociative">>, [<<"clojure.lang.ITransientCollection">>, <<"clojure.lang.ILookup">>]}.
+{class, <<"clojure.lang.ITransientAssociative2">>, [<<"clojure.lang.ITransientAssociative">>]}.
+{class, <<"clojure.lang.ITransientCollection">>, []}.
+{class, <<"clojure.lang.ITransientMap">>, [<<"clojure.lang.ITransientAssociative">>, <<"clojure.lang.Counted">>]}.
+{class, <<"clojure.lang.ITransientSet">>, [<<"clojure.lang.ITransientCollection">>, <<"clojure.lang.Counted">>]}.
+{class, <<"clojure.lang.ITransientVector">>, [<<"clojure.lang.ITransientAssociative">>, <<"clojure.lang.Indexed">>]}.
+{class, <<"clojure.lang.Iterate">>, [<<"clojure.lang.ASeq">>, <<"clojure.lang.IPending">>, <<"clojure.lang.IReduce">>]}.
+{class, <<"clojure.lang.Keyword">>, [<<"clojure.lang.IFn">>, <<"clojure.lang.Named">>, <<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"clojure.lang.LazySeq">>, [<<"clojure.lang.ISeq">>, <<"clojure.lang.Sequential">>, <<"java.util.List">>, <<"clojure.lang.IObj">>]}.
+{class, <<"clojure.lang.LineNumberingPushbackReader">>, [<<"java.io.PushbackReader">>]}.
+{class, <<"clojure.lang.LispReader$ReaderException">>, [<<"java.lang.RuntimeException">>, <<"clojure.lang.IExceptionInfo">>]}.
+{class, <<"clojure.lang.LongRange">>, [<<"clojure.lang.ASeq">>, <<"clojure.lang.Counted">>, <<"clojure.lang.IReduce">>, <<"clojure.lang.IDrop">>]}.
+{class, <<"clojure.lang.MapEntry">>, [<<"clojure.lang.AMapEntry">>]}.
+{class, <<"clojure.lang.MultiFn">>, [<<"clojure.lang.AFn">>]}.
+{class, <<"clojure.lang.Namespace">>, [<<"java.io.Serializable">>]}.
+{class, <<"clojure.lang.PersistentArrayMap">>, [<<"clojure.lang.APersistentMap">>, <<"clojure.lang.IObj">>]}.
+{class, <<"clojure.lang.PersistentArrayMap$Seq">>, [<<"clojure.lang.ASeq">>]}.
+{class, <<"clojure.lang.PersistentArrayMap$TransientArrayMap">>, [<<"clojure.lang.ATransientMap">>]}.
+{class, <<"clojure.lang.PersistentHashMap">>, [<<"clojure.lang.APersistentMap">>, <<"clojure.lang.IObj">>]}.
+{class, <<"clojure.lang.PersistentHashMap$NodeSeq">>, [<<"clojure.lang.ASeq">>]}.
+{class, <<"clojure.lang.PersistentHashMap$TransientHashMap">>, [<<"clojure.lang.ATransientMap">>]}.
+{class, <<"clojure.lang.PersistentHashSet">>, [<<"clojure.lang.APersistentSet">>, <<"clojure.lang.IObj">>]}.
+{class, <<"clojure.lang.PersistentHashSet$TransientHashSet">>, [<<"clojure.lang.ATransientSet">>]}.
+{class, <<"clojure.lang.PersistentList">>, [<<"clojure.lang.ASeq">>, <<"clojure.lang.IPersistentList">>, <<"java.util.List">>, <<"clojure.lang.Counted">>]}.
+{class, <<"clojure.lang.PersistentList$EmptyList">>, [<<"clojure.lang.PersistentList">>]}.
+{class, <<"clojure.lang.PersistentQueue">>, [<<"clojure.lang.IPersistentList">>, <<"clojure.lang.IPersistentCollection">>, <<"java.util.Collection">>]}.
+{class, <<"clojure.lang.PersistentTreeMap">>, [<<"clojure.lang.APersistentMap">>, <<"clojure.lang.IObj">>, <<"clojure.lang.Sorted">>, <<"clojure.lang.Reversible">>]}.
+{class, <<"clojure.lang.PersistentTreeMap$Seq">>, [<<"clojure.lang.ASeq">>]}.
+{class, <<"clojure.lang.PersistentTreeSet">>, [<<"clojure.lang.APersistentSet">>, <<"clojure.lang.IObj">>, <<"clojure.lang.Sorted">>, <<"clojure.lang.Reversible">>]}.
+{class, <<"clojure.lang.PersistentVector">>, [<<"clojure.lang.APersistentVector">>, <<"clojure.lang.IObj">>, <<"java.util.List">>, <<"java.lang.Comparable">>]}.
+{class, <<"clojure.lang.PersistentVector$ChunkedSeq">>, [<<"clojure.lang.ASeq">>, <<"clojure.lang.Counted">>]}.
+{class, <<"clojure.lang.PersistentVector$TransientVector">>, [<<"clojure.lang.AFn">>, <<"clojure.lang.ITransientVector">>, <<"clojure.lang.ITransientAssociative2">>, <<"clojure.lang.Counted">>]}.
+{class, <<"clojure.lang.Range">>, [<<"clojure.lang.ASeq">>, <<"clojure.lang.IReduce">>]}.
+{class, <<"clojure.lang.Ratio">>, [<<"java.lang.Number">>, <<"java.lang.Comparable">>]}.
+{class, <<"clojure.lang.Reduced">>, [<<"clojure.lang.IDeref">>]}.
+{class, <<"clojure.lang.Ref">>, [<<"clojure.lang.ARef">>, <<"clojure.lang.IRef">>, <<"clojure.lang.IFn">>, <<"java.lang.Comparable">>]}.
+{class, <<"clojure.lang.Repeat">>, [<<"clojure.lang.ASeq">>, <<"clojure.lang.IReduce">>, <<"clojure.lang.IDrop">>]}.
+{class, <<"clojure.lang.SeqIterator">>, [<<"java.util.Iterator">>]}.
+{class, <<"clojure.lang.StringSeq">>, [<<"clojure.lang.ASeq">>, <<"clojure.lang.Counted">>]}.
+{class, <<"clojure.lang.Symbol">>, [<<"clojure.lang.IObj">>, <<"clojure.lang.IFn">>, <<"clojure.lang.Named">>, <<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"clojure.lang.Var">>, [<<"clojure.lang.ARef">>, <<"clojure.lang.IRef">>, <<"clojure.lang.IFn">>, <<"java.io.Serializable">>]}.
+{class, <<"clojure.lang.Volatile">>, [<<"clojure.lang.IDeref">>]}.
+{class, <<"com.sun.management.internal.HotSpotThreadImpl">>, [<<"java.lang.management.ThreadMXBean">>]}.
+{class, <<"java.io.BufferedInputStream">>, [<<"java.io.FilterInputStream">>]}.
+{class, <<"java.io.BufferedOutputStream">>, [<<"java.io.FilterOutputStream">>]}.
+{class, <<"java.io.BufferedReader">>, [<<"java.io.Reader">>]}.
+{class, <<"java.io.BufferedWriter">>, [<<"java.io.Writer">>]}.
+{class, <<"java.io.ByteArrayInputStream">>, [<<"java.io.InputStream">>]}.
+{class, <<"java.io.ByteArrayOutputStream">>, [<<"java.io.OutputStream">>]}.
+{class, <<"java.io.CharConversionException">>, [<<"java.io.IOException">>]}.
+{class, <<"java.io.Closeable">>, [<<"java.lang.AutoCloseable">>]}.
+{class, <<"java.io.EOFException">>, [<<"java.io.IOException">>]}.
+{class, <<"java.io.File">>, []}.
+{class, <<"java.io.FileInputStream">>, [<<"java.io.InputStream">>]}.
+{class, <<"java.io.FileNotFoundException">>, [<<"java.io.IOException">>]}.
+{class, <<"java.io.FileOutputStream">>, [<<"java.io.OutputStream">>]}.
+{class, <<"java.io.FileReader">>, [<<"java.io.InputStreamReader">>]}.
+{class, <<"java.io.FileWriter">>, [<<"java.io.OutputStreamWriter">>]}.
+{class, <<"java.io.FilterInputStream">>, [<<"java.io.InputStream">>]}.
+{class, <<"java.io.FilterOutputStream">>, [<<"java.io.OutputStream">>]}.
+{class, <<"java.io.Flushable">>, []}.
+{class, <<"java.io.IOError">>, [<<"java.lang.Error">>]}.
+{class, <<"java.io.IOException">>, [<<"java.lang.Exception">>]}.
+{class, <<"java.io.InputStream">>, [<<"java.io.Closeable">>]}.
+{class, <<"java.io.InputStreamReader">>, [<<"java.io.Reader">>]}.
+{class, <<"java.io.InterruptedIOException">>, [<<"java.io.IOException">>]}.
+{class, <<"java.io.OutputStream">>, [<<"java.io.Closeable">>, <<"java.io.Flushable">>]}.
+{class, <<"java.io.OutputStreamWriter">>, [<<"java.io.Writer">>]}.
+{class, <<"java.io.PipedInputStream">>, [<<"java.io.InputStream">>]}.
+{class, <<"java.io.PipedOutputStream">>, [<<"java.io.OutputStream">>]}.
+{class, <<"java.io.PrintStream">>, [<<"java.io.FilterOutputStream">>, <<"java.lang.Appendable">>]}.
+{class, <<"java.io.PrintWriter">>, [<<"java.io.Writer">>]}.
+{class, <<"java.io.PushbackInputStream">>, [<<"java.io.FilterInputStream">>]}.
+{class, <<"java.io.PushbackReader">>, [<<"java.io.Reader">>]}.
+{class, <<"java.io.Reader">>, [<<"java.io.Closeable">>, <<"java.lang.Readable">>]}.
+{class, <<"java.io.Serializable">>, []}.
+{class, <<"java.io.StringReader">>, [<<"java.io.Reader">>]}.
+{class, <<"java.io.StringWriter">>, [<<"java.io.Writer">>]}.
+{class, <<"java.io.UncheckedIOException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.io.UnsupportedEncodingException">>, [<<"java.io.IOException">>]}.
+{class, <<"java.io.Writer">>, [<<"java.io.Closeable">>, <<"java.io.Flushable">>, <<"java.lang.Appendable">>]}.
+{class, <<"java.lang.AbstractMethodError">>, [<<"java.lang.IncompatibleClassChangeError">>]}.
+{class, <<"java.lang.Appendable">>, []}.
+{class, <<"java.lang.ArithmeticException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.lang.ArrayIndexOutOfBoundsException">>, [<<"java.lang.IndexOutOfBoundsException">>]}.
+{class, <<"java.lang.ArrayStoreException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.lang.AssertionError">>, [<<"java.lang.Error">>]}.
+{class, <<"java.lang.AutoCloseable">>, []}.
+{class, <<"java.lang.Boolean">>, [<<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.lang.Byte">>, [<<"java.lang.Number">>]}.
+{class, <<"java.lang.CharSequence">>, []}.
+{class, <<"java.lang.Character">>, [<<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.lang.Class">>, []}.
+{class, <<"java.lang.ClassCastException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.lang.ClassCircularityError">>, [<<"java.lang.LinkageError">>]}.
+{class, <<"java.lang.ClassFormatError">>, [<<"java.lang.LinkageError">>]}.
+{class, <<"java.lang.ClassLoader">>, []}.
+{class, <<"java.lang.ClassNotFoundException">>, [<<"java.lang.ReflectiveOperationException">>]}.
+{class, <<"java.lang.CloneNotSupportedException">>, [<<"java.lang.Exception">>]}.
+{class, <<"java.lang.Cloneable">>, []}.
+{class, <<"java.lang.Comparable">>, []}.
+{class, <<"java.lang.Deprecated">>, [<<"java.lang.annotation.Annotation">>]}.
+{class, <<"java.lang.Double">>, [<<"java.lang.Number">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.lang.Enum">>, [<<"java.lang.Comparable">>]}.
+{class, <<"java.lang.EnumConstantNotPresentException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.lang.Error">>, [<<"java.lang.Throwable">>]}.
+{class, <<"java.lang.Exception">>, [<<"java.lang.Throwable">>]}.
+{class, <<"java.lang.ExceptionInInitializerError">>, [<<"java.lang.LinkageError">>]}.
+{class, <<"java.lang.Float">>, [<<"java.lang.Number">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.lang.IllegalAccessError">>, [<<"java.lang.IncompatibleClassChangeError">>]}.
+{class, <<"java.lang.IllegalAccessException">>, [<<"java.lang.ReflectiveOperationException">>]}.
+{class, <<"java.lang.IllegalArgumentException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.lang.IllegalMonitorStateException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.lang.IllegalStateException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.lang.IllegalThreadStateException">>, [<<"java.lang.IllegalArgumentException">>]}.
+{class, <<"java.lang.IncompatibleClassChangeError">>, [<<"java.lang.LinkageError">>]}.
+{class, <<"java.lang.IndexOutOfBoundsException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.lang.InheritableThreadLocal">>, [<<"java.lang.ThreadLocal">>]}.
+{class, <<"java.lang.InstantiationError">>, [<<"java.lang.IncompatibleClassChangeError">>]}.
+{class, <<"java.lang.InstantiationException">>, [<<"java.lang.ReflectiveOperationException">>]}.
+{class, <<"java.lang.Integer">>, [<<"java.lang.Number">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.lang.InternalError">>, [<<"java.lang.VirtualMachineError">>]}.
+{class, <<"java.lang.InterruptedException">>, [<<"java.lang.Exception">>]}.
+{class, <<"java.lang.Iterable">>, []}.
+{class, <<"java.lang.LinkageError">>, [<<"java.lang.Error">>]}.
+{class, <<"java.lang.Long">>, [<<"java.lang.Number">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.lang.Math">>, []}.
+{class, <<"java.lang.NegativeArraySizeException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.lang.NoClassDefFoundError">>, [<<"java.lang.LinkageError">>]}.
+{class, <<"java.lang.NoSuchFieldError">>, [<<"java.lang.IncompatibleClassChangeError">>]}.
+{class, <<"java.lang.NoSuchFieldException">>, [<<"java.lang.ReflectiveOperationException">>]}.
+{class, <<"java.lang.NoSuchMethodError">>, [<<"java.lang.IncompatibleClassChangeError">>]}.
+{class, <<"java.lang.NoSuchMethodException">>, [<<"java.lang.ReflectiveOperationException">>]}.
+{class, <<"java.lang.NullPointerException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.lang.Number">>, [<<"java.io.Serializable">>]}.
+{class, <<"java.lang.NumberFormatException">>, [<<"java.lang.IllegalArgumentException">>]}.
+{class, <<"java.lang.Object">>, []}.
+{class, <<"java.lang.OutOfMemoryError">>, [<<"java.lang.VirtualMachineError">>]}.
+{class, <<"java.lang.Override">>, [<<"java.lang.annotation.Annotation">>]}.
+{class, <<"java.lang.Package">>, []}.
+{class, <<"java.lang.Process">>, []}.
+{class, <<"java.lang.ProcessBuilder">>, []}.
+{class, <<"java.lang.ProcessBuilder$Redirect">>, []}.
+{class, <<"java.lang.ProcessHandle">>, []}.
+{class, <<"java.lang.Readable">>, []}.
+{class, <<"java.lang.ReflectiveOperationException">>, [<<"java.lang.Exception">>]}.
+{class, <<"java.lang.Runnable">>, []}.
+{class, <<"java.lang.Runtime">>, []}.
+{class, <<"java.lang.RuntimeException">>, [<<"java.lang.Exception">>]}.
+{class, <<"java.lang.RuntimePermission">>, []}.
+{class, <<"java.lang.SecurityException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.lang.SecurityManager">>, []}.
+{class, <<"java.lang.Short">>, [<<"java.lang.Number">>]}.
+{class, <<"java.lang.StackOverflowError">>, [<<"java.lang.VirtualMachineError">>]}.
+{class, <<"java.lang.StackTraceElement">>, []}.
+{class, <<"java.lang.StrictMath">>, []}.
+{class, <<"java.lang.String">>, [<<"java.lang.CharSequence">>, <<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.lang.String$CaseInsensitiveComparator">>, [<<"java.util.Comparator">>, <<"java.io.Serializable">>]}.
+{class, <<"java.lang.StringBuffer">>, [<<"java.lang.CharSequence">>, <<"java.lang.Appendable">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.lang.StringBuilder">>, [<<"java.lang.CharSequence">>, <<"java.lang.Appendable">>]}.
+{class, <<"java.lang.StringIndexOutOfBoundsException">>, [<<"java.lang.IndexOutOfBoundsException">>]}.
+{class, <<"java.lang.SuppressWarnings">>, [<<"java.lang.annotation.Annotation">>]}.
+{class, <<"java.lang.System">>, []}.
+{class, <<"java.lang.Thread">>, [<<"java.lang.Runnable">>]}.
+{class, <<"java.lang.Thread$State">>, [<<"java.lang.Enum">>]}.
+{class, <<"java.lang.Thread$UncaughtExceptionHandler">>, []}.
+{class, <<"java.lang.ThreadDeath">>, [<<"java.lang.Error">>]}.
+{class, <<"java.lang.ThreadGroup">>, [<<"java.lang.Thread$UncaughtExceptionHandler">>]}.
+{class, <<"java.lang.ThreadLocal">>, []}.
+{class, <<"java.lang.Throwable">>, []}.
+{class, <<"java.lang.TypeNotPresentException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.lang.UnknownError">>, [<<"java.lang.VirtualMachineError">>]}.
+{class, <<"java.lang.UnsatisfiedLinkError">>, [<<"java.lang.LinkageError">>]}.
+{class, <<"java.lang.UnsupportedClassVersionError">>, [<<"java.lang.ClassFormatError">>]}.
+{class, <<"java.lang.UnsupportedOperationException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.lang.VerifyError">>, [<<"java.lang.LinkageError">>]}.
+{class, <<"java.lang.VirtualMachineError">>, [<<"java.lang.Error">>]}.
+{class, <<"java.lang.Void">>, []}.
+{class, <<"java.lang.annotation.Annotation">>, []}.
+{class, <<"java.lang.management.ManagementFactory">>, []}.
+{class, <<"java.lang.management.ThreadMXBean">>, []}.
+{class, <<"java.lang.ref.Reference">>, []}.
+{class, <<"java.lang.ref.ReferenceQueue">>, []}.
+{class, <<"java.lang.ref.SoftReference">>, [<<"java.lang.ref.Reference">>]}.
+{class, <<"java.lang.ref.WeakReference">>, [<<"java.lang.ref.Reference">>]}.
+{class, <<"java.lang.reflect.AccessibleObject">>, []}.
+{class, <<"java.lang.reflect.Constructor">>, [<<"java.lang.reflect.Executable">>]}.
+{class, <<"java.lang.reflect.Executable">>, [<<"java.lang.reflect.AccessibleObject">>, <<"java.lang.reflect.Member">>]}.
+{class, <<"java.lang.reflect.Field">>, [<<"java.lang.reflect.AccessibleObject">>, <<"java.lang.reflect.Member">>]}.
+{class, <<"java.lang.reflect.Member">>, []}.
+{class, <<"java.lang.reflect.Method">>, [<<"java.lang.reflect.Executable">>]}.
+{class, <<"java.math.BigDecimal">>, [<<"java.lang.Number">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.math.BigInteger">>, [<<"java.lang.Number">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.net.ConnectException">>, [<<"java.net.SocketException">>]}.
+{class, <<"java.net.MalformedURLException">>, [<<"java.io.IOException">>]}.
+{class, <<"java.net.SocketException">>, [<<"java.io.IOException">>]}.
+{class, <<"java.net.SocketTimeoutException">>, [<<"java.io.InterruptedIOException">>]}.
+{class, <<"java.net.URI">>, []}.
+{class, <<"java.net.URISyntaxException">>, [<<"java.lang.Exception">>]}.
+{class, <<"java.net.URLDecoder">>, []}.
+{class, <<"java.net.URLEncoder">>, []}.
+{class, <<"java.net.UnknownHostException">>, [<<"java.io.IOException">>]}.
+{class, <<"java.net.http.HttpConnectTimeoutException">>, [<<"java.net.http.HttpTimeoutException">>]}.
+{class, <<"java.net.http.HttpTimeoutException">>, [<<"java.io.IOException">>]}.
+{class, <<"java.nio.BufferOverflowException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.nio.BufferUnderflowException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.nio.ByteBuffer">>, [<<"java.nio.Buffer">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.nio.CharBuffer">>, [<<"java.nio.Buffer">>, <<"java.lang.Comparable">>, <<"java.lang.CharSequence">>, <<"java.lang.Appendable">>, <<"java.lang.Readable">>]}.
+{class, <<"java.nio.charset.CharacterCodingException">>, [<<"java.io.IOException">>]}.
+{class, <<"java.nio.charset.Charset">>, []}.
+{class, <<"java.nio.charset.CharsetDecoder">>, []}.
+{class, <<"java.nio.charset.CharsetEncoder">>, []}.
+{class, <<"java.nio.charset.CoderResult">>, []}.
+{class, <<"java.nio.charset.CodingErrorAction">>, []}.
+{class, <<"java.nio.charset.IllegalCharsetNameException">>, [<<"java.lang.IllegalArgumentException">>]}.
+{class, <<"java.nio.charset.MalformedInputException">>, [<<"java.nio.charset.CharacterCodingException">>]}.
+{class, <<"java.nio.charset.UnmappableCharacterException">>, [<<"java.nio.charset.CharacterCodingException">>]}.
+{class, <<"java.nio.charset.UnsupportedCharsetException">>, [<<"java.lang.IllegalArgumentException">>]}.
+{class, <<"java.nio.file.AccessDeniedException">>, [<<"java.nio.file.FileSystemException">>]}.
+{class, <<"java.nio.file.DirectoryNotEmptyException">>, [<<"java.nio.file.FileSystemException">>]}.
+{class, <<"java.nio.file.FileAlreadyExistsException">>, [<<"java.nio.file.FileSystemException">>]}.
+{class, <<"java.nio.file.FileSystem">>, []}.
+{class, <<"java.nio.file.FileSystemException">>, [<<"java.io.IOException">>]}.
+{class, <<"java.nio.file.FileSystemNotFoundException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.nio.file.NoSuchFileException">>, [<<"java.nio.file.FileSystemException">>]}.
+{class, <<"java.nio.file.NotDirectoryException">>, [<<"java.nio.file.FileSystemException">>]}.
+{class, <<"java.nio.file.NotLinkException">>, [<<"java.nio.file.FileSystemException">>]}.
+{class, <<"java.nio.file.Path">>, [<<"java.lang.Comparable">>, <<"java.lang.Iterable">>, <<"java.nio.file.Watchable">>]}.
+{class, <<"java.nio.file.PathMatcher">>, []}.
+{class, <<"java.nio.file.Watchable">>, []}.
+{class, <<"java.security.SecureRandom">>, [<<"java.util.Random">>]}.
+{class, <<"java.sql.Date">>, [<<"java.util.Date">>]}.
+{class, <<"java.sql.SQLException">>, [<<"java.lang.Exception">>]}.
+{class, <<"java.sql.Timestamp">>, [<<"java.util.Date">>]}.
+{class, <<"java.text.DecimalFormat">>, [<<"java.text.NumberFormat">>]}.
+{class, <<"java.text.Format">>, [<<"java.io.Serializable">>, <<"java.lang.Cloneable">>]}.
+{class, <<"java.text.Normalizer">>, []}.
+{class, <<"java.text.Normalizer$Form">>, [<<"java.lang.Enum">>]}.
+{class, <<"java.text.NumberFormat">>, [<<"java.text.Format">>]}.
+{class, <<"java.text.ParseException">>, [<<"java.lang.Exception">>]}.
+{class, <<"java.text.SimpleDateFormat">>, []}.
+{class, <<"java.time.Clock">>, []}.
+{class, <<"java.time.DateTimeException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.time.DayOfWeek">>, [<<"java.time.temporal.TemporalAccessor">>, <<"java.time.temporal.TemporalAdjuster">>]}.
+{class, <<"java.time.Duration">>, [<<"java.time.temporal.TemporalAmount">>, <<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.time.Instant">>, [<<"java.time.temporal.Temporal">>, <<"java.time.temporal.TemporalAdjuster">>, <<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.time.LocalDate">>, [<<"java.time.chrono.ChronoLocalDate">>, <<"java.time.temporal.Temporal">>, <<"java.time.temporal.TemporalAdjuster">>, <<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.time.LocalDateTime">>, [<<"java.time.chrono.ChronoLocalDateTime">>, <<"java.time.temporal.Temporal">>, <<"java.time.temporal.TemporalAdjuster">>, <<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.time.LocalTime">>, [<<"java.time.temporal.Temporal">>, <<"java.time.temporal.TemporalAdjuster">>, <<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.time.Month">>, [<<"java.time.temporal.TemporalAccessor">>, <<"java.time.temporal.TemporalAdjuster">>]}.
+{class, <<"java.time.OffsetDateTime">>, [<<"java.time.temporal.Temporal">>, <<"java.time.temporal.TemporalAdjuster">>, <<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.time.OffsetTime">>, [<<"java.time.temporal.Temporal">>, <<"java.time.temporal.TemporalAdjuster">>, <<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.time.Period">>, [<<"java.time.temporal.TemporalAmount">>, <<"java.io.Serializable">>]}.
+{class, <<"java.time.Year">>, [<<"java.time.temporal.Temporal">>, <<"java.time.temporal.TemporalAdjuster">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.time.YearMonth">>, [<<"java.time.temporal.Temporal">>, <<"java.time.temporal.TemporalAdjuster">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.time.ZoneId">>, []}.
+{class, <<"java.time.ZoneOffset">>, [<<"java.time.ZoneId">>, <<"java.time.temporal.TemporalAccessor">>, <<"java.time.temporal.TemporalAdjuster">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.time.ZonedDateTime">>, [<<"java.time.chrono.ChronoZonedDateTime">>, <<"java.time.temporal.Temporal">>, <<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.time.chrono.ChronoLocalDate">>, [<<"java.time.temporal.Temporal">>, <<"java.time.temporal.TemporalAdjuster">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.time.chrono.ChronoLocalDateTime">>, [<<"java.time.temporal.Temporal">>, <<"java.time.temporal.TemporalAdjuster">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.time.chrono.ChronoZonedDateTime">>, [<<"java.time.temporal.Temporal">>, <<"java.lang.Comparable">>]}.
+{class, <<"java.time.format.DateTimeFormatter">>, []}.
+{class, <<"java.time.format.DateTimeParseException">>, [<<"java.time.DateTimeException">>]}.
+{class, <<"java.time.temporal.ChronoField">>, []}.
+{class, <<"java.time.temporal.ChronoUnit">>, []}.
+{class, <<"java.time.temporal.Temporal">>, [<<"java.time.temporal.TemporalAccessor">>]}.
+{class, <<"java.time.temporal.TemporalAccessor">>, []}.
+{class, <<"java.time.temporal.TemporalAdjuster">>, []}.
+{class, <<"java.time.temporal.TemporalAmount">>, []}.
+{class, <<"java.time.zone.ZoneRules">>, []}.
+{class, <<"java.util.AbstractCollection">>, [<<"java.util.Collection">>]}.
+{class, <<"java.util.AbstractMap">>, [<<"java.util.Map">>]}.
+{class, <<"java.util.AbstractMap$2">>, [<<"java.util.AbstractCollection">>]}.
+{class, <<"java.util.AbstractMap$2$1">>, [<<"java.util.Iterator">>]}.
+{class, <<"java.util.AbstractMap$SimpleImmutableEntry">>, [<<"java.util.Map$Entry">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.AbstractQueue">>, [<<"java.util.AbstractCollection">>, <<"java.util.Queue">>]}.
+{class, <<"java.util.AbstractSet">>, [<<"java.util.AbstractCollection">>, <<"java.util.Set">>]}.
+{class, <<"java.util.ArrayDeque">>, [<<"java.util.Deque">>]}.
+{class, <<"java.util.ArrayList">>, [<<"java.util.List">>, <<"java.util.RandomAccess">>]}.
+{class, <<"java.util.Arrays$ArrayList">>, [<<"java.util.List">>, <<"java.util.RandomAccess">>]}.
+{class, <<"java.util.Base64">>, []}.
+{class, <<"java.util.Base64$Decoder">>, []}.
+{class, <<"java.util.Base64$Encoder">>, []}.
+{class, <<"java.util.Collection">>, [<<"java.lang.Iterable">>]}.
+{class, <<"java.util.Collections$ReverseComparator">>, [<<"java.util.Comparator">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.Collections$ReverseComparator2">>, [<<"java.util.Comparator">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.Comparator">>, []}.
+{class, <<"java.util.Comparators$NaturalOrderComparator">>, [<<"java.lang.Enum">>, <<"java.util.Comparator">>]}.
+{class, <<"java.util.ConcurrentModificationException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.util.Date">>, [<<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.Deque">>, [<<"java.util.Queue">>, <<"java.util.SequencedCollection">>]}.
+{class, <<"java.util.DoubleSummaryStatistics">>, [<<"java.util.function.DoubleConsumer">>]}.
+{class, <<"java.util.DuplicateFormatFlagsException">>, [<<"java.util.IllegalFormatException">>]}.
+{class, <<"java.util.Enumeration">>, []}.
+{class, <<"java.util.FormatFlagsConversionMismatchException">>, [<<"java.util.IllegalFormatException">>]}.
+{class, <<"java.util.GregorianCalendar">>, []}.
+{class, <<"java.util.HashMap">>, [<<"java.util.Map">>]}.
+{class, <<"java.util.HashSet">>, [<<"java.util.Set">>]}.
+{class, <<"java.util.Hashtable">>, [<<"java.util.Map">>]}.
+{class, <<"java.util.IllegalFormatArgumentIndexException">>, [<<"java.util.IllegalFormatException">>]}.
+{class, <<"java.util.IllegalFormatCodePointException">>, [<<"java.util.IllegalFormatException">>]}.
+{class, <<"java.util.IllegalFormatConversionException">>, [<<"java.util.IllegalFormatException">>]}.
+{class, <<"java.util.IllegalFormatException">>, [<<"java.lang.IllegalArgumentException">>]}.
+{class, <<"java.util.IllegalFormatFlagsException">>, [<<"java.util.IllegalFormatException">>]}.
+{class, <<"java.util.IllegalFormatPrecisionException">>, [<<"java.util.IllegalFormatException">>]}.
+{class, <<"java.util.IllegalFormatWidthException">>, [<<"java.util.IllegalFormatException">>]}.
+{class, <<"java.util.ImmutableCollections$ListN">>, [<<"java.util.List">>, <<"java.util.RandomAccess">>]}.
+{class, <<"java.util.IntSummaryStatistics">>, [<<"java.util.function.IntConsumer">>]}.
+{class, <<"java.util.Iterator">>, []}.
+{class, <<"java.util.LinkedList">>, [<<"java.util.List">>, <<"java.util.Deque">>]}.
+{class, <<"java.util.List">>, [<<"java.util.SequencedCollection">>]}.
+{class, <<"java.util.Locale">>, []}.
+{class, <<"java.util.LongSummaryStatistics">>, [<<"java.util.function.LongConsumer">>, <<"java.util.function.IntConsumer">>]}.
+{class, <<"java.util.Map">>, []}.
+{class, <<"java.util.Map$Entry">>, []}.
+{class, <<"java.util.MissingFormatArgumentException">>, [<<"java.util.IllegalFormatException">>]}.
+{class, <<"java.util.MissingFormatWidthException">>, [<<"java.util.IllegalFormatException">>]}.
+{class, <<"java.util.NavigableMap">>, [<<"java.util.SortedMap">>]}.
+{class, <<"java.util.NavigableSet">>, [<<"java.util.SortedSet">>]}.
+{class, <<"java.util.NoSuchElementException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.util.Optional">>, []}.
+{class, <<"java.util.Properties">>, [<<"java.util.Hashtable">>]}.
+{class, <<"java.util.Queue">>, [<<"java.util.Collection">>]}.
+{class, <<"java.util.Random">>, [<<"java.util.random.RandomGenerator">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.RandomAccess">>, []}.
+{class, <<"java.util.SequencedCollection">>, [<<"java.util.Collection">>]}.
+{class, <<"java.util.SequencedMap">>, [<<"java.util.Map">>]}.
+{class, <<"java.util.SequencedSet">>, [<<"java.util.SequencedCollection">>, <<"java.util.Set">>]}.
+{class, <<"java.util.Set">>, [<<"java.util.Collection">>]}.
+{class, <<"java.util.SortedMap">>, [<<"java.util.SequencedMap">>]}.
+{class, <<"java.util.SortedSet">>, [<<"java.util.Set">>, <<"java.util.SequencedSet">>]}.
+{class, <<"java.util.Spliterator">>, []}.
+{class, <<"java.util.SplittableRandom">>, [<<"java.util.random.RandomGenerator">>]}.
+{class, <<"java.util.StringTokenizer">>, [<<"java.util.Enumeration">>]}.
+{class, <<"java.util.TimeZone">>, []}.
+{class, <<"java.util.TreeMap">>, [<<"java.util.AbstractMap">>, <<"java.util.NavigableMap">>, <<"java.lang.Cloneable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.TreeMap$AscendingSubMap">>, [<<"java.util.TreeMap$NavigableSubMap">>]}.
+{class, <<"java.util.TreeMap$AscendingSubMap$AscendingEntrySetView">>, [<<"java.util.TreeMap$NavigableSubMap$EntrySetView">>]}.
+{class, <<"java.util.TreeMap$DescendingSubMap">>, [<<"java.util.TreeMap$NavigableSubMap">>]}.
+{class, <<"java.util.TreeMap$DescendingSubMap$DescendingEntrySetView">>, [<<"java.util.TreeMap$NavigableSubMap$EntrySetView">>]}.
+{class, <<"java.util.TreeMap$Entry">>, [<<"java.util.Map$Entry">>]}.
+{class, <<"java.util.TreeMap$EntryIterator">>, [<<"java.util.TreeMap$PrivateEntryIterator">>]}.
+{class, <<"java.util.TreeMap$EntrySet">>, [<<"java.util.AbstractSet">>]}.
+{class, <<"java.util.TreeMap$KeyIterator">>, [<<"java.util.TreeMap$PrivateEntryIterator">>]}.
+{class, <<"java.util.TreeMap$KeySet">>, [<<"java.util.AbstractSet">>, <<"java.util.NavigableSet">>]}.
+{class, <<"java.util.TreeMap$NavigableSubMap">>, [<<"java.util.AbstractMap">>, <<"java.util.NavigableMap">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.TreeMap$NavigableSubMap$DescendingSubMapEntryIterator">>, [<<"java.util.TreeMap$NavigableSubMap$SubMapIterator">>]}.
+{class, <<"java.util.TreeMap$NavigableSubMap$DescendingSubMapKeyIterator">>, [<<"java.util.TreeMap$NavigableSubMap$SubMapIterator">>, <<"java.util.Spliterator">>]}.
+{class, <<"java.util.TreeMap$NavigableSubMap$EntrySetView">>, [<<"java.util.AbstractSet">>]}.
+{class, <<"java.util.TreeMap$NavigableSubMap$SubMapEntryIterator">>, [<<"java.util.TreeMap$NavigableSubMap$SubMapIterator">>]}.
+{class, <<"java.util.TreeMap$NavigableSubMap$SubMapIterator">>, [<<"java.util.Iterator">>]}.
+{class, <<"java.util.TreeMap$NavigableSubMap$SubMapKeyIterator">>, [<<"java.util.TreeMap$NavigableSubMap$SubMapIterator">>, <<"java.util.Spliterator">>]}.
+{class, <<"java.util.TreeMap$PrivateEntryIterator">>, [<<"java.util.Iterator">>]}.
+{class, <<"java.util.TreeMap$ValueIterator">>, [<<"java.util.TreeMap$PrivateEntryIterator">>]}.
+{class, <<"java.util.TreeMap$Values">>, [<<"java.util.AbstractCollection">>]}.
+{class, <<"java.util.TreeSet">>, [<<"java.util.AbstractSet">>, <<"java.util.NavigableSet">>, <<"java.lang.Cloneable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.UUID">>, [<<"java.lang.Comparable">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.UnknownFormatConversionException">>, [<<"java.util.IllegalFormatException">>]}.
+{class, <<"java.util.concurrent.AbstractExecutorService">>, [<<"java.util.concurrent.ExecutorService">>, <<"java.util.concurrent.Executor">>]}.
+{class, <<"java.util.concurrent.ArrayBlockingQueue">>, [<<"java.util.AbstractQueue">>, <<"java.util.concurrent.BlockingQueue">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.concurrent.BlockingQueue">>, [<<"java.util.Queue">>]}.
+{class, <<"java.util.concurrent.BrokenBarrierException">>, [<<"java.lang.Exception">>]}.
+{class, <<"java.util.concurrent.Callable">>, []}.
+{class, <<"java.util.concurrent.CancellationException">>, [<<"java.lang.IllegalStateException">>]}.
+{class, <<"java.util.concurrent.CompletableFuture">>, [<<"java.util.concurrent.Future">>, <<"java.util.concurrent.CompletionStage">>]}.
+{class, <<"java.util.concurrent.CompletableFuture$DelayedExecutor">>, [<<"java.util.concurrent.Executor">>]}.
+{class, <<"java.util.concurrent.CompletionException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.util.concurrent.CompletionStage">>, []}.
+{class, <<"java.util.concurrent.CountDownLatch">>, []}.
+{class, <<"java.util.concurrent.Delayed">>, [<<"java.lang.Comparable">>]}.
+{class, <<"java.util.concurrent.ExecutionException">>, [<<"java.lang.Exception">>]}.
+{class, <<"java.util.concurrent.Executor">>, []}.
+{class, <<"java.util.concurrent.ExecutorService">>, [<<"java.util.concurrent.Executor">>]}.
+{class, <<"java.util.concurrent.Future">>, []}.
+{class, <<"java.util.concurrent.Future$State">>, [<<"java.lang.Enum">>]}.
+{class, <<"java.util.concurrent.FutureTask">>, [<<"java.util.concurrent.RunnableFuture">>, <<"java.util.concurrent.Future">>, <<"java.lang.Runnable">>]}.
+{class, <<"java.util.concurrent.LinkedBlockingQueue">>, [<<"java.util.AbstractQueue">>, <<"java.util.concurrent.BlockingQueue">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.concurrent.RejectedExecutionException">>, [<<"java.lang.RuntimeException">>]}.
+{class, <<"java.util.concurrent.RunnableFuture">>, [<<"java.util.concurrent.Future">>, <<"java.lang.Runnable">>]}.
+{class, <<"java.util.concurrent.RunnableScheduledFuture">>, [<<"java.util.concurrent.RunnableFuture">>, <<"java.util.concurrent.ScheduledFuture">>]}.
+{class, <<"java.util.concurrent.ScheduledExecutorService">>, [<<"java.util.concurrent.ExecutorService">>]}.
+{class, <<"java.util.concurrent.ScheduledFuture">>, [<<"java.util.concurrent.Delayed">>, <<"java.util.concurrent.Future">>]}.
+{class, <<"java.util.concurrent.ScheduledThreadPoolExecutor">>, [<<"java.util.concurrent.ThreadPoolExecutor">>, <<"java.util.concurrent.ScheduledExecutorService">>]}.
+{class, <<"java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask">>, [<<"java.util.concurrent.FutureTask">>, <<"java.util.concurrent.RunnableScheduledFuture">>]}.
+{class, <<"java.util.concurrent.ThreadPoolExecutor">>, [<<"java.util.concurrent.AbstractExecutorService">>, <<"java.util.concurrent.ExecutorService">>, <<"java.util.concurrent.Executor">>]}.
+{class, <<"java.util.concurrent.TimeoutException">>, [<<"java.lang.Exception">>]}.
+{class, <<"java.util.concurrent.atomic.AtomicBoolean">>, [<<"java.io.Serializable">>]}.
+{class, <<"java.util.concurrent.atomic.AtomicInteger">>, [<<"java.lang.Number">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.concurrent.atomic.AtomicLong">>, [<<"java.lang.Number">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.concurrent.atomic.AtomicReference">>, [<<"java.io.Serializable">>]}.
+{class, <<"java.util.concurrent.locks.Lock">>, []}.
+{class, <<"java.util.concurrent.locks.ReentrantLock">>, [<<"java.util.concurrent.locks.Lock">>, <<"java.io.Serializable">>]}.
+{class, <<"java.util.function.BinaryOperator">>, [<<"java.util.function.BiFunction">>]}.
+{class, <<"java.util.function.UnaryOperator">>, [<<"java.util.function.Function">>]}.
+{class, <<"java.util.random.RandomGenerator">>, []}.
+{class, <<"java.util.regex.MatchResult">>, []}.
+{class, <<"java.util.regex.Matcher">>, [<<"java.util.regex.MatchResult">>]}.
+{class, <<"java.util.regex.Pattern">>, [<<"java.io.Serializable">>]}.
+{class, <<"java.util.regex.PatternSyntaxException">>, [<<"java.lang.IllegalArgumentException">>]}.
+{class, <<"java.util.stream.BaseStream">>, [<<"java.lang.AutoCloseable">>]}.
+{class, <<"java.util.stream.Collectors$CollectorImpl">>, [<<"java.util.stream.Collector">>]}.
+{class, <<"java.util.stream.DoublePipeline$Head">>, [<<"java.util.stream.DoubleStream">>]}.
+{class, <<"java.util.stream.IntPipeline$Head">>, [<<"java.util.stream.IntStream">>]}.
+{class, <<"java.util.stream.LongPipeline$Head">>, [<<"java.util.stream.LongStream">>]}.
+{class, <<"java.util.stream.ReferencePipeline$Head">>, [<<"java.util.stream.Stream">>]}.
+{class, <<"java.util.stream.SpinedBuffer">>, [<<"java.util.function.Consumer">>]}.
+{class, <<"java.util.zip.Adler32">>, [<<"java.util.zip.Checksum">>]}.
+{class, <<"java.util.zip.CRC32">>, [<<"java.util.zip.Checksum">>]}.
+{class, <<"java.util.zip.Checksum">>, []}.
+{class, <<"java.util.zip.DataFormatException">>, [<<"java.lang.Exception">>]}.
+{class, <<"java.util.zip.Deflater">>, []}.
+{class, <<"java.util.zip.DeflaterInputStream">>, [<<"java.io.FilterInputStream">>]}.
+{class, <<"java.util.zip.DeflaterOutputStream">>, [<<"java.io.FilterOutputStream">>]}.
+{class, <<"java.util.zip.GZIPInputStream">>, [<<"java.util.zip.InflaterInputStream">>]}.
+{class, <<"java.util.zip.GZIPOutputStream">>, [<<"java.util.zip.DeflaterOutputStream">>]}.
+{class, <<"java.util.zip.Inflater">>, []}.
+{class, <<"java.util.zip.InflaterInputStream">>, [<<"java.io.FilterInputStream">>]}.
+{class, <<"java.util.zip.ZipEntry">>, [<<"java.lang.Cloneable">>]}.
+{class, <<"java.util.zip.ZipException">>, [<<"java.io.IOException">>]}.
+{class, <<"java.util.zip.ZipFile">>, [<<"java.io.Closeable">>]}.
+{class, <<"java.util.zip.ZipFile$ZipFileInflaterInputStream">>, [<<"java.util.zip.InflaterInputStream">>]}.
+{class, <<"java.util.zip.ZipFile$ZipFileInputStream">>, [<<"java.io.InputStream">>]}.
+{class, <<"java.util.zip.ZipInputStream">>, [<<"java.util.zip.InflaterInputStream">>]}.
+{class, <<"java.util.zip.ZipOutputStream">>, [<<"java.util.zip.DeflaterOutputStream">>]}.
+{class, <<"javax.net.ssl.SSLException">>, [<<"java.io.IOException">>]}.
+{interface, <<"clojure.lang.Associative">>}.
+{interface, <<"clojure.lang.Counted">>}.
+{interface, <<"clojure.lang.Fn">>}.
+{interface, <<"clojure.lang.IAtom">>}.
+{interface, <<"clojure.lang.IAtom2">>}.
+{interface, <<"clojure.lang.IBlockingDeref">>}.
+{interface, <<"clojure.lang.IChunk">>}.
+{interface, <<"clojure.lang.IChunkedSeq">>}.
+{interface, <<"clojure.lang.IDeref">>}.
+{interface, <<"clojure.lang.IEditableCollection">>}.
+{interface, <<"clojure.lang.IExceptionInfo">>}.
+{interface, <<"clojure.lang.IFn">>}.
+{interface, <<"clojure.lang.IHashEq">>}.
+{interface, <<"clojure.lang.ILookup">>}.
+{interface, <<"clojure.lang.IMapEntry">>}.
+{interface, <<"clojure.lang.IMeta">>}.
+{interface, <<"clojure.lang.IObj">>}.
+{interface, <<"clojure.lang.IPending">>}.
+{interface, <<"clojure.lang.IPersistentCollection">>}.
+{interface, <<"clojure.lang.IPersistentList">>}.
+{interface, <<"clojure.lang.IPersistentMap">>}.
+{interface, <<"clojure.lang.IPersistentSet">>}.
+{interface, <<"clojure.lang.IPersistentStack">>}.
+{interface, <<"clojure.lang.IPersistentVector">>}.
+{interface, <<"clojure.lang.IRecord">>}.
+{interface, <<"clojure.lang.IReduceInit">>}.
+{interface, <<"clojure.lang.IRef">>}.
+{interface, <<"clojure.lang.IReference">>}.
+{interface, <<"clojure.lang.ISeq">>}.
+{interface, <<"clojure.lang.ITransientAssociative">>}.
+{interface, <<"clojure.lang.ITransientAssociative2">>}.
+{interface, <<"clojure.lang.ITransientCollection">>}.
+{interface, <<"clojure.lang.ITransientMap">>}.
+{interface, <<"clojure.lang.ITransientSet">>}.
+{interface, <<"clojure.lang.ITransientVector">>}.
+{interface, <<"clojure.lang.IType">>}.
+{interface, <<"clojure.lang.Indexed">>}.
+{interface, <<"clojure.lang.Named">>}.
+{interface, <<"clojure.lang.Reversible">>}.
+{interface, <<"clojure.lang.Seqable">>}.
+{interface, <<"clojure.lang.Sequential">>}.
+{interface, <<"clojure.lang.Sorted">>}.
+{interface, <<"java.io.Closeable">>}.
+{interface, <<"java.io.Flushable">>}.
+{interface, <<"java.io.Serializable">>}.
+{interface, <<"java.lang.Appendable">>}.
+{interface, <<"java.lang.AutoCloseable">>}.
+{interface, <<"java.lang.CharSequence">>}.
+{interface, <<"java.lang.Comparable">>}.
+{interface, <<"java.lang.Iterable">>}.
+{interface, <<"java.lang.Readable">>}.
+{interface, <<"java.lang.Runnable">>}.
+{interface, <<"java.nio.file.Path">>}.
+{interface, <<"java.nio.file.PathMatcher">>}.
+{interface, <<"java.nio.file.Watchable">>}.
+{interface, <<"java.util.Collection">>}.
+{interface, <<"java.util.Comparator">>}.
+{interface, <<"java.util.Deque">>}.
+{interface, <<"java.util.Iterator">>}.
+{interface, <<"java.util.List">>}.
+{interface, <<"java.util.Map">>}.
+{interface, <<"java.util.Map$Entry">>}.
+{interface, <<"java.util.NavigableMap">>}.
+{interface, <<"java.util.NavigableSet">>}.
+{interface, <<"java.util.Queue">>}.
+{interface, <<"java.util.RandomAccess">>}.
+{interface, <<"java.util.SequencedCollection">>}.
+{interface, <<"java.util.SequencedMap">>}.
+{interface, <<"java.util.SequencedSet">>}.
+{interface, <<"java.util.Set">>}.
+{interface, <<"java.util.SortedMap">>}.
+{interface, <<"java.util.SortedSet">>}.
+{interface, <<"java.util.concurrent.Callable">>}.
+{interface, <<"java.util.regex.MatchResult">>}.

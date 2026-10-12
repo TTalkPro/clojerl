@@ -62,7 +62,9 @@ regex_test() ->
     ?assertEqual([<<"12-34">>, <<"12">>, <<"34">>], plain(ev("(re-find #\"(\\d+)-(\\d+)\" \"ab 12-34 cd\")"))),
     ?assertEqual(<<"ab">>, ev("(re-matches #\"a|ab\" \"ab\")")),        % the whole input, not the first alternative
     ?assertEqual(nil, ev("(re-matches #\"a\" \"ab\")")),
-    ?assertEqual([<<"中文"/utf8>>, <<"abc">>], plain(ev("(re-seq #\"\\w+\" \"中文 abc\")"))),
+    %% \w is ASCII, as in java.util.regex; \p{L} is every letter
+    ?assertEqual([<<"abc">>], plain(ev("(re-seq #\"\\w+\" \"中文 abc\")"))),
+    ?assertEqual([<<"中文"/utf8>>, <<"abc">>], plain(ev("(re-seq #\"\\p{L}+\" \"中文 abc\")"))),
     ?assertEqual([<<"x">>, <<"x">>, nil], plain(ev("(re-find #\"(x)|(y)\" \"x\")"))),   % unmatched group: nil
     ?assertEqual([<<"1">>, <<"2">>, nil], plain(ev("(let [m (re-matcher #\"\\d\" \"a1b2\")] [(re-find m) (re-find m) (re-find m)])"))),
     ?assertEqual(<<"#\"a\\d\"">>, clj2_print:pr_str(ev("#\"a\\d\""))),

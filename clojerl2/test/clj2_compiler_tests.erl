@@ -253,7 +253,7 @@ case_test_() ->
       %% a map constant matches only an equal map (no subset matching)
     , ?_assertEqual(':d', C("{:a 1 :b 2}"))
     , ?_assertEqual(':d', C("1.0"))
-    , ?_assertError({clj2_no_matching_clause, 9}, ev("((fn* [x] (case* x 1 :one)) 9)"))
+    , ?_assertEqual(<<"No matching clause: 9">>, ev("(try ((fn* [x] (case* x 1 :one)) 9) (catch IllegalArgumentException e (ex-message e)))"))
       %% recur from a case branch is in tail position
     , ?_assertEqual(':done', ev("(loop* [i 0] (case* i 3 :done (recur (erlang/+ i 1))))"))
     , ?_assertEqual({syntax, duplicate_case_test}, cerr("(case* 1 1 :a (2 1) :b)"))

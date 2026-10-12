@@ -62,3 +62,19 @@ known_failures_test() ->
     Common = maps:from_list([{{S, L}, true} || #{suite := S, label := L, portability := common}
                                                    <- clj2_corpus:entries(Path)]),
     ?assertEqual([], [K || K <- maps:keys(Known), not maps:is_key(K, Common)]).
+
+%% every override cites a registered divergence, names a :common row, and
+%% changes its test or its expected value
+overrides_test() ->
+    Ids = clj2_corpus:divergence_ids(),
+    Path = filename:join([root(), "test", "corpus.edn"]),
+    Rows = maps:from_list([{{S, L}, E} || E = #{suite := S, label := L, portability := common}
+                                           <- clj2_corpus:raw_entries_for_test(Path)]),
+    Ovs = clj2_corpus:overrides(),
+    ?assert(map_size(Ovs) > 0),
+    [begin
+         ?assert(lists:member(maps:get(because, O), Ids)),
+         ?assert(is_map_key(K, Rows)),
+         ?assert(is_map_key(actual, O) orelse is_map_key(expected, O) orelse maps:get(skip, O, false))
+     end || {K, O} <- maps:to_list(Ovs)].
+

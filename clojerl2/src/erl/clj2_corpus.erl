@@ -31,7 +31,7 @@
 %%%-------------------------------------------------------------------
 -module(clj2_corpus).
 
--export([run/0, run/1, entries/1, report/2,
+-export([run/0, run/1, entries/1, raw_entries_for_test/1, overrides/0, report/2,
          certify/0, certify/1, rebaseline/0, rebaseline/1,
          known_failures/0, divergence_ids/0]).
 
@@ -55,7 +55,12 @@ run(Opts) ->
     %% eval, require ...) run one at a time, and what they create is
     %% removed after each: run in parallel they would redefine each
     %% other's vars mid-run
-    {Global, Local} = lists:partition(fun({_, #{actual := A}}) -> global_effects(A) end, Indexed),
+    %% entries that name the user namespace (user/x, #user.R, in-ns
+    %% 'user) run in it, as on the JVM, one at a time too
+    Indexed1 = [{I, case in_user(E) of true -> E#{ns => user}; false -> E end} || {I, E} <- Indexed],
+    {Global, Local} = lists:partition(fun({_, E = #{actual := A}}) ->
+                                              global_effects(A) orelse is_map_key(ns, E)
+                                      end, Indexed1),
     MaxHeap = #{size => maps:get(max_heap, Opts, 256 bsl 20) div erlang:system_info(wordsize),
                 kill => true, error_logger => false, include_shared_binaries => true},
     Old = erlang:system_flag(max_heap_size, MaxHeap),
@@ -63,6 +68,10 @@ run(Opts) ->
     try lists:keysort(1, pool(Local, maps:get(workers, Opts, 8), Timeout, false) ++ pool(Global, 1, Timeout, true))
     after erlang:system_flag(max_heap_size, Old)
     end.
+
+in_user(#{actual := A, expected := E0}) ->
+    E = case is_binary(E0) of true -> E0; false -> <<>> end,         % or :throws
+    re:run([A, " ", E], "user[/.][^ ]|\\(in-ns \\(quote user\\)\\)|\\(in-ns 'user\\)", [unicode]) =/= nomatch.
 
 global_effects(Src) ->
     re:run(Src, "\\((ns|in-ns|load-string|load-file|eval|require|create-ns|remove-ns|intern|use|refer) ",
@@ -90,7 +99,32 @@ entries(File) ->
                              end,
                         {E#{label := L1}, Seen#{{S, L} => N}}
                 end, #{}, raw_entries(File)),
-    Es.
+    Overrides = overrides(),
+    [case Overrides of
+         #{{S, L} := O} -> maps:merge(E, O);
+         _ -> E
+     end || E = #{suite := S, label := L} <- Es,
+            %% a row whose outcome a registered divergence leaves undefined
+            not maps:get(skip, maps:get({S, L}, Overrides, #{}), false)].
+
+%% @doc test/corpus-overrides.edn: #{{Suite, Label} => #{actual, expected,
+%% because}} — rows rewritten for a registered divergence.
+overrides() ->
+    Path = test_file("corpus-overrides.edn"),
+    case filelib:is_file(Path) of
+        false -> #{};
+        true ->
+            maps:from_list(
+              [{{clj2_coll:get(O, ':suite'), clj2_coll:get(O, ':label')},
+                maps:from_list([{K, V} || {K, Key} <- [{actual, ':actual'}, {expected, ':expected'},
+                                                      {because, ':because'}, {skip, ':skip'}],
+                                          V <- [clj2_coll:get(O, Key)], V =/= nil])}
+               || O <- clj2_coll:to_list(read_edn(Path))])
+    end.
+
+%% @doc The rows with their own labels, overrides not applied (skipped
+%% rows included): for checking the overrides file.
+raw_entries_for_test(File) -> raw_entries(File).
 
 raw_entries(File) ->
     [#{suite => clj2_coll:get(E, ':suite'),
@@ -179,8 +213,11 @@ collect(N, Acc) ->
 
 %% → pass | {fail, Why}. Judged in the child so only a small term crosses
 %% back; a killed child (heap cap) shows up as {crashed, killed}.
-run_entry(I, #{actual := Actual, expected := Expected}, Timeout) ->
-    Ns = list_to_atom("corpus.e" ++ integer_to_list(I)),
+run_entry(I, #{actual := Actual, expected := Expected} = Entry, Timeout) ->
+    Ns = case Entry of
+             #{ns := N} -> N;
+             _ -> list_to_atom("corpus.e" ++ integer_to_list(I))
+         end,
     Self = self(),
     Sink = sink(),
     {Pid, Ref} = spawn_monitor(fun() ->

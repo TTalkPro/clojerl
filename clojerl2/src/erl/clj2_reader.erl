@@ -175,6 +175,17 @@ strip(T) when is_tuple(T) ->
 strip(Other) ->
     Other.
 
+%% strip/1, but a collection that carries metadata keeps its wrapper (the
+%% metadata is part of the quoted value: '^:k {:x 1})
+strip_keep_meta({clj2_loc, L, C, Form, Meta}) when is_map(Meta), map_size(Meta) > 0, is_tuple(Form),
+                                                  (element(1, Form) =:= vector orelse element(1, Form) =:= map
+                                                   orelse element(1, Form) =:= set) ->
+    {clj2_loc, L, C, strip_keep_meta(Form), Meta};
+strip_keep_meta({clj2_loc, _, _, Form, _}) -> strip_keep_meta(Form);
+strip_keep_meta(L) when is_list(L) -> [strip_keep_meta(E) || E <- L];
+strip_keep_meta(T) when is_tuple(T) -> list_to_tuple([strip_keep_meta(E) || E <- tuple_to_list(T)]);
+strip_keep_meta(Other) -> Other.
+
 %% @doc `{Line, Col}' of a possibly wrapped form, or `nil' for a bare
 %% form (e.g. one produced by a macro).
 -spec loc(term()) -> pos() | nil.
@@ -368,7 +379,7 @@ read_quote(St0) ->
     case one_form(St1) of
         eof -> mk_err(St1, <<"EOF while reading form after '">>);
         {error, _, _} = Error -> Error;
-        {ok, Form, St2} -> {ok, [quote, strip(Form)], St2}
+        {ok, Form, St2} -> {ok, [quote, strip_keep_meta(Form)], St2}
     end.
 
 read_var_quote(St0) ->
@@ -475,6 +486,10 @@ meta_value(MetaForm) ->
 %% % and %1..%9 / %&
 %%--------------------------------------------------------------------
 
+%% outside #() a % token is an ordinary symbol (as on the JVM)
+read_arg(#st{args = []} = St0) ->
+    {Token, St1} = scan_token(advance(St0), [$%]),
+    {ok, binary_to_atom(unicode:characters_to_binary(Token)), St1};
 read_arg(St0) ->
     St1 = advance(St0),
     case peek(St1) of
@@ -504,8 +519,6 @@ bad_arg_literal(N) ->
     <<"invalid % literal: %", (integer_to_binary(N))/binary,
       " (expected %, %& or %1..%9)">>.
 
-arg_sym(_N, #st{args = []} = St) ->
-    mk_err(St, <<"arg literal % used outside of #()">>);
 arg_sym(N, #st{args = [Frame | Rest]} = St) ->
     {Frame1, Sym} = frame_arg(Frame, N),
     {ok, Sym, St#st{args = [Frame1 | Rest]}}.
@@ -639,8 +652,14 @@ read_string_form(St0) ->
     case read_string_body(St1, []) of
         {error, _, _} = Error -> Error;
         {ok, Rev, St2} ->
-            {ok, to_bin_safe(lists:reverse(Rev)), St2}
+            {ok, to_bin_safe(pair_surrogates(lists:reverse(Rev))), St2}
     end.
+
+%% "\uD83D\uDE00" is one code point, as the JVM's UTF-16 string has it
+pair_surrogates([H, L | Rest]) when H >= 16#D800, H =< 16#DBFF, L >= 16#DC00, L =< 16#DFFF ->
+    [16#10000 + ((H - 16#D800) bsl 10) + (L - 16#DC00) | pair_surrogates(Rest)];
+pair_surrogates([C | Rest]) -> [C | pair_surrogates(Rest)];
+pair_surrogates([]) -> [].
 
 read_string_body(St0, Acc) ->
     case peek(St0) of
@@ -671,10 +690,23 @@ read_escape(Backslash, St0) ->
                 $r  -> {ok, 13, St1};
                 $t  -> {ok, 9, St1};
                 $u  -> read_unicode_escape(Backslash, St1);
+                %% \0 .. \377: an octal escape, as the JVM reader takes
+                _ when C >= $0, C =< $7 -> read_octal_escape(Backslash, St1, C - $0, 1);
                 _   -> mk_err(Backslash, <<"unsupported escape character in string: \\",
                                               C/utf8>>)
             end
     end.
+
+read_octal_escape(Backslash, St, V, N) when N < 3 ->
+    case peek(St) of
+        {ok, D} when D >= $0, D =< $7 -> read_octal_escape(Backslash, advance(St), V * 8 + D - $0, N + 1);
+        _ -> octal_value(Backslash, V, St)
+    end;
+read_octal_escape(Backslash, St, V, _) -> octal_value(Backslash, V, St).
+
+octal_value(Backslash, V, _St) when V > 8#377 ->
+    mk_err(Backslash, <<"Octal escape sequence must be in range [0, 377].">>);
+octal_value(_, V, St) -> {ok, V, St}.
 
 read_unicode_escape(Backslash, St) ->
     {Digits, St1} = scan_hex(St, 4, []),
@@ -796,11 +828,8 @@ named_chars() ->
      , <<"return">>    => 13
      , <<"backspace">> => 8
      , <<"formfeed">>  => 12
-     , <<"e">>         => 27
-     , <<"f">>         => 12
-     , <<"v">>         => 11
-     , <<"0">>         => 0
      }.
+%% (\e \f \v \0 are those characters themselves, as in Clojure)
 
 hex_digits(Bin) ->
     case [C || C <- binary_to_list(Bin),
@@ -933,6 +962,8 @@ match_number(Bin) ->
 patterns() ->
     [{ratio,    "^([+-]?[0-9]+)/([0-9]+)$"}
     ,{bigradix, "^([+-]?)([0-9]+)[rR]([0-9A-Za-z]+)[Nn]$"}
+    ,{octint,   "^([+-]?)0([0-7]+)[Nn]?$"}         % before bigint: 017N is 15N
+    ,{badoct,   "^[+-]?0[0-9]+[Nn]?$"}
     ,{bigint,   "^([+-]?[0-9]+)[Nn]$"}
     ,{bigdec,   "^([+-]?(?:[0-9]+\\.[0-9]*|\\.[0-9]+|[0-9]+)(?:[eE][+-]?[0-9]+)?)[Mm]$"}
     ,{hex,      "^([+-]?)[0][xX]([0-9a-fA-F]+)$"}
@@ -954,6 +985,11 @@ first_match(Bin, [{Tag, Re} | Rest]) ->
 first_match(_Bin, []) ->
     nomatch.
 
+%% a leading 0 is octal, as in Clojure: 017 is 15
+build_number(octint, [Sign, Digits], _Bin) ->
+    {ok, apply_sign(Sign, list_to_integer(Digits, 8))};
+build_number(badoct, [], Bin) ->
+    {error, <<"Invalid number: ", Bin/binary>>};
 build_number(int, [Digits], _Bin) ->
     {ok, signed_int(Digits)};
 build_number(ratio, [Num, Den], _Bin) ->

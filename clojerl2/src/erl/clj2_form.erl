@@ -15,14 +15,22 @@
 -export([to_data/1, from_value/1, vector_items/1, map_pairs/1, set_items/1]).
 
 %% @doc Reader form → runtime value (positions stripped).
+to_data({clj2_loc, _, _, Inner, Meta}) when is_map(Meta), map_size(Meta) > 0, is_tuple(Inner),
+                                           (element(1, Inner) =:= vector orelse element(1, Inner) =:= map
+                                            orelse element(1, Inner) =:= set) ->
+    clj2_rt:with_meta(to_data(Inner), clj2_coll:hash_map_kv(lists:append([[K, V] || {K, V} <- maps:to_list(Meta)])));
 to_data(W) when ?CLJ2_IS_LOC(W) -> to_data(?CLJ2_LOC_FORM(W));
 to_data(L) when is_list(L) -> [to_data(X) || X <- L];
 to_data({vector, [], Items}) when is_list(Items) ->
     clj2_coll:vector([to_data(X) || X <- Items]);
 to_data({map, [], Pairs}) when is_list(Pairs) ->
-    clj2_coll:hash_map_kv(lists:append([[to_data(K), to_data(V)] || {K, V} <- Pairs]));
+    Kvs = [{to_data(K), to_data(V)} || {K, V} <- Pairs],
+    no_dup([K || {K, _} <- Kvs]),
+    clj2_coll:hash_map_kv(lists:append([[K, V] || {K, V} <- Kvs]));
 to_data({set, [], Items}) when is_list(Items) ->
-    clj2_coll:hash_set([to_data(X) || X <- Items]);
+    Xs = [to_data(X) || X <- Items],
+    no_dup(Xs),
+    clj2_coll:hash_set(Xs);
 to_data(X) when is_atom(X); is_number(X); is_binary(X) -> X;
 to_data({ratio, _, _} = X) -> X;
 to_data({vector, _, T} = X) when is_tuple(T) -> X;           % already a value
@@ -33,6 +41,15 @@ to_data({regex, [], Src}) -> {regex, nil, Src};              % a pattern value
 to_data({tagged, [], uuid, S}) when is_binary(S) -> clj2_string:uuid(S);
 to_data({Tag, _, B} = X) when (Tag =:= regex orelse Tag =:= uuid), is_binary(B) -> X;
 to_data(X) -> erlang:error({clj2_form, {no_data_form, element(1, X)}}).
+
+%% a literal's keys are distinct, as the JVM reader demands
+no_dup([]) -> ok;
+no_dup([X | Xs]) ->
+    case lists:any(fun(Y) -> clj2_coll:equals(X, Y) end, Xs) of
+        true -> erlang:error(clj2_rt:ex_info(<<"Duplicate key: ", (clj2_print:pr_str(X))/binary>>,
+                                             clj2_coll:hash_map_kv([':type', ':IllegalArgumentException']), nil));
+        false -> no_dup(Xs)
+    end.
 
 %% @doc A macro's result → a form: lazy seqs and lazy-tailed lists are
 %% realized into proper lists, inside collections too.

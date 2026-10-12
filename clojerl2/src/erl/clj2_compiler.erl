@@ -112,7 +112,10 @@ beams(Ns, Units, CompileOpts) ->
 
 %% An extend top → the forms of its impl module `<Protocol>__<Tag>'.
 impl_unit({extend, A, TypeSym, ProtoSym, Methods}, Ns, NsVars, Ctx, Opts) ->
-    Tag = clj2_proto:designator(TypeSym, Ns),
+    Tag = case is_map_key(list_to_atom("->" ++ atom_to_list(TypeSym)), NsVars) of
+              true -> list_to_atom(atom_to_list(Ns) ++ "." ++ atom_to_list(TypeSym));   % a type of this ns
+              false -> clj2_proto:designator(TypeSym, Ns)
+          end,
     Proto = protocol_id(A, ProtoSym, Ns, NsVars, Ctx),
     Mod = clj2_proto:impl_module(Proto, Tag),
     {Forms, _} = compile_tops(Methods, Ns, Mod, NsVars, false,
@@ -218,9 +221,37 @@ eval_units(Src, M, Opts) ->
 %% defined by one form expands the next. The value of the last form.
 eval(Src) -> eval(Src, #{}).
 
-eval(Src, Opts) ->
-    {V, _} = lists:foldl(fun(F, {_, O}) -> eval_form(F, O) end, {nil, Opts}, read(Src)),
+eval(Src, Opts = #{ns := Ns}) ->
+    %% evaluating in a namespace: *ns* is that namespace meanwhile (macros
+    %% read it), then the caller's again
+    Saved = clj2_rt_eval:save_ns(),
+    clj2_rt_eval:set_current_ns(Ns),
+    try eval_forms(Src, Opts)
+    after clj2_rt_eval:restore_ns(Saved)
+    end;
+eval(Src, Opts) -> eval_forms(Src, Opts).
+
+eval_forms(Src, Opts) ->
+    {V, _} = lists:foldl(fun(F, {_, O}) -> eval_form(F, O) end, {nil, Opts}, unroll_do(read(Src))),
     V.
+
+%% A top-level (do a b c) is a, b and c as top-level forms, one after the
+%% other (as the JVM compiler does): a require in it takes effect before
+%% the next form compiles. (do) stays itself (it is nil).
+unroll_do(Forms) -> lists:append([unroll_do1(F) || F <- Forms]).
+
+unroll_do1(F) ->
+    case unwrap(F) of
+        [H | [_ | _] = Body] ->
+            case unwrap(H) of
+                'do' -> unroll_do(Body);
+                _ -> [F]
+            end;
+        _ -> [F]
+    end.
+
+unwrap({clj2_loc, _, _, X, _}) -> X;
+unwrap(X) -> X.
 
 eval_form(F, Opts) ->
     Ns = current(Opts),
@@ -339,7 +370,7 @@ macroexpand_1(Form, Ns) ->
 %% runnable, each with its `module'), pending (tops not yet in a
 %% segment), segments (loaded segment modules).
 expand_ns(Src, Opts) ->
-    Lcore = read(Src),
+    Lcore = unroll_do(read(Src)),
     Ctx0 = (ns_ctx(maps:get(ns, Opts, user), Opts))#{own := #{}, pending => [], segments => [],
                                                       refer_clojure => maps:get(refer_clojure, Opts, true),
                                                       defined => #{},
@@ -354,6 +385,15 @@ expand_ns(Src, Opts) ->
                            [{ns_decl, _, Ns, Reqs, _} | _] ->
                                clj2_rt_eval:set_current_ns(Ns),
                                requires(Ns, Reqs, C);
+                           [{eval, _, {invoke, _, {sym, _, Req}, Args}}]
+                             when Req =:= require; Req =:= 'clojure.core/require' ->
+                               compile_time_require(Args, C);
+                           %% (alias 'a 'ns) too: the forms after it use a/x
+                           [{eval, _, {invoke, _, {sym, _, Alias}, [{const, _, As}, {const, _, Target}]}}]
+                             when (Alias =:= alias orelse Alias =:= 'clojure.core/alias'),
+                                  is_atom(As), is_atom(Target) ->
+                               #{aliases := Al0} = C,
+                               C#{aliases := Al0#{As => Target}};
                            _ -> C
                        end,
                   C1 = C0#{defined := maps:merge(maps:get(defined, C0),
@@ -365,6 +405,17 @@ expand_ns(Src, Opts) ->
                   {lists:reverse(Tops, Acc), C2}
           end, {[], Ctx0}, Lcore),
     {lists:reverse(RevTops), Ctx}.
+
+%% A top-level (require 'x ...) also runs now, as the JVM loads what it
+%% compiles: the forms after it may use its aliases and refers. (Only
+%% constant arguments: anything else is left to run time.)
+compile_time_require(Args, C = #{ns := Ns, aliases := Al, refers := Rf}) ->
+    case lists:all(fun({const, _, _}) -> true; (_) -> false end, Args) of
+        false -> C;
+        true ->
+            {Aliases, Refers} = clj2_rt_eval:load_specs([V || {const, _, V} <- Args], Ns),
+            C#{aliases := maps:merge(Al, Aliases), refers := maps:merge(Rf, Refers)}
+    end.
 
 %% Compile the pending forms into a segment module and load it, so the
 %% macros (and the helpers before them) can run during this compile.
@@ -470,8 +521,10 @@ parse_state(Ctx = #{ns := Ns, aliases := Al, refers := Rf}) ->
       own_names => maps:get(defined, Ctx, #{})}.
 
 read(Src) when is_binary(Src) ->
-    {ok, Lcore, _} = clj2_reader:read_all(Src),
-    Lcore;
+    case clj2_reader:read_all(Src) of
+        {ok, Lcore, _} -> Lcore;
+        {error, Loc, Msg} -> erlang:error({clj2_read, Loc, Msg})
+    end;
 read({forms, Lcore}) when is_list(Lcore) -> Lcore.
 
 %%====================================================================

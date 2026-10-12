@@ -77,10 +77,10 @@
 (def keyword? (fn* keyword? [x] (clj2_rt/is_keyword x)))
 (def symbol? (fn* symbol? [x] (clj2_rt/is_symbol x)))
 (def fn? (fn* fn? [x] (clj2_rt/is_fn x)))
-(def ifn? (fn* ifn? [x] (clj2_rt/is_fn x)))
+(def ifn? (fn* ifn? [x] (clj2_rt/is_ifn x)))
 (def vector? (fn* vector? [x] (clj2_coll/is_vector x)))
-(def map? (fn* map? [x] (clj2_coll/is_hash_map x)))
-(def set? (fn* set? [x] (clj2_coll/is_hash_set x)))
+(def map? (fn* map? [x] (clj2_coll/is_any_map x)))
+(def set? (fn* set? [x] (clj2_coll/is_any_set x)))
 (def list? (fn* list? [x] (erlang/is_list x)))
 (def seq? (fn* seq? [x] (clj2_coll/is_seq x)))
 (def coll? (fn* coll? [x] (if (seq? x) true (if (vector? x) true (if (map? x) true (set? x))))))
@@ -120,7 +120,23 @@
        (let* [s1 (seq c1) s2 (seq c2)]
          (if (if s1 s2 nil)
            (cons (f (erlang/hd s1) (erlang/hd s2)) (map f (erlang/tl s1) (erlang/tl s2)))
-           nil))))))
+           nil))))
+    ([f c1 c2 c3]
+     (lazy-seq
+       (let* [s1 (seq c1) s2 (seq c2) s3 (seq c3)]
+         (if (if s1 (if s2 s3 nil) nil)
+           (cons (f (erlang/hd s1) (erlang/hd s2) (erlang/hd s3))
+                 (map f (erlang/tl s1) (erlang/tl s2) (erlang/tl s3)))
+           nil))))
+    ([f c1 c2 c3 & colls]
+     ;; any number of colls: step all their seqs together until one ends
+     (let* [step (fn* step [cs]
+                   (lazy-seq
+                     (let* [ss (map seq cs)]
+                       (if (every? identity ss)
+                         (cons (map first ss) (step (map rest ss)))
+                         nil))))]
+       (map (fn* [args] (apply f args)) (step (cons c1 (cons c2 (cons c3 colls)))))))))
 
 (def filter
   (fn* filter
@@ -147,7 +163,8 @@
     ([f coll]
      (lazy-seq (let* [s (seq (map f coll))]
                  (if s (concat (erlang/hd s) (mapcat identity (erlang/tl s))) nil))))
-    ([f c1 c2] (mapcat identity (map f c1 c2)))))
+    ([f c1 c2] (mapcat identity (map f c1 c2)))
+    ([f c1 c2 & colls] (mapcat identity (apply map f c1 c2 colls)))))
 (def some (fn* some [pred coll]
             (loop* [s (seq coll)]
               (if s (let* [r (pred (erlang/hd s))] (if r r (recur (next s)))) nil))))
@@ -213,12 +230,29 @@
 (def nthnext (fn* nthnext [coll n]
                (loop* [s (seq coll) n n]
                  (if s (if (erlang/> n 0) (recur (next s) (erlang/- n 1)) s) nil))))
-(def drop (fn* drop [n coll] (lazy-seq (nthnext coll n))))
-(def take (fn* take [n coll]
-            (lazy-seq
-              (if (erlang/> n 0)
-                (let* [s (seq coll)] (if s (cons (erlang/hd s) (take (erlang/- n 1) (erlang/tl s))) nil))
-                nil))))
+(def drop (fn* drop
+            ([n] (fn* [rf]
+                   (let* [left (clj2_ref/volatile n)]
+                     (fn* ([] (rf))
+                          ([r] (rf r))
+                          ([r x] (let* [k (clj2_ref/deref left)]
+                                   (clj2_ref/vreset left (erlang/- k 1))
+                                   (if (erlang/> k 0) r (rf r x))))))))
+            ([n coll] (lazy-seq (nthnext coll n)))))
+(def take (fn* take
+            ([n] (fn* [rf]
+                   (let* [left (clj2_ref/volatile n)]
+                     (fn* ([] (rf))
+                          ([r] (rf r))
+                          ([r x] (let* [k (clj2_ref/deref left)
+                                        k1 (clj2_ref/vreset left (erlang/- k 1))
+                                        r1 (if (erlang/> k 0) (rf r x) r)]
+                                   (if (erlang/> k1 0) r1 (ensure-reduced r1))))))))
+            ([n coll]
+             (lazy-seq
+               (if (erlang/> n 0)
+                 (let* [s (seq coll)] (if s (cons (erlang/hd s) (take (erlang/- n 1) (erlang/tl s))) nil))
+                 nil)))))
 (def take-while (fn* take-while
                   ([pred] (fn* [rf] (fn* ([] (rf)) ([r] (rf r))
                                          ([r x] (if (pred x) (rf r x) (clj2_rt/reduced r))))))
@@ -354,6 +388,38 @@
 ;;;; ------------------------------------------------------------------
 
 ;; pattern, init → flat binding list (sym init sym init ...)
+
+;; Map destructuring of a seq (keyword arguments, & {:keys [a]}): pairs
+;; become a map, a lone value is the map itself, and after the pairs a
+;; trailing map is merged over them (Clojure 1.11's createAsIfByAssoc)
+(def seq-to-map-for-destructuring
+  (fn* seq-to-map-for-destructuring [s]
+    (if (next s)
+      (loop* [m (hash-map) xs (seq s)]
+        (if xs
+          (if (next xs)
+            (recur (assoc m (first xs) (second xs)) (nnext xs))
+            (if (map? (first xs))
+              (reduce (fn* [acc e] (assoc acc (first e) (second e))) m (seq (first xs)))
+              (throw (clj2_rt/ex_info (str "No value supplied for key: " (first xs))
+                                      (hash-map :type :IllegalArgumentException) nil))))
+          m))
+      (if (seq s) (first s) (hash-map)))))
+
+;; the local a :keys/:syms/:strs entry binds, and the key it looks up:
+;; a/b and :a/b bind b and look up :a/b; under :ns/keys an unqualified
+;; name takes that namespace
+(def destructure-key
+  (fn* destructure-key [kind ns-of-kind x]
+    (let* [n (name x)
+           q (if (namespace x) (namespace x) ns-of-kind)]
+      (list (symbol n)
+            (if (= kind "keys")
+              (if q (keyword q n) (keyword n))
+              (if (= kind "syms")
+                (list 'quote (if q (symbol q n) (symbol n)))
+                n))))))
+
 (def destructure-1
   (fn* destructure-1 [pat init]
     (if (symbol? pat)
@@ -373,6 +439,9 @@
               out)))
         (if (map? pat)
           (let* [g (gensym "map__")
+                 init (list 'if (list 'clojure.core/seq? init)
+                            (list 'clojure.core/seq-to-map-for-destructuring init)
+                            init)
                  defaults (get pat :or)
                  lookup (fn* [sym key]
                           (if (contains? defaults sym)
@@ -380,13 +449,15 @@
                             (list 'clojure.core/get g key)))
                  binds (reduce
                          (fn* [out entry]
-                           (let* [k (first entry) v (second entry)]
-                             (if (= k :keys)
-                               (concat out (mapcat (fn* [s] (list s (lookup s (keyword (name s))))) v))
-                               (if (= k :strs)
-                                 (concat out (mapcat (fn* [s] (list s (lookup s (name s)))) v))
-                                 (if (= k :syms)
-                                   (concat out (mapcat (fn* [s] (list s (lookup s (list 'quote s)))) v))
+                           (let* [k (first entry) v (second entry)
+                                  kind (if (keyword? k) (name k) nil)]
+                             (if (if (= kind "keys") true (if (= kind "syms") true (= kind "strs")))
+                               (concat out (mapcat (fn* [x]
+                                                     (let* [bk (destructure-key kind (namespace k) x)]
+                                                       (list (first bk) (lookup (first bk) (second bk)))))
+                                                   v))
+                               (if false nil
+                                 (if false nil
                                    (if (= k :as)
                                      (concat out (list v g))
                                      (if (= k :or)
@@ -420,6 +491,24 @@
 (defmacro let [bindings & body]
   `(let* ~(destructure bindings) ~@body))
 
+;; a fn body's leading {:pre [...] :post [...]} map → asserts around it
+;; (% is the result in :post)
+(def pre-post
+  (fn* pre-post [body]
+    (if (if (clj2_coll/is_any_map (first body)) (next body) nil)
+      (let* [conds (first body)
+             body (next body)
+             pre (clj2_coll/get conds :pre)
+             post (clj2_coll/get conds :post)
+             chk (fn* [c] (list 'clojure.core/assert c))]
+        (concat (map chk pre)
+                (if post
+                  (list (list 'clojure.core/let ['% (cons 'do body)]
+                              (cons 'do (map chk post))
+                              '%))
+                  body)))
+      body)))
+
 (defmacro fn [& sigs]
   (let* [name (if (symbol? (first sigs)) (first sigs) nil)
          sigs (if name (next sigs) sigs)
@@ -428,7 +517,7 @@
                  (let* [r (fn-params (first sig))
                         params (first r)
                         binds (second r)
-                        body (rest sig)]
+                        body (pre-post (rest sig))]
                    (if (seq binds)
                      (list params (cons 'clojure.core/let (cons (vec binds) body)))
                      (cons params body))))]
@@ -447,15 +536,25 @@
              (let [~@(mapcat (fn* [g p] (list (first p) g)) gs pairs)]
                ~@body)))))))
 
+;; (def name {meta} f): :doc, the attr-map and :arglists, as the JVM's
+;; defn conj's them (clj2_rt:defn_meta)
 (defmacro defn [name & fdecl]
   (let* [doc (if (string? (first fdecl)) (first fdecl) nil)
          fdecl (if doc (next fdecl) fdecl)
-         fdecl (if (map? (first fdecl)) (next fdecl) fdecl)
+         attr (if (map? (first fdecl)) (first fdecl) nil)
+         fdecl (if attr (next fdecl) fdecl)
+         sigs (if (vector? (first fdecl)) (list (first fdecl)) (map first fdecl))
          f (cons 'clojure.core/fn (cons name fdecl))]
-    (if doc (list 'def name doc f) (list 'def name f))))
+    (list 'def name (clj2_rt/defn_meta doc attr sigs) f)))
 
-;; symbols are atoms and carry no metadata: defn- is defn (registered divergence)
-(defmacro defn- [name & fdecl] (cons 'clojure.core/defn (cons name fdecl)))
+;; defn with :private true in its attr-map (symbols carry no metadata, so
+;; it goes there rather than on the name)
+(defmacro defn- [name & fdecl]
+  (let* [doc (if (string? (first fdecl)) (first fdecl) nil)
+         fdecl (if doc (next fdecl) fdecl)
+         attr (if (map? (first fdecl)) (clj2_coll/assoc (first fdecl) :private true) {:private true})
+         fdecl (if (map? (first fdecl)) (next fdecl) fdecl)]
+    (cons 'clojure.core/defn (cons name (if doc (cons doc (cons attr fdecl)) (cons attr fdecl))))))
 
 (defmacro letfn [fnspecs & body]
   `(letfn* ~(vec (mapcat (fn* [spec] (list (first spec) (cons 'clojure.core/fn spec))) fnspecs))

@@ -6,7 +6,7 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **实测佐证**:`test/clj2_divergence_evidence_tests.erl` 为每一条准备一个测试。如果哪天行为变了,测试就会失败,登记表必须跟着更新。CI 还会检查本文是否覆盖了每一条。
 - **corpus 门控**:corpus 里因这些差异而与 JVM 结果不同的条目,都标注了对应的差异编号(`make certify`)。
 
-下面共 19 条。每条依次是:JVM 上的行为 → clojerl2 上的行为 → 替代写法。
+下面共 21 条。每条依次是:JVM 上的行为 → clojerl2 上的行为 → 替代写法。
 
 另外有很多功能是**还没做**,不属于有意的差异,例如 atom、多方法、正则。那些列在 [README](README.md#现状2026-10)。
 
@@ -45,8 +45,8 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 ### `:char/integer` 字符就是整数码点
 
 - **JVM**:`\a` 是 `java.lang.Character`。
-- **clojerl2**:`\a` 是 97,`(seq "ab")` 是 `(97 98)`,`(str \a)` 是 `"97"`。
-- **替代写法**:尽量直接操作字符串(`subs` 等字符串函数)。要从码点拼回字符串,用 `(apply str (map (fn [c] (unicode/characters_to_binary (list c))) cs))`。
+- **clojerl2**:`\a` 是 97,`(seq "ab")` 是 `(97 98)`,`(str \a)` 是 `"97"`,`(= \a 97)` 为 true;`char?` 对任何码点范围内的整数都为 true,`format` 的 `%c` 也接受整数。这是项目决定(2026-10-12):保持码点表示,与 Erlang 的码点列表天然互通。corpus 里测试字符渲染的条目在 `test/corpus-overrides.edn` 中改写。
+- **替代写法**:尽量直接操作字符串(`subs`、`clojure.string` 的函数、正则)。要表示某个字符组成的字符串,直接写字符串字面量,如 `"\u3000"`,JVM 上也成立;要从码点拼回字符串,用 `(unicode/characters_to_binary (list c))`。
 - 依据:designs/03 §1.1、§7。
 
 ## 函数与编译
@@ -65,20 +65,25 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **替代写法**:不要把 fn 的身份当标识用,显式加上标识,例如 `{:id 1 :f f}`。
 - 依据:designs/03 §1.1、§2.1。
 
-### `:exceptions/erlang-classes` catch 按 Erlang 异常类
+### `:exceptions/erlang-classes` 底层是 Erlang 的异常
 
-- **JVM**:`catch` 写的是 Throwable 的类名,如 `ArithmeticException`。
-- **clojerl2**:`catch` 接受 `:error`/`:exit`/`:throw` 三类;`:default`、`Exception`、`Throwable` 捕获全部。写 JVM 类名会编译报错,因为 BEAM 没有异常类层级。`throw` 抛出的是 Erlang `error`。future 的主体抛出异常时,`deref` 重新抛出的就是那个异常本身;JVM 会把它包在 `ExecutionException` 里。
-- **替代写法**:写 `(catch Exception e ...)` 或 `(catch :error e ...)`,在处理代码里按原因或 `(ex-data e)` 分派。
+- **JVM**:每个异常都是某个 Throwable 子类的实例,`catch` 按类选择。
+- **clojerl2**:`catch` 同样按 JVM 类选择,包括父类,例如 `RuntimeException` 能捕获 `ArithmeticException`;类层次来自 `clj2_class` 的 JVM 模型。但底层的错误是 Erlang 的,所以:
+  - Erlang 错误被归到最接近的 JVM 类:`badarith` 是 `ArithmeticException`,`function_clause`/`badarg` 是 `IllegalArgumentException`,下标越界是 `IndexOutOfBoundsException`,其余是 `RuntimeException`;
+  - 运行时自身抛出的错误在 `ex-data` 的 `:type` 里注明了对应的 JVM 类;
+  - Erlang 的 exit 和 throw 只能被 `:exit`/`:throw`/`:default`/`Exception`/`Throwable` 捕获;
+  - 模型里没有的 JVM 类在编译期报错;
+  - future 主体抛出的异常,`deref` 时原样重新抛出,不包装成 `ExecutionException`。
+- **替代写法**:照 JVM 的写法捕获需要的类即可;如果要区分 Erlang 错误对应的具体 JVM 子类,就捕获一个更宽的类(`RuntimeException`),再在处理代码里看 `(ex-data e)` 或消息。
 - 依据:designs/09 §3。
 
 ## 协议
 
-### `:protocols/type-designators` extend-type 用 clj2 的类型标签
+### `:protocols/type-designators` extend-type 只认类模型里的类
 
-- **JVM**:`extend-type` 接受类和接口,还有 `reify`。
-- **clojerl2**:`extend-type` 接受 clj2 的类型标签(`nil` `boolean` `keyword` `symbol` `integer` `float` `string` `list` `lazy_seq` `vector` `map` `set` `fn` …… 以及 `default`)、`deftype`/`defrecord` 的名字,还认少数 JVM 别名(`Object` `String` `Long` `Integer` `Double` `Boolean` `Keyword` `Symbol`)。没有类层级,没有 `reify`。
-- **替代写法**:扩展 clj2 标签,例如用 `integer` 代替 `Long`/`Number`;原来用 `reify` 的地方,改成 `defrecord` 加 `extend-type`。
+- **JVM**:`extend-type` 接受任何类和接口,还有 `reify`。
+- **clojerl2**:`extend-type` 接受 clj2 类模型里的 JVM 类和接口(java.lang、java.util、clojure.lang 的:`Object` `String` `Number` `Map` `IPersistentVector` ……),分派时沿着值的类的祖先链查找;clj2 的类型标签(`integer` `vector` `map` …… `default`)以及 `deftype`/`defrecord` 的名字同样可以用。没有 `reify`,类模型之外的类(`java.io.File`、用户的 Java 类)不能扩展。
+- **替代写法**:原来用 `reify` 的地方,改成 `defrecord` 加 `extend-type`;扩展类模型认识的类(或 clj2 标签)。
 - 依据:designs/03 §4.1a。
 
 ## 命名空间、重定义与绑定
@@ -103,9 +108,9 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 
 ### `:symbol/no-metadata` 符号不带元数据
 
-- **JVM**:def 名字上的元数据经过宏也能保留,`defn-` 定义的是私有 var。
-- **clojerl2**:符号就是 atom,本身不带元数据。直接写在 `def` 名字上的元数据会保留(`^:private`、`^:dynamic`、`^{:doc ...}`),`defn` 的 docstring 也会保留;但要经过宏传递的元数据会丢失,所以 `defn-` 和 `(defn ^:private ...)` 定义出来的都是公开 var。
-- **替代写法**:私有函数写成 `(def ^:private name (fn ...))`,文档写在 `defn` 的 docstring 里。
+- **JVM**:def 名字上的元数据经过宏也能保留,`(defn ^:private f ...)` 定义的是私有 var;符号可以 `with-meta`。
+- **clojerl2**:符号就是 atom,本身不带元数据。直接写在 `def` 名字上的元数据会保留(`^:private`、`^:dynamic`、`^{:doc ...}`),`defn` 的 docstring 和 attr-map 也会保留(`defn-` 经 attr-map 传 `:private`,定义的是私有 var);但写在交给宏的名字上的元数据会丢失,所以 `(defn ^:private f ...)` 定义出来的是公开 var;对符号 `with-meta` 会报错。
+- **替代写法**:私有函数用 `defn-`(或在 `defn` 的 attr-map 里写 `{:private true}`),文档写在 `defn` 的 docstring 里。
 - 依据:designs/03 §1.1。
 
 ### `:dynamic/per-process-bindings` 动态绑定属于进程
@@ -147,6 +152,43 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **clojerl2**:BEAM 的值没有身份,`identical?` 就是精确相等(`=:=`):`(identical? [1 2] (vector 1 2))` 为 true;`compare-and-set!` 在当前值等于期望值时就会交换。
 - **替代写法**:不要用 `identical?` 或 `compare-and-set!` 区分内容相同的值;确实需要时,在值里显式带上版本号或标识,例如 `{:version n ...}`。
 - 依据:designs/03 §1.1、§5.2。
+
+### `:collections/exact-keys` map 的键按项精确比较
+
+- **JVM**:map 的键、set 的元素按 `=` 比较,`(get {[1 2] :a} '(1 2))` 得到 `:a`。
+- **clojerl2**:hash map 和 set 底层是 Erlang map,键按 Erlang 项精确比较。所以两个 `=` 但表示不同的键(元素相同的列表和向量)、或者元数据不同的键,是两个不同的键:上面的 `get` 得到 nil,`assoc` 这样的键会新增一项而不是替换。键是数字、字符串、关键字、符号,或者同一种集合时,行为与 JVM 一致。
+- **替代写法**:复合键统一用一种集合(比如都用向量),不要依赖键上的元数据;可能以 seq 形式到来的键先用 `(vec k)` 规整。
+- 依据:designs/03 §1.3。
+
+### `:collections/map-order` map 不按插入顺序迭代
+
+- **JVM**:不超过 8 项的 map(array-map),以及用 `array-map` 构造的任意大小 map,按插入顺序迭代:`(keys {:c 3 :a 1 :b 2})` 得到 `(:c :a :b)`。
+- **clojerl2**:map 底层是 Erlang map,按 Erlang 内部的顺序迭代(同一组键顺序固定,与构造方式无关),不记插入顺序:上例可能得到 `(:b :a :c)`。`keys`、`vals`、`seq`、打印,以及建立在它们之上的 `frequencies`、`group-by`、`merge`、`zipmap` 等的结果顺序都可能不同;相等、查找和哈希不受影响。
+- **替代写法**:不要依赖 map 的顺序(JVM 上 hash map 本来也不保证):需要顺序时对条目排序、在 map 旁边另存一个有序的键向量,或者使用 sorted-map。
+- 依据:designs/03 §1.3。
+
+### `:transients/wrapped` transient 包装持久值
+
+- **JVM**:transient 是可变的;`persistent!` 之后再使用它会抛出 `IllegalAccessError`。
+- **clojerl2**:BEAM 的值不可变,transient 包装的是一个持久值。`conj!`、`assoc!` 等返回下一个 transient,所以按 Clojure 的要求使用返回值的代码都能正常工作;但 `persistent!` 之后再用、或者用了旧的 transient,都不会被检测出来。transient 也不会比持久操作更快。
+- **替代写法**:每个 bang 操作都使用它的返回值(Clojure 本来就这样要求);这里用 transient 没有速度上的收益,直接用持久操作也一样。
+- 依据:designs/03 §1.1。
+
+### `:seqs/class-model` seq 只有两种表示
+
+- **JVM**:seq 有一族具体类:`Cons`、`LongRange`、`Range`、`Iterate`、`Repeat`、`Cycle`、`ChunkedCons`、`ArraySeq`、`APersistentMap$KeySeq` ……,`(class (range 5))` 是 `clojure.lang.LongRange`。
+- **clojerl2**:seq 要么是 Erlang 列表(有限、已实现),要么是惰性序列:`class` 报 `clojure.lang.PersistentList` 或 `clojure.lang.LazySeq`,对那些具体 seq 类做 `instance?` 以及打印类名都会不同。seq 的行为(`first`、`rest`、`count`、`=`、`hash`)相同。
+- **替代写法**:用谓词(`seq?`、`sequential?`、`coll?`、`counted?`)判断,不要对具体的 seq 类用 `class` 或 `instance?`。
+- 依据:designs/03 §6。
+
+## 宿主
+
+### `:host/jvm-classes` 只有常用的 JVM 成员
+
+- **JVM**:任何 Java 类都可以用互操作语法调用。
+- **clojerl2**:没有 JVM。互操作语法落到宿主垫片(`clj2_jvm`),实现了 java.lang、java.util、clojure.lang 里常用的成员(`Integer/parseInt`、`Math`、String 方法、异常构造器、`StringBuilder`、Var/Symbol/Keyword 成员……)。其他类不可用:java.io 的文件、流、reader 和 URL,java.net,java.text 与 java.time/Calendar(因此 `format` 的 `%t`),带种子的 `java.util.Random`,具名字符集,Thread 对象。用到时抛 IllegalArgumentException(no matching method)。
+- **替代写法**:用 Clojure 函数(`slurp`、`spit`、`clojure.string`、不带 `%t` 的 `format`、`rand`),或直接调 Erlang 模块:`file`、`filename`、`io`、`calendar`、`unicode`、`rand`、`erlang:system_time`(`(file/read_file path)`、`(calendar/universal_time)` ……)。
+- 依据:designs/09 §3。
 
 ## 惰性序列
 

@@ -115,7 +115,8 @@ reader ─▶ Lcore ─parse─▶ L0 ─declare─▶ L0 ═(驱动:查外部 N
 | invoke | `case F of _ when is_function(F, N) -> F(Args); _ -> clj2_rt:invoke(F, Args) end` | 快路径是原生调用;慢路径集中在运行时,将来给 keyword/map/var 加 IFn 只改 `clj2_rt` |
 | Erlang 调用 | 调用头为 `mod/fun` → `mod:fun(Args)`;值位置的 `mod/fun` 报错(需要 arity) | 对齐 clojerl 1.0 习惯 |
 | throw | `(throw x)` → `erlang:error(x)` | Clojure 异常对应 Erlang `error` 类(带栈);Erlang `throw` 类是非局部返回,不混用 |
-| catch 类 | `:error`/`:exit`/`:throw` 对应 Erlang 三类;`:default`(ClojureScript 写法)及 `Exception`/`Throwable` 捕获全部类 | JVM 类层级在 BEAM 无对应物,登记分歧 |
+| catch 类 | `:error`/`:exit`/`:throw` 对应 Erlang 三类;`:default`(ClojureScript 写法)捕获全部类、原样绑定;`Exception`/`Throwable` 与其他 JVM 类按 `clj2_class` 的类模型选择,绑定时 Erlang 错误包成带类的 throwable(`clj2_rt:throwable/2`,2026-10-12) | 类层级用 jolt 的 JVM 类图模拟;Erlang 错误映射到最近的 JVM 类,登记 `:exceptions/erlang-classes` |
+| JVM 互操作 | `(Class/m args)`、`Class/FIELD`、`(Class/.m obj args)`、`(.m obj args)`、`(. obj m args)`、`(.-f obj)`、`..`、`(new C args)`/`(C. args)` 编译为 `clj2_jvm` 的 `static`/`field`/`method`/`instance_field`/`new` 调用(2026-10-12) | 没有 JVM:常用的 java.lang/java.util/clojure.lang 成员(`Integer/parseInt`、`Math/*`、String 方法、异常构造器、`StringBuilder`、Var/Symbol/Keyword 成员……)在 BEAM 上按 JVM 结果实现;其余类登记 `:host/jvm-classes` |
 | 命名空间 | 一个 NS 一个模块,var 是模块函数,不做名称改编;同 NS 引用编译为本地调用(on_load 期间远程自调用会 `undef`) | 细节见 [03](03-runtime-model.md) §2.1a、[02](02-beam-backend.md) §3.1/§3.4 |
 | 宏 | 展开在驱动、parse 只拿能力;同文件宏靠编译期段模块;`defmacro` 暂为内核形式 | §4.1 |
 | `'x` | reader 产出 `(quote x)`;`#'x` 产出 var 形式 | 修复 reader 原先两者都读成 `{var, [], x}` 的 bug |

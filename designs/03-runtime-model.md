@@ -36,6 +36,8 @@ symbol/keyword 用 atom 表示,模式匹配与比较都是 O(1),但 **BEAM 的 a
 
 候选:(a) 在 tuple 上自建 HAMT(移植 Clojure 的 BitmapIndexedNode);(b) 包一层原生 Erlang map。选 **(b)**:OTP 的大 map 内部就是 HAMT,原生实现的持久化、内存共享与 GC 友好性都优于手写的 tuple 版;小 map 走 flatmap 还有额外红利。成本是必须包一层 `{map, Meta, Map}` 以携带 meta 槽与类型标签。
 
+迭代顺序:Erlang map 按其内部顺序迭代(同一组键顺序固定),不记插入顺序。JVM 上 Clojure 不保证 hash map 的顺序,但 ≤8 项的 array-map(以及 `array-map` 构造的任意大小 map)按插入顺序迭代,不少代码无意中依赖这一点。保留原生 map 的收益(§1.3 选择 b 的理由)而不另建有序小 map,这一差异登记为 `:collections/map-order`。
+
 键相等性:Erlang map 的键用**精确项相等**(`=:=`),Clojure 用按类别的相等(`1` ≠ `1.0`)。两者基本一致;边缘情况(NaN 不与自身相等、`-0.0` vs `0.0` 在 `=:=` 下不等)登记进 known-divergences,不模拟。
 
 ### 1.4 类型标签:打标元组 `{Tag, Meta, Data}`,不沿用 clojerl 的 map+`?TYPE`
@@ -110,6 +112,7 @@ REPL 是写密集场景(每次 `defn` 都写),persistent_term 的全表拷贝在
 - **协议即 var**:`(defprotocol P ...)` 定义 var `P`(值是描述 `{:name ns.P :methods [...]}`)与每个方法的分派函数 var(普通 var 函数,内部调 `clj2_proto:dispatch`)。原设计的"协议模块"不需要:元数据在 var 里,协议所在命名空间模块在 extend 时同样不重编译。
 - **impl 模块** `<ns.P>__<Tag>`:由 `extend-type`/`extend-protocol`/`deftype`/`defrecord` 的方法编译而来,每个方法 clause 一个导出函数;其 on_load 调 `clj2_proto:loaded/3` 写正项,**负缓存随之失效**(§9 未决问题 3 已关闭,有测试)。
 - **类型 tag**(`clj2_proto:type_tag/1`):`nil boolean keyword symbol integer float string list vector map set fn ratio tuple pid reference port`,`default` 作兜底;deftype/defrecord 值 `{Tag, Meta, Fields}` 的 Tag 是带命名空间的类型名 `ns.T`。`extend-type` 的类型位置写这些 tag、`ns.T`/本 NS 的 `T`,或 JVM 风格别名 `Object String Long Integer Double Boolean Keyword Symbol`。
+- **类与接口作类型位置**(2026-10-12):不是 tag、别名或本 NS 类型的名字,按 `clj2_class` 的类模型解析成 JVM 类或接口(`Map` → `java.util.Map`、`Number`、`clojure.lang.IPersistentVector` ……,java.lang 之外按唯一简名)。分派时 tag 未命中,就按值的类的祖先链(`clj2_class:ancestry/1`,广度优先、近者在先)找 impl,结果以 `{via, P, Tag}` 缓存;任何 impl 加载都清掉该协议的 `via` 项。
 - **deftype**:Fields 为 tuple,构造函数 `->T`;**defrecord**:Fields 为 map(`clj2_coll` 的 get/assoc/count/keys/vals/= 视其为 map),构造函数 `->R` 与 `map->R`。方法体里字段名是局部量,同名参数遮蔽字段。var `T` 的值是类型 tag(供 `instance?`)。
 - **已知限制**:没有 `reify`;协议方法不能变参(与 Clojure 一致);symbol 无元数据,`^:private` 之类丢失;命名空间加载期(on_load)内若经协议调到本 NS 的 impl 方法、而该方法又远程调用本 NS 的 var,会遇到 on_load 自调用限制;编译期段不含 `extend-type`(宏在展开期不能分派到同文件定义的 impl)。
 
@@ -130,6 +133,11 @@ REPL 是写密集场景(每次 `defn` 都写),persistent_term 的全表拷贝在
 ### 5.1 多方法:保留 clojerl 的分派模块模式
 
 **保留 clojerl 1.0 的按多方法一个分派模块的模式**(`Ns.name__dispatch__`):`defmethod` 时重新生成分派模块并热加载——BEAM 两版本热替换保证旧代码的进行中调用不受影响,新调用走新表。改动仅在生成方式:clojerl 1.0 用 `cerl:abstract(Map)` 把调度 map 转成 Core Erlang,clojerl2 改为直出 **absform**([02](02-beam-backend.md)),与其他编译产物同一条发射路径,消除 cerl 依赖。dispatch fn 值 = `dispatch/1` 的 fun;偏好与祖先链(`derive`/`isa?`)存 ETS 表,`defmethod` 只改这张表 + 重发生派模块,不碰全局状态机。
+
+> **2026-10-12 落地(clojerl2-017,`clj2_multi`),修订了"每多方法一个分派模块"**:方法体是命名空间加载时才创建的闭包,absform 没法把闭包当常量写进生成的模块,生成的模块最终也只能去表里取方法。所以方法表直接用数据存在 ETS `clj2_multi` 里,每个方法一行。
+> - **分派**:精确的分派值一次查找命中;否则由 `clojure.core/find-best-method`(Clojure 实现,沿用 clojure.lang.MultiFn 的 isa? + prefer 选择逻辑)找出最佳方法,缓存起来。缓存印记由多方法的版本号和层次的版本号组成,`defmethod`、`remove-method`、`prefer-method`、`derive` 都会让它失效。
+> - **两版本语义**照样成立:调用一开始就取走方法,正在执行的调用不受重定义影响,下一次调用看到新表。另外每次 `defmethod` 不需要编译。
+> - **层次**:`make-hierarchy`/`derive`/`isa?` 等移植自 jolt 的纯 map 实现(即 clojure.core 的实现),去掉了 JVM 类分支。全局层次是一个 clj2 atom,底层是 ETS。`:hierarchy` 选项接受 var、atom 或 map。
 
 ### 5.2 引用类型:诚实降级总表
 
@@ -183,6 +191,13 @@ v1 选 pdict + 文档化分歧,ETS 开关留位。**Spike(M0)**:量化 pdict 版
 - string = **binary(UTF-8)**:内存紧凑、与 Erlang IO 协议(iolist)零转换、与 clojerl 1.0 先例一致。
 - **下标 O(n) 分歧**:Clojure JVM 的 `nth`/`charAt` 是 UTF-16 码元 O(1),UTF-8 binary 按码点取下标 O(n)。登记 known-divergences;原语层提供按码点的 `char_at`,文档劝用 seq/reduce 遍历。char = integer 码点(非 UTF-16 码元),surrogate pair 在 clojerl2 中就是单码点——同样登记。
 - 拼接:`iolist` 内部累积、最后 `iolist_to_binary`,避免 O(n²) 拷贝;`str` 多参直接产 iolist。
+
+> **2026-10-12 落地(clojerl2-020)**:
+> - **正则**(`clj2_re`):用 Erlang 的 `re`(PCRE2),值是 `{regex, nil, Source}`,第一次使用时编译并缓存。OTP 28 编译出的正则含引用,不能作为编译期常量。Java 和 PCRE 语法不同的地方先改写源码再编译:`\uXXXX`、`\0ooo`、POSIX 类(ASCII)、`\p{javaXxx}`/`\p{IsXxx}`/`\p{gc=..}`,以及 Java 才有的内联标志、`[\w-_]` 中的 `-`、嵌套类、`&&` 交集;未知的 `\p{Name}` 报错。编译时不加 `ucp`,所以 `\w`/`\d`/`\s` 只匹配 ASCII,与 Java 默认一致。`re-matches` 用 `(?:…)\z` 包装,保证整串匹配。
+> - **IO**(`clj2_io`):`*out*`/`*err*`/`*in*` 是动态 var,值是 io 设备,打印和读取都经过它们,`binding` 即可重定向。`with-out-str`/`with-in-str` 使用基于 io 协议的字符串设备。
+> - **`format`**(`clj2_format`):按 java.util.Formatter 的语法实现,浮点数按最短往返表示做 HALF_UP 舍入,和 JVM 逐项比对过。
+> - **`clojure.string`** 是第一个标准库命名空间,源码在 `priv/clj2/stdlib/`,`make` 时预编译。以限定名引用一个还没加载的命名空间时,会先从源码路径加载。
+> - **char**:保持码点(项目决定 2026-10-12)。corpus 中测试字符渲染的条目用 `test/corpus-overrides.edn` 改写,改写须引用已登记的分歧。
 
 ## 8. 运行时的实现语言分层
 

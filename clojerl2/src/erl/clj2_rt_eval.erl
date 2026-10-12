@@ -18,7 +18,8 @@
 
 -export([current_ns/0, set_current_ns/1, in_ns/1, save_ns/0, restore_ns/1]).
 -export([eval/1, read_string/1, load_string/1, macroexpand_1/1, macroexpand/1]).
--export([require/1, ensure_loaded/1, load_file/1, load_ns_file/1,
+-export([alias/2]).
+-export([require/1, load_specs/2, ensure_loaded/1, load_file/1, load_ns_file/1,
          source_path/0, set_source_path/1, find_source/1]).
 
 -define(NS_KEY, {clj2_dyn, 'clojure.core', '*ns*'}).
@@ -88,29 +89,37 @@ macroexpand(Form) ->
 %% `[ns :as alias :refer [syms] | :all]'; a bare `:reload' reloads them.
 %% Aliases and refers are added to the current namespace.
 require(Args) ->
+    Cur = current_ns(),
+    {Aliases, Refers} = load_specs(Args, Cur),
+    case Aliases =:= #{} andalso Refers =:= #{} of
+        true -> ok;
+        false -> clj2_ns:put_ctx(Cur, Aliases, Refers)
+    end,
+    nil.
+
+%% @doc Load what (require ...) names and → {Aliases, Refers} it adds to
+%% namespace Cur, without recording them (the compiler runs a top-level
+%% require at compile time and keeps them in its own context).
+load_specs(Args, Cur) ->
     Specs = clj2_coll:to_list(Args),
     Reload = lists:member(':reload', Specs) orelse lists:member(':reload-all', Specs),
-    Cur = current_ns(),
-    lists:foreach(
-      fun(Flag) when Flag =:= ':reload'; Flag =:= ':reload-all' -> ok;
-         (Spec) ->
+    lists:foldl(
+      fun(Flag, Acc) when Flag =:= ':reload'; Flag =:= ':reload-all' -> Acc;
+         (Spec, {AAcc, RAcc}) ->
               {Ns, Opts} = libspec(Spec),
               load(Ns, Reload orelse maps:is_key(':reload', Opts)),
               Aliases = case Opts of
-                            #{':as' := As} -> #{As => Ns};
+                            #{':as' := As} when Ns =/= Cur -> #{As => Ns};
                             _ -> #{}
                         end,
               Refers = case Opts of
+                           _ when Ns =:= Cur -> #{};
                            #{':refer' := ':all'} -> maps:from_keys(public_names(Ns), Ns);
                            #{':refer' := Syms} -> maps:from_keys(clj2_coll:to_list(Syms), Ns);
                            _ -> #{}
                        end,
-              case Ns =:= Cur orelse (Aliases =:= #{} andalso Refers =:= #{}) of
-                  true -> ok;
-                  false -> clj2_ns:put_ctx(Cur, Aliases, Refers)
-              end
-      end, Specs),
-    nil.
+              {maps:merge(AAcc, Aliases), maps:merge(RAcc, Refers)}
+      end, {#{}, #{}}, Specs).
 
 libspec(Ns) when is_atom(Ns) -> {Ns, #{}};
 libspec(Spec) ->
@@ -191,3 +200,9 @@ find_source(Ns) ->
         [P | _] -> {ok, P};
         [] -> error
     end.
+
+%% @doc (alias 'a 'some.ns): a names some.ns in the current namespace
+alias(As, Ns) ->
+    clj2_ns:info(Ns) =/= error orelse erlang:error({clj2_require, {not_found, Ns, source_path()}}),
+    clj2_ns:put_ctx(current_ns(), #{As => Ns}, #{}),
+    nil.

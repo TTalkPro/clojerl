@@ -26,12 +26,15 @@ capitalize(S) ->
     bin([string:uppercase([C]), string:lowercase(Rest)]).
 
 %% Clojure trims Java whitespace (Character/isWhitespace), not just ASCII
+%% "\r\n" is one grapheme cluster to the string module, so it is listed
+%% as a separator of its own besides \r and \n
 trim(S) -> bin(string:trim(S, both, ws())).
 triml(S) -> bin(string:trim(S, leading, ws())).
 trimr(S) -> bin(string:trim(S, trailing, ws())).
-ws() -> " \t\n\r\f\v\x{1C}\x{1D}\x{1E}\x{1F}\x{1680}\x{2000}\x{2001}\x{2002}\x{2003}\x{2004}\x{2005}\x{2006}\x{2008}\x{2009}\x{200A}\x{2028}\x{2029}\x{205F}\x{3000}".
+ws() -> [[$\r, $\n] | ws_chars()].
+ws_chars() -> " \t\n\r\f\v\x{1C}\x{1D}\x{1E}\x{1F}\x{1680}\x{2000}\x{2001}\x{2002}\x{2003}\x{2004}\x{2005}\x{2006}\x{2008}\x{2009}\x{200A}\x{2028}\x{2029}\x{205F}\x{3000}".
 
-trim_newline(S) -> bin(string:trim(S, trailing, "\r\n")).
+trim_newline(S) -> bin(string:trim(S, trailing, [[$\r, $\n], $\r, $\n])).
 
 is_blank(nil) -> true;
 is_blank(S) -> string:trim(S, both, ws()) =:= <<>> orelse string:trim(S, both, ws()) =:= [].
@@ -126,7 +129,8 @@ replace(S, Match, Repl, Which) when is_binary(Match); is_integer(Match) ->
             B2 -> B2
         end,
     case M of
-        <<>> -> S;
+        %% an empty match is at every position, ends included
+        <<>> -> bin([[R, [C]] || C <- chars(S)] ++ [R]);
         _ ->
             Opts = case Which of
                        all -> [global];

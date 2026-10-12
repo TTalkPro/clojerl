@@ -172,10 +172,10 @@ chars_test_() ->
       , {<<"\\return">>,      {1,1}, 13}
       , {<<"\\backspace">>,   {1,1}, 8}
       , {<<"\\formfeed">>,    {1,1}, 12}
-      , {<<"\\e">>,           {1,1}, 27}
-      , {<<"\\f">>,           {1,1}, 12}
-      , {<<"\\v">>,           {1,1}, 11}
-      , {<<"\\0">>,           {1,1}, 0}
+      , {<<"\\e">>,           {1,1}, $e}         % letters, as in Clojure
+      , {<<"\\f">>,           {1,1}, $f}
+      , {<<"\\v">>,           {1,1}, $v}
+      , {<<"\\0">>,           {1,1}, $0}
       , {<<"\\(">>,           {1,1}, 40}
       , {<<"\\)">>,           {1,1}, 41}
       , {<<"\\[">>,           {1,1}, 91}
@@ -677,8 +677,9 @@ errors_test_() ->
     , ?_test(err({<<")">>,              {1, 1}}))    %% stray delimiter
     , ?_test(err({<<"]">>,              {1, 1}}))
     , ?_test(err({<<"}">>,              {1, 1}}))
-    , ?_test(err({<<"%">>,              {1, 2}}))    %% % outside #()
-    , ?_test(err({<<"%0">>,             {1, 2}}))
+    %% % outside #() is an ordinary symbol, as on the JVM
+    , ?_assertMatch({ok, {clj2_loc, 1, 1, '%', nil}, _, _}, clj2_reader:read(<<"%">>))
+    , ?_assertMatch({ok, {clj2_loc, 1, 1, '%0', nil}, _, _}, clj2_reader:read(<<"%0">>))
     , ?_test(err({<<"#(%+)">>,          {1, 4}}))    %% %foo rejected
     , ?_test(err({<<"(#">>,             {1, 3}}))    %% EOF in a dispatch
     , ?_test(err({<<"#tag">>,           {1, 5}}))    %% EOF after a tag

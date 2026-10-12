@@ -31,6 +31,7 @@
         , find_ns/1
         , put_var/3
         , put_ctx/3
+        , set_var_meta/2
         , remove/1
         , info/1
         , module/1
@@ -85,6 +86,12 @@ find_ns(_) -> false.
 put_var(Ns, Name, Info) when is_atom(Ns), is_atom(Name), is_map(Info) ->
     ensure(Ns),
     gen_server:call(?MODULE, {put_var, Ns, Name, Info}).
+
+%% @doc (reset-meta! #'v m): the var's metadata becomes m (kept in its
+%% VarInfo as `meta', over what the registry knows)
+set_var_meta({var, _, {Ns, Name}}, M) ->
+    {ok, #{vars := #{Name := I}}} = info(Ns),
+    put_var(Ns, Name, I#{meta => element(3, M)}).
 
 %% @doc Merge aliases and refers (#{Sym => Ns}) into `Ns''s REPL context.
 put_ctx(Ns, Aliases, Refers) ->
@@ -169,6 +176,7 @@ init([]) ->
     clj2_proto:new_table(),
     clj2_ref:new_tables(),
     clj2_re:new_table(),
+    clj2_multi:new_table(),
     clj2_lazy:new_table(),
     clj2_eval = ets:new(clj2_eval, [named_table, public, ordered_set]),
     %% `user' always exists, as in Clojure: the REPL's first namespace. It

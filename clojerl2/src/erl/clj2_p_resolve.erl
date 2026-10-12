@@ -60,8 +60,21 @@ expr({sym, A, S}, Env, _L, St) ->
                 {var, {varref, _, _, _, #{macro := true}}} ->
                     fail(A, {cannot_take_value_of_macro, S});
                 {var, Node} -> {Node, St};
-                {erlang, _, _} -> fail(A, {erlang_fun_needs_call_position, S});
-                unresolved -> fail(A, {unresolved_symbol, S})
+                {erlang, M, F} ->
+                    case jvm_class(M) of
+                        {ok, C} ->
+                            {{erl_call, A, clj2_jvm, field, [{const, A, C}, {const, A, F}]}, St};
+                        error ->
+                    case class_constant(A, S, St) of
+                        {ok, C} -> {C, St};
+                        error -> fail(A, {erlang_fun_needs_call_position, S})
+                    end
+                    end;
+                unresolved ->
+                    case class_constant(A, S, St) of
+                        {ok, C} -> {C, St};
+                        error -> fail(A, {unresolved_symbol, S})
+                    end
             end
     end;
 %% (var x): the var itself, a constant #'ns/name (what def returns)
@@ -71,14 +84,14 @@ expr({the_var, A, S}, _Env, _L, St) ->
         _ -> fail(A, {unresolved_var, S})
     end;
 expr({invoke, A, {sym, _, S} = H, Args}, Env, L, St) when not is_map_key(S, Env) ->
-    case global(A, S, St) of
-        {erlang, M, F} ->
+    case ctor_sugar(A, S, St) of
+        {ok, {jvm, C}} ->
             {Args1, St1} = exprs(Args, Env, L, St),
-            {{erl_call, A, M, F, Args1}, St1};
-        _ ->
-            {H1, St1} = expr(H, Env, L, St),
-            {Args1, St2} = exprs(Args, Env, L, St1),
-            {{invoke, A, H1, Args1}, St2}
+            {{erl_call, A, clj2_jvm, new, [{const, A, C}, {list, A, Args1}]}, St1};
+        {ok, Ctor} ->
+            {Args1, St1} = exprs(Args, Env, L, St),
+            {{invoke, A, Ctor, Args1}, St1};
+        error -> invoke_global(A, S, H, Args, Env, L, St)
     end;
 expr({'let', A, Binds, Body}, Env, L, St) ->
     {Binds1, Env1, St1} = seq_binds(Binds, Env, L, St),
@@ -163,7 +176,18 @@ global(A, S, St = #{scope := Scope}) ->
                     is_map_key(Name, Vars) orelse fail(A, {no_such_var, Ns, Name}),
                     {var, own_var(A, Name, St)};
                 is_map_key(QNs, Ext) ->
-                    {var, ext_var(A, QNs, Name, Ext)};
+                    Ref = ext_var(A, QNs, Name, Ext),
+                    %% another namespace's private var is refused (core's
+                    %% are used by its own macro expansions)
+                    case Ref of
+                        {varref, _, _, _, #{private := true}} when QNs =/= 'clojure.core' ->
+                            Shown = case Q of
+                                        QNs -> ["#'", atom_to_list(QNs), "/", atom_to_list(Name)];
+                                        _ -> atom_to_list(S)
+                                    end,
+                            fail(A, {not_public, iolist_to_binary(["var: ", Shown, " is not public"])});
+                        _ -> {var, Ref}
+                    end;
                 true ->
                     {erlang, Q, Name}
             end;
@@ -206,3 +230,79 @@ qualified(S) ->
     end.
 
 fail(A, Why) -> erlang:error({clj2_compile, erl_anno:location(A), {resolve, Why}}).
+
+invoke_global(A, S, H, Args, Env, L, St) ->
+    case global(A, S, St) of
+        {erlang, M, F} ->
+            {Args1, St1} = exprs(Args, Env, L, St),
+            case {jvm_class(M), atom_to_list(F)} of
+                {{ok, _}, "." ++ Method} when Args1 =/= [] ->
+                    %% (Class/.method obj args), Clojure 1.12: an instance member
+                    [Obj | Rest] = Args1,
+                    {{erl_call, A, clj2_jvm, method, [Obj, {const, A, list_to_atom(Method)}, {list, A, Rest}]}, St1};
+                {{ok, C}, _} ->
+                    %% (Class/method args): a host shim (clj2_jvm)
+                    {{erl_call, A, clj2_jvm, static, [{const, A, C}, {const, A, F}, {list, A, Args1}]}, St1};
+                {error, _} -> {{erl_call, A, M, F, Args1}, St1}
+            end;
+        _ ->
+            {H1, St1} = expr(H, Env, L, St),
+            {Args1, St2} = exprs(Args, Env, L, St1),
+            {{invoke, A, H1, Args1}, St2}
+    end.
+
+%% A symbol naming a class, as a value (a JVM class from clj2_class's
+%% graph, or a record/deftype of this scope: Name when ->Name is a var).
+class_constant(A, S, St) ->
+    case type_var(S, St) of
+        {ok, Ns} -> {ok, {const, A, list_to_atom(atom_to_list(Ns) ++ "." ++ atom_to_list(S))}};
+        error ->
+            case clj2_class:resolve(S) of
+                {ok, C} -> {ok, {const, A, C}};
+                error -> error
+            end
+    end.
+
+%% The JVM class a qualified symbol's namespace part names (Math in
+%% Math/sqrt), unless it is an Erlang module.
+jvm_class(M) ->
+    case clj2_class:resolve(M) of
+        {ok, C} ->
+            case code:which(M) of
+                non_existing -> {ok, C};
+                _ -> error
+            end;
+        error -> error
+    end.
+
+%% (Name. args) for a record or deftype: (->Name args); for a JVM class
+%% a host constructor (clj2_jvm:new)
+ctor_sugar(A, S, St) ->
+    case lists:reverse(atom_to_list(S)) of
+        "." ++ Rev when Rev =/= [], hd(Rev) =/= $. ->
+            Name = list_to_atom(lists:reverse(Rev)),
+            case type_var(Name, St) of
+                {ok, _} ->
+                    {var, Ref} = global(A, list_to_atom("->" ++ atom_to_list(Name)), St),
+                    {ok, Ref};
+                error ->
+                    case clj2_class:resolve(Name) of
+                        {ok, C} -> {ok, {jvm, C}};
+                        error -> error
+                    end
+            end;
+        _ -> error
+    end.
+
+%% the namespace defining ->Name, when the symbol is a bare Name
+type_var(S, St) ->
+    case qualified(S) of
+        false ->
+            Ctor = list_to_atom("->" ++ atom_to_list(S)),
+            case global(erl_anno:new(0), Ctor, St) of
+                {var, _} -> {ok, var_ns(Ctor, St)};
+                _ -> error
+            end;
+        _ -> error
+    end.
+

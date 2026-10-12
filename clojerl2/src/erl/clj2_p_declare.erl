@@ -47,9 +47,14 @@ var_info(Meta, Init) ->
               private => maps:get(':private', Meta, false) =:= true,
               macro => maps:get(':macro', Meta, false) =:= true},
     %% the docstring travels with the var (registry, and -doc in the beam)
-    Base = case Meta of
-               #{':doc' := Doc} when is_binary(Doc) -> Base0#{doc => Doc};
-               _ -> Base0
+    Base1 = case Meta of
+                #{':doc' := Doc} when is_binary(Doc) -> Base0#{doc => Doc};
+                _ -> Base0
+            end,
+    %% the rest of the metadata (:arglists, :tag, user keys) as given
+    Base = case maps:without([':doc', ':dynamic', ':redef', ':private', ':macro'], Meta) of
+               Extra when map_size(Extra) > 0 -> Base1#{meta => Extra};
+               _ -> Base1
            end,
     case Init of
         _ when Dynamic; Redef -> Base#{kind => indirect};

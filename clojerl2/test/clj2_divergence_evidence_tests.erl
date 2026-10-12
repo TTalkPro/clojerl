@@ -15,6 +15,11 @@ ev(Src) ->
     {ok, _} = clj2_core:ensure(),
     clj2_compiler:eval(unicode:characters_to_binary(Src), #{ns => 't.evidence'}).
 
+catch_error(Src) ->
+    try ev(Src) of V -> {no_error, V}
+    catch error:R -> R
+    end.
+
 setup_ns() ->
     {ok, _} = clj2_core:ensure(),
     clj2_ns:ensure('t.evidence').
@@ -58,10 +63,11 @@ lazy_seq__no_chunking_test() ->
     ?assertEqual(1, counters:get(Counter, 1)).
 
 %% JVM: metadata on a def name reaches the var also through macros
-%% (defn- is private). clojerl2: only when written on `def' itself.
+%% ((defn ^:private f ...) is private). clojerl2: only when written on
+%% `def' itself (defn- passes :private in defn's attr-map instead).
 symbol__no_metadata_test() ->
     setup_ns(),
-    ev("(defn- via-macro [] 1)"),
+    ev("(defn ^:private via-macro [] 1)"),
     ev("(def ^:private direct 1)"),
     {ok, #{vars := #{'via-macro' := V1, direct := V2}}} = clj2_ns:info('t.evidence'),
     ?assertEqual(false, maps:get(private, V1)),
@@ -105,13 +111,16 @@ fn__structural_identity_test() ->
     setup_ns(),
     ?assertEqual(true, ev("(let [mk (fn [] (fn [x] x))] (identical? (mk) (mk)))")).
 
-%% JVM: catch names a Throwable class.
+%% JVM: every exception is a Throwable of its own class. clojerl2: Erlang
+%% errors are given the nearest JVM class; exits are not RuntimeExceptions.
 exceptions__erlang_classes_test() ->
     setup_ns(),
     ?assertEqual(':caught', ev("(try (erlang/exit :bye) (catch :exit e :caught))")),
     ?assertEqual(':any', ev("(try (/ 1 0) (catch Exception e :any))")),
-    ?assertError({clj2_compile, _, {syntax, {bad_catch_class, 'ArithmeticException'}}},
-                 ev("(try (/ 1 0) (catch ArithmeticException e :x))")),
+    ?assertEqual(':arith', ev("(try (/ 1 0) (catch ArithmeticException e :arith))")),
+    ?assertEqual(':exit', ev("(try (try (erlang/exit :bye) (catch RuntimeException e :rt)) (catch :exit e :exit))")),
+    ?assertError({clj2_compile, _, {syntax, {bad_catch_class, 'NoSuchClassAnywhere'}}},
+                 ev("(try 1 (catch NoSuchClassAnywhere e 2))")),
     %% a future's exception comes back as itself, not wrapped
     ?assertEqual(<<"inner">>, ev("(try @(future (throw (ex-info \"inner\" {}))) (catch Exception e (ex-message e)))")).
 
@@ -187,4 +196,34 @@ values__no_identity_test() ->
     setup_ns(),
     ?assertEqual(true, ev("(identical? [1 2] (vector 1 2))")),
     ?assertEqual(true, ev("(compare-and-set! (atom [1]) [1] [2])")).
+
+%% JVM: a transient used after persistent! throws IllegalAccessError.
+transients__wrapped_test() ->
+    setup_ns(),
+    ?assertEqual(1, ev("(let [t (transient [])] (persistent! (conj! t 1)) (count (conj! t 1)))")).
+
+%% JVM: map keys compare by =: a list finds a vector key.
+collections__map_order_test() ->
+    setup_ns(),
+    %% JVM: false, (:c :a) vs (:a :c) (an array-map keeps insertion order)
+    ?assertEqual(true, ev("(= (keys {:c 3 :a 1}) (keys {:a 1 :c 3}))")),
+    ?assertEqual(true, ev("(= {:c 3 :a 1 :b 2} (array-map :a 1 :b 2 :c 3))")).
+
+host__jvm_classes_test() ->
+    setup_ns(),
+    %% JVM: a java.io.File
+    ?assertMatch({'clojure.lang.ExceptionInfo', _, _},
+                 catch_error("(java.io.File. \"/tmp\")")).
+
+seqs__class_model_test() ->
+    setup_ns(),
+    %% JVM: clojure.lang.LongRange and clojure.lang.Cons
+    ?assertEqual('clojure.lang.LazySeq', ev("(class (range 5))")),
+    ?assertEqual(true, lists:member(ev("(class (cons 1 [2]))"),
+                                    ['clojure.lang.PersistentList', 'clojure.lang.LazySeq'])).
+
+collections__exact_keys_test() ->
+    setup_ns(),
+    ?assertEqual(nil, ev("(get {[1 2] :a} (list 1 2))")),
+    ?assertEqual(2, ev("(count (assoc {[1 2] 1} (list 1 2) 2))")).
 

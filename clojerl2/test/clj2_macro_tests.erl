@@ -114,7 +114,9 @@ syntax_quote_test_() ->
     [ ?_assertEqual(['user/a', 'user/b'], ev("`(a b)"))
       %% special forms and keywords stay; Erlang-qualified symbols stay
     , ?_assertEqual(['if', ':k', 'lists/map', nil], ev("`(if :k lists/map nil)"))
-    , ?_assertEqual([1, 2, 3, 4], ev("(let* [x 1 ys '(2 3)] `(~x ~@ys 4))"))
+      %% a splicing template is a lazy (seq (concat ...)), as on the JVM
+    , ?_assertEqual([1, 2, 3, 4], clj2_coll:to_list(ev("(let* [x 1 ys '(2 3)] `(~x ~@ys 4))")))
+    , ?_assertEqual(nil, ev("(let* [ys []] `(~@ys))"))
     , ?_assertEqual({vector, nil, {1, 2}}, ev("(let* [x 2] `[1 ~x])"))
     , ?_assertEqual({map, nil, #{':a' => 1}}, ev("(let* [x 1] `{:a ~x})"))
       %% the same x# within one syntax-quote is one symbol

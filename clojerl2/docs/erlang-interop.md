@@ -57,6 +57,18 @@ Clojure 字符串是 **UTF-8 binary**。Erlang 里还有字符列表(charlist),�
 (io/format "~ts~n" (list "中文"))
 ```
 
+## 输入输出:`*out*`、`*err*`、`*in*`
+
+`*out*`、`*err*`、`*in*` 是动态 var,值就是 Erlang 的 io 设备:`standard_io`、`standard_error`,或者任何实现了 io 协议的进程。打印函数写到 `*out*`,`read-line` 从 `*in*` 读,所以重绑定就能重定向:
+
+```clojure
+(with-out-str (println "中文"))                      ;=> "中文\n"
+(binding [*out* *err*] (println "写到标准错误"))
+(let [w (clj2_io/string_writer)] (binding [*out* w] (print "captured")) (clj2_io/contents w))  ;=> "captured"
+```
+
+future 和 agent 的动作会带上调用方的绑定,所以在 `with-out-str` 里启动的 future,它的输出同样会被捕获。Erlang 代码里的 `io:format` 写的是进程的 group leader,不经过 `*out*`。
+
 ## 进程与消息
 
 单元数的 fn 就是 Erlang fun,可以直接交给 `spawn`:

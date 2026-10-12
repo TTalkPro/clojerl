@@ -30,12 +30,12 @@
   :alternative "Nothing to change; code that relied on chunks realizing ahead (side effects in map) should not."}
  {:id :symbol/no-metadata
   :area :reader
-  :reason "Symbols are atoms and carry no metadata of their own. Metadata written directly on a def name is kept (^:private, ^:dynamic, ^{:doc ...}), and so is a defn docstring; metadata that reaches def through a macro is lost: defn- and (defn ^:private ...) define public vars."
+  :reason "Symbols are atoms and carry no metadata of their own. Metadata written directly on a def name is kept (^:private, ^:dynamic, ^{:doc ...}), and so is a defn docstring; metadata written on a name handed to a macro is lost: (defn ^:private f ...) defines a public var (defn- does make it private), and with-meta on a symbol fails."
   :design "designs/03 §1.1"
-  :alternative "Write (def ^:private name (fn ...)) for a private fn; give docs as the defn docstring."}
+  :alternative "Use defn- (or defn's attr-map, {:private true}) for a private fn; give docs as the defn docstring."}
  {:id :char/integer
   :area :strings
-  :reason "A character is its integer code point; there is no separate char type: \\a is 97, (str \\a) is \"97\", (seq \"ab\") is (97 98)."
+  :reason "A character is its integer code point; there is no separate char type: \\a is 97, (str \\a) is \"97\", (seq \"ab\") is (97 98), (= \\a 97) is true, char? is true of any integer that is a code point, and format's %c takes one. Corpus rows that test char rendering are overridden in test/corpus-overrides.edn (project decision 2026-10-12: keep code points)."
   :design "designs/03 §1.1, §7"
   :alternative "Build strings from chars with (apply str (map (fn [c] (unicode/characters_to_binary (list c))) cs)) or work on strings (subs, clojure string fns) rather than chars."}
  {:id :string/code-point-indexing
@@ -65,14 +65,14 @@
   :alternative "Do not use fn identity as an identity token; tag values explicitly (a map with an id) instead."}
  {:id :exceptions/erlang-classes
   :area :compiler
-  :reason "catch takes Erlang exception classes :error, :exit and :throw; :default, Exception and Throwable catch every class; JVM class names (ArithmeticException, IllegalArgumentException ...) are a compile error. throw raises an Erlang error. Dereferencing a future whose body threw rethrows that exception itself (JVM: wrapped in an ExecutionException)."
-  :design "designs/09 §3"
-  :alternative "(catch Exception e ...) or (catch :error e ...), and dispatch on the reason or (ex-data e) inside the handler."}
+  :reason "catch selects by JVM class through clj2_class's model of the JVM hierarchy, but the errors underneath are Erlang's: an Erlang error is given the nearest JVM class (badarith is ArithmeticException, a function_clause or badarg IllegalArgumentException, an index out of range IndexOutOfBoundsException, anything else RuntimeException), the runtime's own errors carry their JVM class in ex-data :type, and Erlang exits and throws are caught only by :exit, :throw, :default, Exception or Throwable. A JVM class the model does not know is a compile error. Dereferencing a future whose body threw rethrows that exception itself (JVM: wrapped in an ExecutionException)."
+  :design "designs/09 §3; clojerl2-021 follow-up (catch by class, 2026-10-12)"
+  :alternative "Catch the class you mean as on the JVM; where the exact JVM subclass of an Erlang error matters, catch a broader class (RuntimeException) and test (ex-data e) or the message in the handler."}
  {:id :protocols/type-designators
   :area :protocols
-  :reason "extend-type names clj2 type tags (nil boolean keyword symbol integer float string list lazy_seq vector map set fn ... default) or deftype/defrecord names, with a few JVM aliases (Object String Long Integer Double Boolean Keyword Symbol); no class hierarchy, no reify."
+  :reason "extend-type takes JVM classes and interfaces only as far as clj2's class model knows them (java.lang, java.util and clojure.lang: Object, String, Number, Map, IPersistentVector ...), dispatching through the value's class ancestry; clj2 type tags (integer, vector, map ... default) work too. There is no reify, and classes outside the model (java.io.File, user Java classes) cannot be extended."
   :design "designs/03 §4.1a"
-  :alternative "extend-type the clj2 tag (e.g. integer instead of Long/Number); use a defrecord plus extend-type where reify was used."}
+  :alternative "Use a defrecord plus extend-type where reify was used; extend a class the model knows (or a clj2 tag) instead of one it does not."}
  {:id :namespaces/hot-code-two-versions
   :area :namespaces
   :reason "Redefinition follows BEAM's two-version code loading: reloading a namespace, or redefining a var at the REPL (each REPL var has a module of its own), keeps the previous version alive; fn values taken from it keep running the old code while new calls run the new one. A second redefinition purges the oldest version: fn values still holding it raise badfun when called, and a process still executing it makes the redefinition fail (old_code_in_use). JVM-style immediate global rebinding is not emulated."
@@ -105,4 +105,24 @@
   :area :state
   :reason "BEAM values have no object identity: identical? is exact equality (=:=), so two equal vectors, maps or large numbers are identical?, and compare-and-set! swaps when the current value equals the expected one (JVM: when it is the same object)."
   :design "designs/03 §1.1, §5.2"
-  :alternative "Do not use identical? or compare-and-set! to tell apart equal values; carry an explicit version or id in the value when you need to (e.g. {:version n ...})."}]
+  :alternative "Do not use identical? or compare-and-set! to tell apart equal values; carry an explicit version or id in the value when you need to (e.g. {:version n ...})."} {:id :transients/wrapped
+  :area :collections
+  :reason "A transient wraps the persistent value (BEAM terms are immutable): conj!, assoc! and the other bang ops return the next transient, so code that uses their return values, as Clojure requires, works; a transient used again after persistent!, or an old transient used after a bang op, is not detected and simply holds the value it held. Transients cost what persistent updates cost."
+  :design "designs/03 §1.1"
+  :alternative "Use the return value of every bang op (as Clojure demands anyway); there is no speed to gain from transients here, so plain persistent ops are equally fine."} {:id :collections/exact-keys
+  :area :collections
+  :reason "Hash maps and sets are Erlang maps keyed by the exact term: two keys that are = but differ in representation (a list and a vector with the same elements) or in metadata are different keys, so (get {[1 2] :a} '(1 2)) is nil and assoc of such a key adds an entry instead of replacing the stored one. Keys that are numbers, strings, keywords, symbols or collections of one kind behave as on the JVM."
+  :design "designs/03 §1.3"
+  :alternative "Use one kind of collection for composite keys (vectors, say) and do not rely on metadata on map keys or set members; (vec k) normalizes a key that may arrive as a seq."} {:id :collections/map-order
+  :area :collections
+  :reason "Maps iterate in Erlang's internal map order (fixed for a given set of keys, independent of how the map was built), not insertion order: on the JVM an array-map (any map of up to 8 entries, or one built with array-map) keeps insertion order, so keys, vals, seq, printing and everything built on them (frequencies, group-by, merge, zipmap ...) may list entries in a different order. Equality, lookup and hashing are unaffected."
+  :design "designs/03 §1.3"
+  :alternative "Do not rely on map order (Clojure does not promise it for hash maps either): sort the entries, keep an ordered vector of keys beside the map, or use a sorted-map when order matters."} {:id :host/jvm-classes
+  :area :interop
+  :reason "There is no JVM: interop syntax reaches host shims (clj2_jvm) that implement the commonly used members of java.lang, java.util and clojure.lang (Integer/parseInt, Math, String methods, exception constructors, StringBuilder, Var/Symbol/Keyword ...). Other classes are not available: java.io files, streams, readers and URLs, java.net, java.text and java.time/Calendar (and so format's %t), seeded java.util.Random, named charsets, Thread objects. Using one raises IllegalArgumentException (no matching method)."
+  :design "designs/09 §3"
+  :alternative "Use the Clojure functions (slurp, spit, clojure.string, format without %t, rand) or the Erlang modules directly: file, filename, io, calendar, unicode, rand, erlang:system_time ((file/read_file path), (calendar/universal_time) ...)."} {:id :seqs/class-model
+  :area :collections
+  :reason "Seqs are Erlang lists (finite, realized) or lazy seqs: class reports clojure.lang.PersistentList or clojure.lang.LazySeq where the JVM has a family of seq classes (Cons, LongRange, Range, Iterate, Repeat, Cycle, ChunkedCons, ArraySeq, APersistentMap$KeySeq ...), so (class (range 5)), instance? tests against those classes and printing of their class names differ. Seq behavior (first, rest, count, =, hash) is the same."
+  :design "designs/03 §6"
+  :alternative "Test with the predicates (seq?, sequential?, coll?, counted?) rather than class or instance? on concrete seq classes."}]

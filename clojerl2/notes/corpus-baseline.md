@@ -3,7 +3,7 @@
 语料:`test/corpus.edn`(jolt `test/chez/corpus.edn` @ 6c2685e,EPL-2.0;`:expected` 经 `make corpus-regen` 以 JVM Clojure 1.12.5 重新生成),只计 `:portability :common` 条目。
 生成:`make corpus`;门控:`make certify`(对照 `test/corpus-known-failures.edn`)。判定见 `src/erl/clj2_corpus.erl`。
 
-**通过 2102 / 4842(43.4%)**
+**通过 3545 / 4841(73.2%)**
 
 ## 按 core 分层
 
@@ -11,82 +11,82 @@
 
 | 层 | 通过 | 条目 | 通过率 |
 |---|---|---|---|
-| 00-kernel | 1310 | 3021 | 43% |
-| 01-core | 730 | 1595 | 46% |
-| 02-protocols | 13 | 65 | 20% |
-| 03-print | 45 | 157 | 29% |
+| 00-kernel | 1511 | 1957 | 77% |
+| 01-core | 1853 | 2506 | 74% |
+| 02-protocols | 85 | 188 | 45% |
+| 03-print | 92 | 186 | 49% |
 | 04-repl | 4 | 4 | 100% |
 
 ## 按 suite
 
 | suite | 通过 | 条目 | 通过率 |
 |---|---|---|---|
-| conformance | 194 | 364 | 53% |
-| numbers | 124 | 339 | 37% |
-| seq | 206 | 276 | 75% |
-| reader | 90 | 211 | 43% |
-| predicates | 119 | 188 | 63% |
-| map | 145 | 183 | 79% |
-| regex | 2 | 150 | 1% |
-| format | 6 | 140 | 4% |
-| clojure.core | 99 | 135 | 73% |
-| untested | 21 | 120 | 18% |
-| macros | 84 | 119 | 71% |
-| io | 33 | 119 | 28% |
-| control | 95 | 102 | 93% |
-| maps | 61 | 98 | 62% |
-| host-interop | 7 | 97 | 7% |
-| sorted | 0 | 90 | 0% |
-| interop | 23 | 90 | 26% |
-| set | 55 | 80 | 69% |
-| metadata | 8 | 75 | 11% |
-| functions | 69 | 70 | 99% |
-| exceptions | 36 | 66 | 55% |
-| destructure | 47 | 64 | 73% |
-| transient | 0 | 63 | 0% |
+| conformance | 315 | 364 | 87% |
+| numbers | 208 | 339 | 61% |
+| seq | 244 | 276 | 88% |
+| reader | 126 | 211 | 60% |
+| predicates | 169 | 188 | 90% |
+| map | 157 | 182 | 86% |
+| regex | 143 | 150 | 95% |
+| format | 102 | 140 | 73% |
+| clojure.core | 130 | 135 | 96% |
+| untested | 99 | 120 | 83% |
+| macros | 93 | 119 | 78% |
+| io | 61 | 119 | 51% |
+| control | 99 | 102 | 97% |
+| maps | 69 | 98 | 70% |
+| host-interop | 52 | 97 | 54% |
+| sorted | 80 | 90 | 89% |
+| interop | 66 | 90 | 73% |
+| set | 62 | 80 | 78% |
+| metadata | 59 | 75 | 79% |
+| functions | 70 | 70 | 100% |
+| exceptions | 50 | 66 | 76% |
+| destructure | 60 | 64 | 94% |
+| transient | 54 | 63 | 86% |
 | forms | 55 | 63 | 87% |
-| core | 2 | 60 | 3% |
-| namespaces | 14 | 56 | 25% |
-| lazy | 49 | 56 | 88% |
-| vector | 50 | 55 | 91% |
-| seq-type-model | 4 | 53 | 8% |
-| protocols | 21 | 51 | 41% |
-| string | 20 | 49 | 41% |
+| core | 35 | 60 | 58% |
+| namespaces | 28 | 56 | 50% |
+| lazy | 50 | 56 | 89% |
+| vector | 55 | 55 | 100% |
+| seq-type-model | 10 | 53 | 19% |
+| protocols | 32 | 51 | 63% |
+| string | 45 | 49 | 92% |
 | truthiness | 47 | 47 | 100% |
-| transducers | 21 | 45 | 47% |
-| ns | 5 | 44 | 11% |
-| clojure.string | 0 | 42 | 0% |
-| collections | 22 | 41 | 54% |
+| transducers | 42 | 45 | 93% |
+| ns | 8 | 44 | 18% |
+| clojure.string | 42 | 42 | 100% |
+| collections | 28 | 41 | 68% |
 | refs | 2 | 40 | 5% |
-| multimethods | 0 | 37 | 0% |
-| equality | 30 | 32 | 94% |
-| vars | 4 | 31 | 13% |
-| state | 28 | 31 | 90% |
-| uuid | 0 | 30 | 0% |
-| records | 11 | 30 | 37% |
+| multimethods | 35 | 37 | 95% |
+| equality | 32 | 32 | 100% |
+| vars | 11 | 31 | 35% |
+| state | 30 | 31 | 97% |
+| uuid | 30 | 30 | 100% |
+| records | 15 | 30 | 50% |
 | clojure.edn | 2 | 27 | 7% |
-| printer | 16 | 26 | 62% |
-| charsets | 0 | 26 | 0% |
+| printer | 20 | 26 | 77% |
+| charsets | 1 | 26 | 4% |
 | clojure.math | 0 | 25 | 0% |
-| hierarchy | 0 | 24 | 0% |
-| defn | 1 | 24 | 4% |
-| syntax-quote | 7 | 22 | 32% |
-| sequences | 16 | 21 | 76% |
+| hierarchy | 24 | 24 | 100% |
+| defn | 13 | 24 | 54% |
+| syntax-quote | 11 | 22 | 50% |
+| sequences | 21 | 21 | 100% |
 | seqs | 19 | 21 | 90% |
-| strings | 10 | 20 | 50% |
-| regex-parity | 0 | 20 | 0% |
+| strings | 16 | 20 | 80% |
+| regex-parity | 15 | 20 | 75% |
 | list | 20 | 20 | 100% |
-| errors | 0 | 19 | 0% |
-| inst | 0 | 18 | 0% |
-| deftype | 3 | 15 | 20% |
+| errors | 4 | 19 | 21% |
+| inst | 1 | 18 | 6% |
+| deftype | 5 | 15 | 33% |
 | clojure.set | 0 | 14 | 0% |
-| arrays | 0 | 14 | 0% |
+| arrays | 13 | 14 | 93% |
 | clojure.walk | 0 | 12 | 0% |
-| interop-fixes | 4 | 11 | 36% |
-| integer-box-model | 0 | 11 | 0% |
+| interop-fixes | 7 | 11 | 64% |
+| integer-box-model | 3 | 11 | 27% |
 | edn | 2 | 11 | 18% |
-| casts | 0 | 11 | 0% |
-| typed-throws | 0 | 10 | 0% |
+| casts | 3 | 11 | 27% |
+| typed-throws | 2 | 10 | 20% |
 | reduce | 9 | 10 | 90% |
 | print | 0 | 10 | 0% |
 | quoted-literal constants | 6 | 9 | 67% |
@@ -95,38 +95,38 @@
 | ISeq call forms | 9 | 9 | 100% |
 | murmur3 | 0 | 8 | 0% |
 | *ns* | 6 | 8 | 75% |
-| locking | 0 | 7 | 0% |
-| fn identity | 0 | 7 | 0% |
+| locking | 7 | 7 | 100% |
+| fn identity | 1 | 7 | 14% |
 | chunking-model | 0 | 7 | 0% |
 | take | 0 | 6 | 0% |
 | string as a seqable of chars | 6 | 6 | 100% |
 | streams | 0 | 6 | 0% |
 | stdlib | 0 | 6 | 0% |
-| nth | 1 | 6 | 17% |
-| meta | 0 | 6 | 0% |
-| instance? | 0 | 6 | 0% |
-| distinct | 4 | 6 | 67% |
+| nth | 3 | 6 | 50% |
+| meta | 4 | 6 | 67% |
+| instance? | 6 | 6 | 100% |
+| distinct | 6 | 6 | 100% |
 | compile-eval | 2 | 6 | 33% |
 | calls | 6 | 6 | 100% |
 | vectors | 5 | 5 | 100% |
-| var-meta | 0 | 5 | 0% |
+| var-meta | 3 | 5 | 60% |
 | resolution | 4 | 5 | 80% |
-| printing | 0 | 5 | 0% |
+| printing | 1 | 5 | 20% |
 | eval & load-string as values | 3 | 5 | 60% |
 | concurrency | 0 | 5 | 0% |
 | chunked-seq | 1 | 5 | 20% |
 | time | 0 | 4 | 0% |
 | symbols | 4 | 4 | 100% |
-| reflect | 0 | 4 | 0% |
+| reflect | 3 | 4 | 75% |
 | read-string | 0 | 4 | 0% |
 | for | 2 | 4 | 50% |
-| fn | 0 | 4 | 0% |
-| dynamic vars | 0 | 4 | 0% |
+| fn | 4 | 4 | 100% |
+| dynamic vars | 4 | 4 | 100% |
 | defmacro | 0 | 4 | 0% |
-| clojure 1.12 | 0 | 4 | 0% |
+| clojure 1.12 | 1 | 4 | 25% |
 | tagged literals | 0 | 3 | 0% |
 | string-model | 0 | 3 | 0% |
-| permissive | 1 | 3 | 33% |
+| permissive | 2 | 3 | 67% |
 | munging | 3 | 3 | 100% |
 | lazy-seq | 3 | 3 | 100% |
 | ifn | 3 | 3 | 100% |
@@ -134,89 +134,89 @@
 | clojure.repl | 0 | 3 | 0% |
 | analyze | 1 | 3 | 33% |
 | special forms | 2 | 2 | 100% |
-| record hasheq cache | 1 | 2 | 50% |
+| record hasheq cache | 2 | 2 | 100% |
 | reader-model | 0 | 2 | 0% |
 | identical? lowering | 2 | 2 | 100% |
 | fn identity hash | 2 | 2 | 100% |
-| defprotocol | 0 | 2 | 0% |
-| def | 0 | 2 | 0% |
+| defprotocol | 1 | 2 | 50% |
+| def | 2 | 2 | 100% |
 | concurrency-model | 0 | 2 | 0% |
 | clojure.template | 0 | 2 | 0% |
-| assert | 0 | 2 | 0% |
+| assert | 2 | 2 | 100% |
 | walk | 0 | 1 | 0% |
-| try | 0 | 1 | 0% |
+| try | 1 | 1 | 100% |
 | structmaps | 0 | 1 | 0% |
 | sort | 1 | 1 | 100% |
-| seq hasheq cache | 0 | 1 | 0% |
+| seq hasheq cache | 1 | 1 | 100% |
 | scope | 1 | 1 | 100% |
-| reflection | 0 | 1 | 0% |
+| reflection | 1 | 1 | 100% |
 | realized? | 1 | 1 | 100% |
 | quote | 0 | 1 | 0% |
 | pprint | 0 | 1 | 0% |
 | delay | 1 | 1 | 100% |
 | defmulti | 0 | 1 | 0% |
-| core vars | 0 | 1 | 0% |
+| core vars | 1 | 1 | 100% |
 | compare | 0 | 1 | 0% |
 | bit-ops | 0 | 1 | 0% |
-| binding | 0 | 1 | 0% |
+| binding | 1 | 1 | 100% |
 | assoc | 0 | 1 | 0% |
 
 ## 失败原因(known-failures 登记)
 
 | cause | 条目 |
 |---|---|
-| `:pending/missing-core-var` | 499 |
 | `:pending/triage` | 360 |
-| `:pending/strings-io` | 311 |
-| `:exceptions/erlang-classes` | 215 |
-| `:pending/host-types` | 213 |
-| `:pending/compiler` | 149 |
-| `:pending/metadata` | 135 |
-| `:pending/stdlib-namespaces` | 126 |
-| `:pending/reader` | 118 |
-| `:pending/sorted-colls` | 116 |
-| `:pending/special-forms` | 103 |
-| `:pending/transients` | 79 |
-| `:pending/multimethods` | 79 |
-| `:pending/numbers` | 66 |
-| `:pending/runtime-eval` | 59 |
-| `:number/beam-semantics` | 33 |
+| `:pending/compiler` | 207 |
+| `:pending/missing-core-var` | 120 |
+| `:pending/reader` | 111 |
+| `:pending/runtime-eval` | 83 |
+| `:pending/numbers` | 67 |
+| `:host/jvm-classes` | 61 |
+| `:number/beam-semantics` | 54 |
+| `:seqs/class-model` | 42 |
+| `:pending/stdlib-namespaces` | 26 |
+| `:collections/map-order` | 24 |
+| `:refs/no-stm` | 22 |
 | `:lazy-seq/no-chunking` | 21 |
-| `:refs/no-stm` | 18 |
+| `:collections/exact-keys` | 20 |
+| `:pending/host-types` | 20 |
+| `:pending/ref-types` | 12 |
 | `:protocols/type-designators` | 12 |
-| `:pending/ref-types` | 11 |
+| `:pending/special-forms` | 11 |
 | `:fn/structural-identity` | 6 |
-| `:char/integer` | 4 |
-| `:number/no-ratio-arithmetic` | 4 |
+| `:number/no-ratio-arithmetic` | 5 |
+| `:pending/strings-io` | 4 |
+| `:fn/arity-at-compile-time` | 3 |
 | `:values/no-identity` | 2 |
-| `:fn/arity-at-compile-time` | 1 |
+| `:char/integer` | 2 |
+| `:symbol/no-metadata` | 1 |
 
 ## 失败类别
 
 | 类别 | 条目 |
 |---|---|
-| compile: unresolved symbol | 1317 |
-| threw (unexpected) | 329 |
-| compile: syntax | 281 |
-| wrong value | 236 |
-| compile: unsupported literal regex | 200 |
-| compile: unsupported literal tagged | 100 |
-| compile: unsupported literal bigdec | 66 |
-| compile: link | 43 |
-| expected a throw | 38 |
-| compile: resolve | 35 |
-| compile: read | 24 |
-| compile: unsupported special form set! | 10 |
+| wrong value | 358 |
+| threw (unexpected) | 307 |
+| compile: unresolved symbol | 172 |
+| compile: unsupported literal tagged | 95 |
+| compile: error | 82 |
+| compile: unsupported literal bigdec | 67 |
+| compile: syntax | 56 |
+| expected a throw | 37 |
+| compile: read | 22 |
+| compile: link | 15 |
+| compile: driver | 12 |
+| compile: unsupported special form set! | 11 |
+| compile: on_load_failure | 11 |
 | compile: unsupported literal syntax_quote | 10 |
-| compile: on_load_failure | 10 |
-| compile: driver | 9 |
-| compile: declare | 7 |
-| timeout | 5 |
+| compile: resolve | 10 |
+| compile: declare | 8 |
+| timeout | 6 |
 | compile: unsupported | 5 |
-| compile: unsupported special form . | 4 |
 | compile: other | 4 |
 | compile: verify | 2 |
 | :expected does not evaluate | 2 |
+| crashed | 1 |
 | compile: unsupported literal unquote | 1 |
 | compile: unsupported literal fnstar | 1 |
 | compile: no such var | 1 |
@@ -225,63 +225,63 @@
 
 | 符号 | 条目 |
 |---|---|
-| `meta` | 137 |
-| `class` | 81 |
-| `sorted-map` | 51 |
-| `persistent!` | 45 |
-| `sorted-set` | 37 |
-| `defmulti` | 35 |
-| `derive` | 30 |
-| `with-meta` | 28 |
-| `with-in-str` | 26 |
-| `transient` | 25 |
-| `parse-uuid` | 21 |
-| `doto` | 20 |
-| `int` | 18 |
-| `re-find` | 17 |
-| `.getName` | 14 |
-| `eduction` | 11 |
-| `Object.` | 11 |
-| `with-open` | 11 |
-| `var?` | 11 |
-| `unchecked-add` | 11 |
-| `reify` | 11 |
-| `with-local-vars` | 10 |
+| `resolve` | 13 |
+| `reify` | 12 |
 | `with-redefs` | 9 |
-| `spit` | 9 |
-| `random-uuid` | 9 |
-| `bigint` | 7 |
-| `replace` | 7 |
-| `.getMessage` | 7 |
-| `unchecked-inc` | 7 |
-| `sorted-set-by` | 7 |
-| `unchecked-multiply` | 7 |
-| `var-get` | 7 |
-| `sorted?` | 7 |
-| `unchecked-int` | 6 |
-| `alias` | 6 |
-| `unchecked-negate` | 6 |
-| `defmethod` | 6 |
-| `pmap` | 6 |
-| `sorted-map-by` | 6 |
-| `uuid?` | 6 |
-| `subseq` | 6 |
-| `long` | 6 |
-| `java.util.Random.` | 5 |
-| `with-bindings*` | 5 |
-| `resolve` | 5 |
-| `num` | 5 |
-| `unchecked-long` | 5 |
-| `long-array` | 5 |
-| `reader-conditional` | 5 |
-| `NaN?` | 5 |
-| `String` | 5 |
-| `map-entry?` | 5 |
-| `extend` | 5 |
-| `associative?` | 5 |
-| `halt-when` | 5 |
-| `reversible?` | 4 |
-| `char` | 4 |
-| `hash-combine` | 4 |
-| `inst?` | 4 |
-| `unchecked-dec` | 4 |
+| `read` | 9 |
+| `print-method` | 8 |
+| `ns-aliases` | 6 |
+| `read+string` | 6 |
+| `reader-conditional` | 6 |
+| `ref-min-history` | 5 |
+| `ns-map` | 5 |
+| `tagged-literal` | 4 |
+| `line-seq` | 4 |
+| `intern` | 4 |
+| `chunk-first` | 3 |
+| `ns-unalias` | 3 |
+| `alter-var-root` | 3 |
+| `StringWriter.` | 3 |
+| `inst-ms` | 3 |
+| `ref-max-history` | 3 |
+| `__reader-features` | 3 |
+| `sorted-set?` | 3 |
+| `thread-bound?` | 3 |
+| `bigdec` | 3 |
+| `ns-publics` | 3 |
+| `ns-resolve` | 3 |
+| `chunk-buffer` | 3 |
+| `refer` | 2 |
+| `ns-refers` | 2 |
+| `ns-interns` | 2 |
+| `xml-seq` | 2 |
+| `sorted-map?` | 2 |
+| `ref?` | 2 |
+| `ns-unmap` | 2 |
+| `keyword-identical?` | 2 |
+| `object?` | 1 |
+| `bogus-head` | 1 |
+| `use` | 1 |
+| `file-seq` | 1 |
+| `corpus.e3887` | 1 |
+| `undefined?` | 1 |
+| `update-proxy` | 1 |
+| `construct-proxy` | 1 |
+| `test` | 1 |
+| `ref-history-count` | 1 |
+| `InputStream` | 1 |
+| `with-redefs-fn` | 1 |
+| `print-dup` | 1 |
+| `iterator-seq` | 1 |
+| `init-proxy` | 1 |
+| `get-thread-bindings` | 1 |
+| `bound?` | 1 |
+| `ns-imports` | 1 |
+| `requiring-resolve` | 1 |
+| `defstruct` | 1 |
+| `java.nio.file.attribute.FileAttribute` | 1 |
+| `remove-ns` | 1 |
+| `Inst` | 1 |
+| `refer-clojure` | 1 |
+| `a` | 1 |
+| `java.net.URL.` | 1 |

@@ -8,6 +8,13 @@
 
 (in-ns 'clojure.core)
 
+;; volatiles first: the stateful transducers below keep their state in them
+(defn volatile! [x] (clj2_ref/volatile x))
+(defn vreset! [vol v] (clj2_ref/vreset vol v))
+(defmacro vswap! [vol f & args]
+  `(let [v# ~vol] (vreset! v# (~f (deref v#) ~@args))))
+(defn volatile? [x] (= (clj2_ref/type_of x) 'volatile))
+
 ;;;; ------------------------------------------------------------------
 ;;;; Seqs
 ;;;; ------------------------------------------------------------------
@@ -29,11 +36,23 @@
        (let [v (f (first s))]
          (if (nil? v) (keep f (rest s)) (cons v (keep f (rest s)))))))))
 
-(defn map-indexed [f coll]
-  (map f (range) coll))
+(defn map-indexed
+  ([f]
+   (fn [rf]
+     (let [i (volatile! -1)]
+       (fn ([] (rf)) ([result] (rf result))
+         ([result input] (rf result (f (vswap! i inc) input)))))))
+  ([f coll] (map f (range) coll)))
 
-(defn keep-indexed [f coll]
-  (keep (fn [[i x]] (f i x)) (map vector (range) coll)))
+(defn keep-indexed
+  ([f]
+   (fn [rf]
+     (let [iv (volatile! -1)]
+       (fn ([] (rf)) ([result] (rf result))
+         ([result input]
+          (let [v (f (vswap! iv inc) input)]
+            (if (nil? v) result (rf result v))))))))
+  ([f coll] (keep (fn [[i x]] (f i x)) (map vector (range) coll))))
 
 (defn mapv
   ([f coll] (vec (map f coll)))
@@ -60,9 +79,31 @@
      (when-let [s (seq coll)]
        (let [p (take n s)]
          (when (= n (count p))
-           (cons p (partition n step (nthrest s step)))))))))
+           (cons p (partition n step (nthrest s step))))))))
+  ([n step pad coll]
+   (lazy-seq
+     (when-let [s (seq coll)]
+       (let [p (take n s)]
+         (if (= n (count p))
+           (cons p (partition n step pad (nthrest s step)))
+           (list (take n (concat p pad)))))))))
 
 (defn partition-all
+  ([n]
+   (fn [rf]
+     (let [a (volatile! [])]
+       (fn
+         ([] (rf))
+         ([result]
+          (let [result (if (zero? (count @a))
+                         result
+                         (let [v @a] (vreset! a []) (unreduced (rf result v))))]
+            (rf result)))
+         ([result input]
+          (vswap! a conj input)
+          (if (= n (count @a))
+            (let [v @a] (vreset! a []) (rf result v))
+            result))))))
   ([n coll] (partition-all n n coll))
   ([n step coll]
    (lazy-seq
@@ -70,13 +111,36 @@
        (let [p (vec (take n s))]
          (cons (seq p) (partition-all n step (nthrest s step))))))))
 
-(defn partition-by [f coll]
-  (lazy-seq
-    (when-let [s (seq coll)]
-      (let [fst (first s)
-            fv (f fst)
-            run (cons fst (take-while #(= fv (f %)) (next s)))]
-        (cons run (partition-by f (seq (drop (count run) s))))))))
+(defn partition-by
+  ([f]
+   (fn [rf]
+     (let [buf (volatile! [])
+           pv (volatile! nil)
+           started (volatile! false)]
+       (fn
+         ([] (rf))
+         ([result]
+          (let [b @buf
+                result (if (zero? (count b))
+                         result
+                         (do (vreset! buf []) (unreduced (rf result b))))]
+            (rf result)))
+         ([result input]
+          (let [val (f input)]
+            (if (or (not @started) (= val @pv))
+              (do (vreset! started true) (vreset! pv val) (vswap! buf conj input) result)
+              (let [b @buf]
+                (vreset! buf []) (vreset! pv val)
+                (let [ret (rf result b)]
+                  (when-not (reduced? ret) (vswap! buf conj input))
+                  ret)))))))))
+  ([f coll]
+   (lazy-seq
+     (when-let [s (seq coll)]
+       (let [fst (first s)
+             fv (f fst)
+             run (cons fst (take-while #(= fv (f %)) (next s)))]
+         (cons run (partition-by f (seq (drop (count run) s)))))))))
 
 (defn group-by [f coll]
   (reduce (fn [m x] (let [k (f x)] (assoc m k (conj (get m k []) x)))) {} coll))
@@ -84,7 +148,16 @@
 (defn frequencies [coll]
   (reduce (fn [m x] (assoc m x (inc (get m x 0)))) {} coll))
 
-(defn distinct [coll]
+(defn distinct
+  ([]
+   (fn [rf]
+     (let [seen (volatile! #{})]
+       (fn ([] (rf)) ([result] (rf result))
+         ([result input]
+          (if (contains? @seen input)
+            result
+            (do (vswap! seen conj input) (rf result input))))))))
+  ([coll]
   (let [step (fn step [xs seen]
                (lazy-seq
                  (when-let [s (seq xs)]
@@ -92,9 +165,18 @@
                      (if (contains? seen f)
                        (step (rest s) seen)
                        (cons f (step (rest s) (conj seen f))))))))]
-    (step coll #{})))
+    (step coll #{}))))
 
-(defn dedupe [coll]
+(defn dedupe
+  ([]
+   (fn [rf]
+     (let [pv (volatile! ::none)]
+       (fn ([] (rf)) ([result] (rf result))
+         ([result input]
+          (let [prior @pv]
+            (vreset! pv input)
+            (if (= prior input) result (rf result input))))))))
+  ([coll]
   (let [step (fn step [xs prev first?]
                (lazy-seq
                  (when-let [s (seq xs)]
@@ -102,10 +184,22 @@
                      (if (and (not first?) (= f prev))
                        (step (rest s) prev false)
                        (cons f (step (rest s) f false)))))))]
-    (step coll nil true)))
+    (step coll nil true))))
 
-(defn interpose [sep coll]
-  (drop 1 (mapcat (fn [x] (list sep x)) coll)))
+(defn interpose
+  ([sep]
+   (fn [rf]
+     (let [started (volatile! false)]
+       (fn
+         ([] (rf))
+         ([result] (rf result))
+         ([result input]
+          (if @started
+            (let [sepr (rf result sep)]
+              (if (reduced? sepr) sepr (rf sepr input)))
+            (do (vreset! started true) (rf result input))))))))
+  ([sep coll]
+   (drop 1 (mapcat (fn [x] (list sep x)) coll))))
 
 (defn interleave
   ([] '())
@@ -139,10 +233,21 @@
 
 (defn butlast [coll] (seq (drop-last coll)))
 
-(defn take-nth [n coll]
-  (lazy-seq
-    (when-let [s (seq coll)]
-      (cons (first s) (take-nth n (drop n s))))))
+(defn take-nth
+  ([n]
+   (fn [rf]
+     (let [iv (volatile! -1)]
+       (fn
+         ([] (rf))
+         ([result] (rf result))
+         ([result input]
+          (if (zero? (rem (vswap! iv inc) n))
+            (rf result input)
+            result))))))
+  ([n coll]
+   (lazy-seq
+     (when-let [s (seq coll)]
+       (cons (first s) (take-nth n (drop n s)))))))
 
 (defn split-at [n coll] [(take n coll) (drop n coll)])
 (defn split-with [pred coll] [(take-while pred coll) (drop-while pred coll)])
@@ -151,7 +256,7 @@
 (defn not-every? [pred coll] (not (every? pred coll)))
 (defn run! [f coll] (reduce (fn [_ x] (f x) nil) nil coll) nil)
 
-(defn rseq [v] (seq (reverse v)))
+(defn rseq [v] (if (clj2_sorted/is_sorted v) (clj2_sorted/rseq v) (seq (reverse v))))
 
 (defn max-key
   ([k x] x)
@@ -176,26 +281,33 @@
         :else (first coll)))
 
 (defn pop [coll]
-  (cond (vector? coll) (if (zero? (count coll))
-                         (throw (ex-info "Can't pop empty vector" {}))
-                         (vec (take (dec (count coll)) coll)))
+  (cond (vector? coll) (clj2_coll/pop_vector coll)
+        (nil? coll) nil
         :else (rest coll)))
 
 (defn subvec
   ([v start] (subvec v start (count v)))
-  ([v start end] (vec (take (- end start) (drop start v)))))
+  ([v start end] (clj2_coll/subvec v start end)))
 
 (defn disj
   ([s] s)
-  ([s k] (if (contains? s k) (set (remove #(= % k) s)) s))
+  ([s k] (cond (nil? s) nil
+               (clj2_sorted/is_sorted s) (clj2_sorted/disj s k)
+               (not (set? s)) (throw (new ClassCastException (str "class " (clj2_class/class_of s)
+                                                                 " cannot be cast to class clojure.lang.IPersistentSet")))
+               (contains? s k) (clj2_coll/disj_set s k)
+               :else s))
   ([s k & ks] (reduce disj (disj s k) ks)))
 
 (defn empty [coll]
-  (cond (vector? coll) []
-        (map? coll) {}
-        (set? coll) #{}
-        (seq? coll) '()
-        :else nil))
+  (let [e (cond (clj2_sorted/is_sorted coll) (clj2_sorted/empty coll)
+                (vector? coll) []
+                (map? coll) {}
+                (set? coll) #{}
+                (seq? coll) '()
+                :else nil)
+        m (clj2_rt/meta coll)]
+    (if (and m (some? e) (not (clj2_sorted/is_sorted coll))) (clj2_rt/with_meta e m) e)))
 
 (defn not-empty [coll] (when (seq coll) coll))
 
@@ -270,7 +382,8 @@
 
 (defn fnil
   ([f x] (fn [a & more] (apply f (if (nil? a) x a) more)))
-  ([f x y] (fn [a b & more] (apply f (if (nil? a) x a) (if (nil? b) y b) more))))
+  ([f x y] (fn [a b & more] (apply f (if (nil? a) x a) (if (nil? b) y b) more)))
+  ([f x y z] (fn [a b c & more] (apply f (if (nil? a) x a) (if (nil? b) y b) (if (nil? c) z c) more))))
 
 (defn every-pred [& ps] (fn [& xs] (every? (fn [p] (every? p xs)) ps)))
 (defn some-fn [& ps] (fn [& xs] (some (fn [p] (some p xs)) ps)))
@@ -283,7 +396,7 @@
 
 (defn sort
   ([coll] (sort compare coll))
-  ([cmp coll] (seq (clj2_rt/sort cmp coll))))
+  ([cmp coll] (if (seq coll) (seq (clj2_rt/sort cmp coll)) ())))
 
 (defn sort-by
   ([keyfn coll] (sort-by keyfn compare coll))
@@ -302,17 +415,19 @@
 (defn double? [x] (float? x))
 (defn any? [_] true)
 (defn abs [x] (erlang/abs x))
-(defn bit-and [x y] (erlang/band x y))
-(defn bit-or [x y] (erlang/bor x y))
-(defn bit-xor [x y] (erlang/bxor x y))
+(defn bit-and ([x y] (erlang/band x y)) ([x y & more] (reduce bit-and (bit-and x y) more)))
+(defn bit-or ([x y] (erlang/bor x y)) ([x y & more] (reduce bit-or (bit-or x y) more)))
+(defn bit-xor ([x y] (erlang/bxor x y)) ([x y & more] (reduce bit-xor (bit-xor x y) more)))
 (defn bit-not [x] (erlang/bnot x))
 (defn bit-shift-left [x n] (erlang/bsl x n))
 (defn bit-shift-right [x n] (erlang/bsr x n))
-(defn hash [x] (erlang/phash2 x))
-(defn parse-long [s] (try (erlang/binary_to_integer s) (catch :error _ nil)))
-(defn parse-double [s]
-  (try (erlang/binary_to_float s)
-       (catch :error _ (try (erlang/float (erlang/binary_to_integer s)) (catch :error _ nil)))))
+(defn hash [x] (clj2_coll/hash x))
+(defn- parse-arg [s]
+  (when-not (string? s)
+    (throw (new IllegalArgumentException (str "Expected string, got " (if (nil? s) "nil" (clj2_class/class_of s))))))
+  s)
+(defn parse-long [s] (let [s (parse-arg s)] (try (erlang/binary_to_integer s) (catch :error _ nil))))
+(defn parse-double [s] (clj2_jvm/parse_double_or_nil (parse-arg s)))
 (defn parse-boolean [s] (case s "true" true "false" false nil))
 
 ;;;; ------------------------------------------------------------------
@@ -402,16 +517,16 @@
   `(loop* [] (if ~test (do ~@body (recur)) nil)))
 
 (defmacro assert
-  ([x] `(when-not ~x (throw (ex-info (str "Assert failed: " (pr-str '~x)) {}))))
-  ([x message] `(when-not ~x (throw (ex-info (str "Assert failed: " ~message) {})))))
+  ([x] `(when-not ~x (throw (new AssertionError (str "Assert failed: " (pr-str '~x))))))
+  ([x message] `(when-not ~x (throw (new AssertionError (str "Assert failed: " ~message "\n" (pr-str '~x)))))))
 
 ;; namespaces are compiled as a unit: defonce is def
 (defmacro defonce [name expr] `(def ~name ~expr))
 
 (defmacro time [expr]
-  `(let [start# (erlang/monotonic_time :microsecond)
+  `(let [start# (erlang/monotonic_time 1000000)
          ret# ~expr]
-     (println (str "\"Elapsed time: " (/ (- (erlang/monotonic_time :microsecond) start#) 1000.0) " msecs\""))
+     (prn (str "Elapsed time: " (/ (- (erlang/monotonic_time 1000000) start#) 1000.0) " msecs"))
      ret#))
 
 ;; (for [x xs :when t :let [..] :while t y ys] body), lazy
@@ -451,7 +566,14 @@
 (defn require [& args] (clj2_rt_eval/require args))
 
 (defn all-ns [] (seq (clj2_ns/all)))
-(defn find-ns [name] (when (clj2_ns/find_ns name) name))
+;; a namespace designator: nil is a NullPointerException and a
+;; non-symbol a failed cast, as on the JVM
+(defn- ns-designator [x]
+  (cond (nil? x) (throw (new NullPointerException "Namespace designator is nil"))
+        (symbol? x) x
+        :else (throw (new ClassCastException (str "class " (clj2_class/class_of x)
+                                                  " cannot be cast to class clojure.lang.Symbol")))))
+(defn find-ns [name] (let [name (ns-designator name)] (when (clj2_ns/find_ns name) name)))
 (defn the-ns [x]
   (if (find-ns x) x (throw (ex-info (str "No namespace: " x " found") {:ns x}))))
 (defn create-ns [name] (clj2_ns/ensure name) name)
@@ -502,11 +624,6 @@
 (defn add-watch [r k f] (clj2_ref/add_watch r k f))
 (defn remove-watch [r k] (clj2_ref/remove_watch r k))
 
-(defn volatile! [x] (clj2_ref/volatile x))
-(defn vreset! [vol v] (clj2_ref/vreset vol v))
-(defmacro vswap! [vol f & args]
-  `(let [v# ~vol] (vreset! v# (~f (deref v#) ~@args))))
-(defn volatile? [x] (= (clj2_ref/type_of x) 'volatile))
 
 (defn promise [] (clj2_ref/promise))
 (defn deliver [p v] (clj2_ref/deliver p v))
@@ -514,6 +631,21 @@
 (def ^:dynamic *agent* nil)
 
 (defn bound-fn* [f] (clj2_var/bound_fn f))
+
+(defn push-thread-bindings [bindings] (clj2_var/push_frame bindings))
+(defn pop-thread-bindings [] (clj2_var/pop_frame))
+(defn with-bindings* [binding-map f & args]
+  (push-thread-bindings binding-map)
+  (try (apply f args) (finally (pop-thread-bindings))))
+(defmacro with-bindings [binding-map & body]
+  `(with-bindings* ~binding-map (fn [] ~@body)))
+
+(defn var-get [v] (deref v))
+(defn var-set [v val] (clj2_var/var_set v val))
+(defmacro with-local-vars [name-vals-vec & body]
+  (let [pairs (partition 2 name-vals-vec)]
+    `(let [~@(mapcat (fn [[n v]] [n (list 'clj2_ref/local_var v)]) pairs)]
+       ~@body)))
 (defmacro bound-fn [& fntail] `(bound-fn* (fn ~@fntail)))
 
 (defmacro binding [bindings & body]
@@ -573,3 +705,554 @@
 
 (defn slurp [f & opts] (clj2_io/slurp f (apply hash-map opts)))
 (defn spit [f content & options] (clj2_io/spit f content (apply hash-map options)))
+
+(defn regex? [x] (clj2_re/is_pattern x))
+(defn namespace-munge [ns] (clj2_string/replace (str ns) "-" "_" 'all))
+
+;;;; ------------------------------------------------------------------
+;;;; Hierarchies and multimethods (clojerl2-017; designs/03 §5.1)
+;;;;
+;;;; Hierarchies: clojure.core's pure-map design, ported from jolt
+;;;; (jolt-core/clojure/core/20-coll.clj @ fdeff4ca, EPL-2.0, itself a port of
+;;;; clojure.core) without the JVM class branches (clj2 has no classes).
+;;;; A hierarchy is {:parents {tag #{..}} :ancestors {..} :descendants {..}};
+;;;; the 3-arity fns are pure, the others use the global hierarchy atom.
+;;;; Multimethods: method tables in ETS (clj2_multi).
+
+(defn make-hierarchy []
+  {:parents {} :descendants {} :ancestors {}})
+
+(def global-hierarchy (atom (make-hierarchy)))
+
+(defn- hier-assert [ok form]
+  (when-not ok
+    (throw (ex-info (str "Assert failed: " form) {:type :AssertionError}))))
+
+(defn isa?
+  ([child parent] (isa? (deref global-hierarchy) child parent))
+  ([h child parent]
+   (or (= child parent)
+       (contains? (get (get h :ancestors) child #{}) parent)
+       (and (vector? parent) (vector? child)
+            (= (count parent) (count child))
+            (loop [ret true i 0]
+              (if (or (not ret) (= i (count parent)))
+                ret
+                (recur (isa? h (nth child i) (nth parent i)) (inc i))))))))
+
+(defn parents
+  ([tag] (parents (deref global-hierarchy) tag))
+  ([h tag] (not-empty (get (get h :parents) tag))))
+
+(defn ancestors
+  ([tag] (ancestors (deref global-hierarchy) tag))
+  ([h tag] (not-empty (get (get h :ancestors) tag))))
+
+(defn descendants
+  ([tag] (descendants (deref global-hierarchy) tag))
+  ([h tag] (not-empty (get (get h :descendants) tag))))
+
+(defn derive
+  ([tag parent]
+   (hier-assert (namespace parent) "(namespace parent)")
+   (hier-assert (and (or (keyword? tag) (symbol? tag)) (namespace tag))
+                "(and (instance? clojure.lang.Named tag) (namespace tag))")
+   (swap! global-hierarchy derive tag parent) nil)
+  ([h tag parent]
+   (hier-assert (not= tag parent) "(not= tag parent)")
+   (hier-assert (or (keyword? tag) (symbol? tag)) "(instance? clojure.lang.Named tag)")
+   (hier-assert (or (keyword? parent) (symbol? parent)) "(instance? clojure.lang.Named parent)")
+   ;; the hierarchy's maps are invoked, as in clojure.core: a value that is
+   ;; not a hierarchy throws here
+   (let [tp (:parents h)
+         td (:descendants h)
+         ta (:ancestors h)
+         tf (fn [m source sources target targets]
+              (reduce (fn [ret k]
+                        (assoc ret k
+                               (reduce conj (get targets k #{})
+                                       (cons target (targets target)))))
+                      m (cons source (sources source))))]
+     (or
+      (when-not (contains? (tp tag) parent)
+        (when (contains? (ta tag) parent)
+          (throw (ex-info (str tag " already has " parent " as ancestor") {})))
+        (when (contains? (ta parent) tag)
+          (throw (ex-info (str "Cyclic derivation: " parent " has " tag " as ancestor") {})))
+        {:parents (assoc tp tag (conj (get tp tag #{}) parent))
+         :ancestors (tf ta tag td parent ta)
+         :descendants (tf td parent ta tag td)})
+      h))))
+
+(defn underive
+  ([tag parent] (swap! global-hierarchy underive tag parent) nil)
+  ([h tag parent]
+   (let [parent-map (:parents h)
+         childs-parents (if (parent-map tag)
+                          (disj (parent-map tag) parent)
+                          #{})
+         new-parents (if (not-empty childs-parents)
+                       (assoc parent-map tag childs-parents)
+                       (dissoc parent-map tag))
+         deriv-seq (mapcat (fn [e] (cons (key e) (interpose (key e) (val e))))
+                           (seq new-parents))]
+     (if (contains? (parent-map tag) parent)
+       (reduce (fn [p [t pr]] (derive p t pr))
+               (make-hierarchy) (partition 2 deriv-seq))
+       h))))
+
+;; clojure.lang.MultiFn's method choice: among the methods whose dispatch
+;; value the call's isa?, the one that dominates the others (preferred, or
+;; more specific); two that do not dominate each other are an error.
+(defn- multi-hierarchy [mf]
+  (if-let [h (clj2_multi/hierarchy mf)] (clj2_multi/hierarchy_value h) (deref global-hierarchy)))
+
+(defn- multi-prefers? [mf h x y]
+  (let [prefs (clj2_multi/prefers mf)]
+    (or (contains? (get prefs x #{}) y)
+        (some (fn [p] (multi-prefers? mf h x p)) (parents h y))
+        (some (fn [p] (multi-prefers? mf h p y)) (parents h x))
+        false)))
+
+(defn- multi-dominates? [mf h x y]
+  (or (multi-prefers? mf h x y) (isa? h x y)))
+
+(defn find-best-method [mf dispatch-val]
+  (let [h (multi-hierarchy mf)
+        best (reduce (fn [best [dv f]]
+                       (if (isa? h dispatch-val dv)
+                         (let [b (if (or (nil? best) (multi-dominates? mf h dv (first best)))
+                                   [dv f]
+                                   best)]
+                           (when-not (multi-dominates? mf h (first b) dv)
+                             (throw (ex-info (str "Multiple methods in multimethod '"
+                                                  (name (clj2_multi/name mf))
+                                                  "' match dispatch value: " (clj2_print/pr_str dispatch-val)
+                                                  " -> " (clj2_print/pr_str dv) " and " (clj2_print/pr_str (first b))
+                                                  ", and neither is preferred")
+                                             {:type :IllegalArgumentException})))
+                           b)
+                         best))
+                     nil
+                     (clj2_multi/method_entries mf))]
+    (when best (second best))))
+
+(defmacro defmulti [mm-name & options]
+  (let [docstring (when (string? (first options)) (first options))
+        options (if (string? (first options)) (next options) options)
+        options (if (map? (first options)) (next options) options)
+        dispatch-fn (first options)
+        opts (apply hash-map (rest options))]
+    `(def ~mm-name
+       (clj2_multi/new '~(symbol (str *ns*)) '~mm-name ~dispatch-fn
+                       ~(get opts :default :default)
+                       ~(when-let [h (get opts :hierarchy)] h)))))
+
+(defmacro defmethod [multifn dispatch-val & fn-tail]
+  `(clj2_multi/add_method ~multifn ~dispatch-val (fn ~@fn-tail)))
+
+(defn remove-method [multifn dispatch-val] (clj2_multi/remove_method multifn dispatch-val))
+(defn remove-all-methods [multifn] (clj2_multi/remove_all_methods multifn))
+(defn prefer-method [multifn dispatch-val-x dispatch-val-y]
+  (clj2_multi/prefer_method multifn dispatch-val-x dispatch-val-y))
+(defn prefers [multifn] (clj2_multi/prefers multifn))
+(defn methods [multifn] (clj2_multi/methods multifn))
+(defn get-method [multifn dispatch-val] (clj2_multi/get_method multifn dispatch-val))
+
+;;;; ------------------------------------------------------------------
+;;;; More of clojure.core (portable ones from jolt's jolt-core, EPL-2.0)
+;;;;
+;;;; Numbers follow BEAM (known divergence :number/beam-semantics):
+;;;; integers are unbounded, so the unchecked- and primed (+') ops are the
+;;;; ordinary ones and the coercions truncate without range checks.
+
+(defmacro doto [x & forms]
+  (let [gx (gensym "doto_")]
+    `(let [~gx ~x]
+       ~@(map (fn [f] (if (seq? f) `(~(first f) ~gx ~@(next f)) `(~f ~gx))) forms)
+       ~gx)))
+
+;; closing a binding: an io device (string writer/reader, a pid) is closed,
+;; anything else that has a :close fn in it gets it called
+(defn- close-resource [x]
+  (cond (map? x) (when-let [c (:close x)] (c))
+        :else (clj2_io/close x)))
+
+(defmacro with-open [bindings & body]
+  (if (empty? bindings)
+    `(do ~@body)
+    `(let ~(subvec bindings 0 2)
+       (try
+         (with-open ~(subvec bindings 2) ~@body)
+         (finally (close-resource ~(bindings 0)))))))
+
+;; BEAM floats have one precision: the body runs unchanged
+(defmacro with-precision [precision & exprs]
+  `(do ~@(if (= (first exprs) :rounding) (nnext exprs) exprs)))
+
+;; a definline is a fn here (the compiler inlines nothing it is told to)
+(defmacro definline [name & decl] `(defn ~name ~@decl))
+
+(defmacro pvalues [& exprs] `(pcalls ~@(map (fn [e] (list `fn [] e)) exprs)))
+
+(defn fnext [x] (first (next x)))
+(defn nfirst [x] (next (first x)))
+(defn replicate [n x] (take n (repeat x)))
+
+(defn replace
+  ([smap] (map (fn [x] (if-let [e (find smap x)] (val e) x))))
+  ([smap coll]
+   (if (vector? coll)
+     (reduce (fn [v i] (if-let [e (find smap (nth v i))] (assoc v i (val e)) v))
+             coll (range (count coll)))
+     (map (fn [x] (if-let [e (find smap x)] (val e) x)) coll))))
+
+(defn halt-when
+  ([pred] (halt-when pred nil))
+  ([pred retf]
+   (fn [rf]
+     (fn
+       ([] (rf))
+       ([result]
+        (if (and (map? result) (contains? result ::halt))
+          (get result ::halt)
+          (rf result)))
+       ([result input]
+        (if (pred input)
+          (reduced (hash-map ::halt (if retf (retf (rf result) input) input)))
+          (rf result input)))))))
+
+;; an eduction is the transformed sequence (realized lazily, re-run per walk
+;; on the JVM; here it is a lazy seq over the xform)
+(defn ->Eduction [xform coll] (sequence xform coll))
+(defn eduction [& args] (->Eduction (apply comp (butlast args)) (last args)))
+
+(defn partitionv
+  ([n coll] (partitionv n n coll))
+  ([n step coll]
+   (lazy-seq
+     (when-let [s (seq coll)]
+       (let [p (into [] (take n) s)]
+         (when (= n (count p))
+           (cons p (partitionv n step (nthrest s step))))))))
+  ([n step pad coll]
+   (lazy-seq
+     (when-let [s (seq coll)]
+       (let [p (into [] (take n) s)]
+         (if (= n (count p))
+           (cons p (partitionv n step pad (nthrest s step)))
+           (list (into [] (take n) (concat p pad)))))))))
+
+(defn partitionv-all
+  ([n coll] (partitionv-all n n coll))
+  ([n step coll]
+   (lazy-seq
+     (when-let [s (seq coll)]
+       (cons (into [] (take n) s) (partitionv-all n step (nthrest s step)))))))
+
+(defn splitv-at [n coll] [(into [] (take n) coll) (drop n coll)])
+
+(defn counted? [x] (or (vector? x) (map? x) (set? x) (list? x)))
+(defn bounded-count [n coll]
+  (if (counted? coll)
+    (count coll)
+    (loop [i 0 s (seq coll)]
+      (if (and s (< i n)) (recur (inc i) (next s)) i))))
+
+(defn random-sample
+  ([prob] (filter (fn [_] (< (rand) prob))))
+  ([prob coll] (filter (fn [_] (< (rand) prob)) coll)))
+
+(defn memoize [f]
+  (let [mem (atom {})]
+    (fn [& args]
+      (if-let [e (find @mem args)]
+        (val e)
+        (let [ret (apply f args)]
+          (swap! mem assoc args ret)
+          ret)))))
+
+(defn comparator [pred]
+  (fn [x y] (cond (pred x y) -1 (pred y x) 1 :else 0)))
+
+;; futures do the work in parallel; results come back in order
+(defn pmap
+  ([f coll] (map deref (doall (map (fn [x] (future (f x))) coll))))
+  ([f coll & colls] (map deref (doall (apply map (fn [& xs] (future (apply f xs))) coll colls)))))
+(defn pcalls [& fns] (pmap (fn [f] (f)) fns))
+(defn seque ([s] (seq s)) ([n-or-q s] (seq s)))
+
+(defn associative? [x] (or (map? x) (vector? x)))
+(defn reversible? [x] (or (vector? x) (sorted? x)))
+(defn indexed? [x] (vector? x))
+(defn map-entry? [x] (and (vector? x) (= 2 (count x))))
+(defn atom? [x] (= (clj2_ref/type_of x) 'atom))
+(defn ident? [x] (or (keyword? x) (symbol? x)))
+(defn simple-ident? [x] (and (ident? x) (nil? (namespace x))))
+(defn qualified-ident? [x] (boolean (and (ident? x) (namespace x))))
+(defn simple-symbol? [x] (and (symbol? x) (nil? (namespace x))))
+(defn qualified-symbol? [x] (boolean (and (symbol? x) (namespace x))))
+(defn simple-keyword? [x] (and (keyword? x) (nil? (namespace x))))
+(defn qualified-keyword? [x] (boolean (and (keyword? x) (namespace x))))
+(defn special-symbol? [s]
+  (contains? '#{def if do let* loop* fn* recur quote var throw try catch finally
+                letfn* case* new . set! monitor-enter monitor-exit deftype* reify* import*} s))
+(defn inst? [x] false)
+(defn uri? [x] false)
+(defn bytes? [x] false)
+(defn tagged-literal? [x] false)
+(defn reader-conditional? [x] false)
+(defn decimal? [x] false)
+
+(defn find-keyword
+  ([name] (try (clj2_rt/existing_keyword nil name) (catch Exception _ nil)))
+  ([ns name] (try (clj2_rt/existing_keyword ns name) (catch Exception _ nil))))
+
+(defn munge [s]
+  (let [m {\- "_" \. "_DOT_" \: "_COLON_" \+ "_PLUS_" \> "_GT_" \< "_LT_" \= "_EQ_"
+           \~ "_TILDE_" \! "_BANG_" \@ "_CIRCA_" \# "_SHARP_" \' "_SINGLEQUOTE_"
+           \" "_DOUBLEQUOTE_" \% "_PERCENT_" \^ "_CARET_" \& "_AMPERSAND_" \* "_STAR_"
+           \| "_BAR_" \{ "_LBRACE_" \} "_RBRACE_" \[ "_LBRACK_" \] "_RBRACK_" \/ "_SLASH_"
+           \\ "_BSLASH_" \? "_QMARK_"}
+        r (clj2_string/escape (str s) m)]
+    (if (symbol? s) (symbol r) r)))
+
+;; numbers (BEAM: unbounded integers)
+(defn int [x] (if (float? x) (erlang/trunc x) x))
+(defn long [x] (int x))
+(defn short [x] (int x))
+(defn byte [x] (int x))
+(defn double [x] (erlang/float x))
+(defn float [x] (erlang/float x))
+(defn num [x] x)
+(defn bigint
+  "x as an integer: a number truncates, a string parses (BEAM integers are
+  unbounded, so a bigint is any integer)."
+  [x]
+  (if (string? x)
+    (try (erlang/binary_to_integer x)
+         (catch :error _ (throw (new NumberFormatException (str "For input string: \"" x "\"")))))
+    (if (ratio? x) (quot (numerator x) (denominator x)) (int x))))
+(defn biginteger [x] (bigint x))
+;; the unchecked ops say they wrap: an integer result wraps to a signed
+;; 64-bit long (32-bit for the -int ones), as on the JVM
+(defn- wrap-bits [n bits]
+  (if (integer? n)
+    (let [m (erlang/bsl 1 bits) h (erlang/bsl 1 (dec bits)) r (erlang/band n (dec m))]
+      (if (>= r h) (- r m) r))
+    n))
+(defn unchecked-add [x y] (wrap-bits (+ x y) 64))
+(defn unchecked-add-int [x y] (wrap-bits (+ x y) 32))
+(defn unchecked-subtract [x y] (wrap-bits (- x y) 64))
+(defn unchecked-subtract-int [x y] (wrap-bits (- x y) 32))
+(defn unchecked-multiply [x y] (wrap-bits (* x y) 64))
+(defn unchecked-multiply-int [x y] (wrap-bits (* x y) 32))
+(defn unchecked-inc [x] (wrap-bits (inc x) 64))
+(defn unchecked-inc-int [x] (wrap-bits (inc x) 32))
+(defn unchecked-dec [x] (wrap-bits (dec x) 64))
+(defn unchecked-dec-int [x] (wrap-bits (dec x) 32))
+(defn unchecked-negate [x] (wrap-bits (- x) 64))
+(defn unchecked-negate-int [x] (wrap-bits (- x) 32))
+(defn unchecked-divide-int [x y] (quot x y))
+(defn unchecked-remainder-int [x y] (rem x y))
+(defn unchecked-int [x] (wrap-bits (int x) 32))
+(defn unchecked-long [x] (wrap-bits (int x) 64))
+(defn unchecked-short [x] (wrap-bits (int x) 16))
+(defn unchecked-byte [x] (wrap-bits (int x) 8))
+(defn unchecked-char [x] (int x))
+(defn unchecked-double [x] (double x))
+(defn unchecked-float [x] (double x))
+(defn +' ([] 0) ([x] x) ([x y] (+ x y)) ([x y & more] (reduce + (+ x y) more)))
+(defn -' ([x] (- x)) ([x y] (- x y)) ([x y & more] (reduce - (- x y) more)))
+(defn *' ([] 1) ([x] x) ([x y] (* x y)) ([x y & more] (reduce * (* x y) more)))
+(defn inc' [x] (inc x))
+(defn dec' [x] (dec x))
+(defn NaN? [x] (if (number? x) false (throw (ex-info "NaN? takes a number" {:type :ClassCastException}))))
+(defn infinite? [x] (if (number? x) false (throw (ex-info "infinite? takes a number" {:type :ClassCastException}))))
+(defn ratio? [x] (clj2_rt/is_ratio x))
+(defn rational? [x] (or (integer? x) (ratio? x)))
+(defn numerator [r] (clj2_rt/numerator r))
+(defn denominator [r] (clj2_rt/denominator r))
+(defn rationalize [x] x)
+(defn bit-and-not ([x y] (bit-and x (bit-not y))) ([x y & more] (reduce bit-and-not (bit-and-not x y) more)))
+(defn bit-set [x n] (bit-or x (bit-shift-left 1 n)))
+(defn bit-clear [x n] (bit-and x (bit-not (bit-shift-left 1 n))))
+(defn bit-flip [x n] (bit-xor x (bit-shift-left 1 n)))
+(defn bit-test [x n] (not (zero? (bit-and x (bit-shift-left 1 n)))))
+;; on the 64-bit two's complement of x, as the JVM's >>> on a long
+(defn unsigned-bit-shift-right [x n] (bit-shift-right (bit-and x 0xFFFFFFFFFFFFFFFF) n))
+
+;; hashes: the collection mixing fns over clojure's hash
+(defn mix-collection-hash [hash-basis count] (clj2_hash/mix_coll_hash hash-basis count))
+(defn hash-ordered-coll [coll] (clj2_hash/hash_ordered (clj2_coll/to_list coll)))
+(defn hash-unordered-coll [coll] (clj2_hash/hash_unordered (clj2_coll/to_list coll)))
+(defn hash-combine [x y] (clj2_hash/hash_combine x (clj2_hash/java_hash_code y)))
+
+(defn Throwable->map [o]
+  (let [msg (ex-message o)
+        data (ex-data o)
+        via (cond-> {:type (if data 'clojure.lang.ExceptionInfo 'java.lang.Exception) :message msg}
+              data (assoc :data data))]
+    (cond-> {:via [via] :trace [] :cause msg}
+      data (assoc :data data))))
+
+(def ^:dynamic *clojure-version* {:major 1 :minor 12 :incremental 0 :qualifier nil})
+(defn clojure-version [] "1.12.0")
+(def ^:dynamic *print-length* nil)
+(def ^:dynamic *print-level* nil)
+(def ^:dynamic *print-meta* false)
+(def ^:dynamic *print-dup* false)
+(def ^:dynamic *print-readably* true)
+(def ^:dynamic *print-namespace-maps* false)
+(def ^:dynamic *flush-on-newline* true)
+(def ^:dynamic *read-eval* true)
+(def ^:dynamic *data-readers* {})
+(def default-data-readers {})
+(def ^:dynamic *default-data-reader-fn* nil)
+(def ^:dynamic *assert* true)
+(def ^:dynamic *unchecked-math* false)
+(def ^:dynamic *warn-on-reflection* false)
+(def ^:dynamic *compile-path* "classes")
+(def ^:dynamic *compile-files* false)
+(def ^:dynamic *repl* false)
+(def ^:dynamic *verbose-defrecords* false)
+(def ^:dynamic *allow-unresolved-vars* false)
+(def ^:dynamic *use-context-classloader* true)
+(def ^:dynamic *suppress-read* false)
+(def ^:dynamic *file* nil)
+(def ^:dynamic *source-path* nil)
+(def ^:dynamic *math-context* nil)
+(def ^:dynamic *compiler-options* nil)
+
+(defn alias [alias-sym ns-sym] (clj2_rt_eval/alias alias-sym ns-sym))
+
+;;;; ------------------------------------------------------------------
+;;;; Transients: a transient wraps a persistent value; each bang op returns
+;;;; the next transient (use its return value, as Clojure requires) and
+;;;; persistent! unwraps it. Reads go through to the value. (BEAM terms are
+;;;; immutable: reusing a transient after persistent! is not detected,
+;;;; known divergence :transients/wrapped.)
+
+(defn transient [coll]
+  (if (or (vector? coll) (map? coll) (set? coll))
+    (clj2_rt/transient coll)
+    (throw (ex-info (str "transient: not an editable collection: " (clj2_print/pr_str coll))
+                    {:type :ClassCastException}))))
+(defn transient? [x] (clj2_rt/is_transient x))
+(defn persistent! [t] (clj2_rt/persistent t))
+(defn conj!
+  ([] (transient []))
+  ([t] t)
+  ([t x] (clj2_rt/transient (conj (clj2_rt/persistent t) x))))
+(defn assoc!
+  ([t k v] (clj2_rt/transient (assoc (clj2_rt/persistent t) k v)))
+  ([t k v & kvs] (reduce (fn [t [k v]] (assoc! t k v)) (assoc! t k v) (partition 2 kvs))))
+(defn dissoc!
+  ([t k] (clj2_rt/transient (dissoc (clj2_rt/persistent t) k)))
+  ([t k & ks] (reduce dissoc! (dissoc! t k) ks)))
+(defn disj!
+  ([t] t)
+  ([t x] (clj2_rt/transient (disj (clj2_rt/persistent t) x)))
+  ([t x & xs] (reduce disj! (disj! t x) xs)))
+(defn pop! [t] (clj2_rt/transient (pop (clj2_rt/persistent t))))
+
+;;;; ------------------------------------------------------------------
+;;;; Metadata (clj2_rt:meta/with_meta). Vectors, maps, sets, lazy seqs,
+;;;; records and fns carry it; a list given metadata becomes a seq that
+;;;; carries it; symbols carry none (:symbol/no-metadata). A var's is its
+;;;; registry entry's.
+
+(defn meta [x] (clj2_rt/meta x))
+(defn with-meta [x m] (clj2_rt/with_meta x m))
+(defn vary-meta [x f & args] (with-meta x (apply f (meta x) args)))
+
+(defn reset-meta! [iref m]
+  (if (var? iref)
+    (do (clj2_ns/set_var_meta iref m) m)
+    (throw (ex-info "reset-meta!: only vars carry mutable metadata here" {:type :ClassCastException}))))
+(defn alter-meta! [iref f & args] (reset-meta! iref (apply f (meta iref) args)))
+(defn var? [x] (clj2_rt/is_var x))
+
+;;;; ------------------------------------------------------------------
+;;;; Sorted collections (clj2_sorted: an AVL tree under a comparator)
+
+(defn sorted-map [& keyvals]
+  (clj2_sorted/from_list 'sorted_map 'default (map (fn [[k v]] (erlang/list_to_tuple (list k v))) (partition 2 keyvals))))
+(defn sorted-map-by [comparator & keyvals]
+  (clj2_sorted/from_list 'sorted_map comparator (map (fn [[k v]] (erlang/list_to_tuple (list k v))) (partition 2 keyvals))))
+(defn sorted-set [& keys]
+  (clj2_sorted/from_list 'sorted_set 'default (map (fn [k] (erlang/list_to_tuple (list k nil))) keys)))
+(defn sorted-set-by [comparator & keys]
+  (clj2_sorted/from_list 'sorted_set comparator (map (fn [k] (erlang/list_to_tuple (list k nil))) keys)))
+(defn sorted? [x] (clj2_sorted/is_sorted x))
+(defn subseq
+  ([sc test key] (clj2_sorted/subseq sc test key 'none 'asc))
+  ([sc start-test start-key end-test end-key]
+   (clj2_sorted/subseq sc start-test start-key (erlang/list_to_tuple (list end-test end-key)) 'asc)))
+(defn rsubseq
+  ([sc test key] (clj2_sorted/subseq sc test key 'none 'desc))
+  ([sc start-test start-key end-test end-key]
+   (clj2_sorted/subseq sc start-test start-key (erlang/list_to_tuple (list end-test end-key)) 'desc)))
+
+
+;;;; ------------------------------------------------------------------
+;;;; Java arrays (clj2_array): mutable, as on the JVM; an array is
+;;;; {array, Type, Cell}. seq, count, nth, vec work on them.
+
+(defn- array-of [type]
+  (fn ([size-or-seq] (clj2_array/make type size-or-seq))
+      ([size init-or-seq] (clj2_array/make type size init-or-seq))))
+(def long-array (array-of 'long))
+(def int-array (array-of 'int))
+(def short-array (array-of 'short))
+(def byte-array (array-of 'byte))
+(def char-array (array-of 'char))
+(def double-array (array-of 'double))
+(def float-array (array-of 'float))
+(def boolean-array (array-of 'boolean))
+(def object-array (array-of 'object))
+(defn to-array [coll] (clj2_array/from_seq 'object (if (nil? coll) [] coll)))
+(defn into-array
+  ([aseq] (into-array nil aseq))
+  ([type aseq] (clj2_array/from_seq (clj2_array/type_of_class type) (if (nil? aseq) [] aseq))))
+(defn make-array
+  ([type len] (clj2_array/make (clj2_array/type_of_class type) len))
+  ([type dim & more]
+   (clj2_array/from_seq 'object (repeatedly dim #(apply make-array type more)))))
+(defn to-array-2d [coll] (clj2_array/from_seq 'object (map to-array coll)))
+(defn array? [x] (clj2_array/is_array x))
+(defn aget
+  ([a i] (clj2_array/get a i))
+  ([a i & idxs] (apply aget (aget a i) idxs)))
+(defn aset
+  ([a i v] (clj2_array/set a i v))
+  ([a i j & ivs] (apply aset (aget a i) j ivs)))
+(def aset-int aset) (def aset-long aset) (def aset-short aset) (def aset-byte aset)
+(def aset-char aset) (def aset-double aset) (def aset-float aset) (def aset-boolean aset)
+(defn alength [a] (clj2_array/length a))
+(defn aclone [a] (clj2_array/clone a))
+(defn ints [xs] xs) (defn longs [xs] xs) (defn shorts [xs] xs) (defn bytes [xs] xs)
+(defn chars [xs] xs) (defn doubles [xs] xs) (defn floats [xs] xs) (defn booleans [xs] xs)
+(defmacro amap [a idx ret expr]
+  `(let [a# ~a ~ret (aclone a#)]
+     (loop [~idx 0]
+       (if (< ~idx (alength a#))
+         (do (aset ~ret ~idx ~expr) (recur (unchecked-inc ~idx)))
+         ~ret))))
+(defmacro areduce [a idx ret init expr]
+  `(let [a# ~a]
+     (loop [~idx 0 ~ret ~init]
+       (if (< ~idx (alength a#)) (recur (unchecked-inc ~idx) ~expr) ~ret))))
+
+;; primitive vectors are vectors here
+(defn vector-of [t & elements] (vec elements))
+
+(defmacro memfn [name & args]
+  (let [t (gensym "target")]
+    `(fn [~t ~@args] (. ~t (~name ~@args)))))
+
+;; monitors: BEAM values are immutable and processes do not share them,
+;; so there is nothing to lock (locking runs its body)
+(defn monitor-enter [x] nil)
+(defn monitor-exit [x] nil)
+(defmacro locking [x & body] `(let [_# ~x] ~@body))

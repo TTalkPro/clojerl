@@ -18,7 +18,7 @@
 %%% `T =:= false; T =:= nil' (T is trivial after ANF, so no branch is
 %%% duplicated). `case*' matches each constant by pattern when that is
 %%% exact (no map inside: map patterns match supersets), else by
-%%% `=:=' guards; a missing default raises `{clj2_no_matching_clause, V}'.
+%%% `=:=' guards; a missing default raises IllegalArgumentException "No matching clause: V" (clj2_rt:no_matching_clause/1).
 %%%
 %%% Units (pass state `unit'):
 %%%   ns    one namespace = one module (designs/03 §2.1): fn var → f/N,
@@ -210,8 +210,7 @@ expr({'case', A, X, Clauses, Default}, St) ->
                     nil ->
                         {V, S} = fresh(no_match, St2),
                         {{eclause, A, [{evar, A, V}], [],
-                          [{eremote, A, erlang, error,
-                            [{etuple, A, [{elit, A, clj2_no_matching_clause}, {evar, A, V}]}]}]}, S};
+                          [{eremote, A, clj2_rt, no_matching_clause, [{evar, A, V}]}]}, S};
                     _ ->
                         {D, S} = expr(Default, St2),
                         {{eclause, A, [{ewild, A}], [], [D]}, S}
@@ -321,22 +320,10 @@ expr({throw, A, X}, St) ->
     {{eremote, A, erlang, error, [E]}, St1};
 
 expr({'try', A, Body, Catches, Fin}, St) ->
-    {B, St1} = expr(Body, St),
-    {Cs, St2} = lists:mapfoldl(
-                  fun({'catch', CA, Class, U, CB}, S) ->
-                          {CBE, S1} = expr(CB, S),
-                          ClassPat = case Class of
-                                         any -> {ewild, CA};
-                                         _ -> {elit, CA, Class}
-                                     end,
-                          Pat = {etuple, CA, [ClassPat, {evar, CA, U}, {ewild, CA}]},
-                          {{eclause, CA, [Pat], [], [CBE]}, S1}
-                  end, St1, Catches),
-    {After, St3} = case Fin of
-                       nil -> {[], St2};
-                       _ -> {FE, S3} = expr(Fin, St2), {[FE], S3}
-                   end,
-    {{etry, A, [B], Cs, After}, St3};
+    case lists:all(fun({'catch', _, C, _, _}) -> lists:member(C, [error, exit, throw, any]) end, Catches) of
+        true -> try_erlang_classes(A, Body, Catches, Fin, St);
+        false -> try_by_class(A, Body, Catches, Fin, St)
+    end;
 
 expr({fn_group, A, G, Fns}, St) ->
     {Cs, St1} = lists:mapfoldl(
@@ -387,3 +374,63 @@ fresh(S, St = #{next_uid := N}) -> {{S, N}, St#{next_uid := N + 1}}.
 fresh_n(Names, St) -> lists:mapfoldl(fun fresh/2, St, Names).
 
 fail(A, Why) -> erlang:error({clj2_compile, erl_anno:location(A), {lower_labs, Why}}).
+
+%% catches that name only Erlang classes: one clause each
+try_erlang_classes(A, Body, Catches, Fin, St) ->
+    {B, St1} = expr(Body, St),
+    {Cs, St2} = lists:mapfoldl(
+                  fun({'catch', CA, Class, U, CB}, S) ->
+                          {CBE, S1} = expr(CB, S),
+                          ClassPat = case Class of
+                                         any -> {ewild, CA};
+                                         _ -> {elit, CA, Class}
+                                     end,
+                          Pat = {etuple, CA, [ClassPat, {evar, CA, U}, {ewild, CA}]},
+                          {{eclause, CA, [Pat], [], [CBE]}, S1}
+                  end, St1, Catches),
+    {After, St3} = case Fin of
+                       nil -> {[], St2};
+                       _ -> {FE, S3} = expr(Fin, St2), {[FE], S3}
+                   end,
+    {{etry, A, [B], Cs, After}, St3}.
+
+%% catches naming JVM classes: one clause takes everything and tries the
+%% catches in order (a class test is a call, which a pattern cannot make);
+%% when none applies the exception goes on as it came
+try_by_class(A, Body, Catches, Fin, St) ->
+    {B, St1} = expr(Body, St),
+    {[C, R, S], St2} = fresh_n(['C', 'R', 'S'], St1),
+    {Dispatch, St3} = dispatch_catches(Catches, C, R, S, A, St2),
+    Pat = {etuple, A, [{evar, A, C}, {evar, A, R}, {evar, A, S}]},
+    {After, St4} = case Fin of
+                       nil -> {[], St3};
+                       _ -> {FE, S4} = expr(Fin, St3), {[FE], S4}
+                   end,
+    {{etry, A, [B], [{eclause, A, [Pat], [], [Dispatch]}], After}, St4}.
+
+dispatch_catches([], C, R, S, A, St) ->
+    {{eremote, A, erlang, raise, [{evar, A, C}, {evar, A, R}, {evar, A, S}]}, St};
+dispatch_catches([{'catch', CA, Class, U, CB} | Rest], C, R, S, A, St) ->
+    {Handler, St1} = expr(CB, St),
+    {Next, St2} = dispatch_catches(Rest, C, R, S, A, St1),
+    IsClass = fun(K) -> {eop, CA, '=:=', [{evar, CA, C}, {elit, CA, K}]} end,
+    Test = case Class of
+               any -> {elit, CA, true};
+               throwable -> {elit, CA, true};
+               error -> IsClass(error);
+               exit -> IsClass(exit);
+               throw -> IsClass(throw);
+               JVM -> {eop, CA, 'andalso',
+                       [IsClass(error),
+                        {eremote, CA, clj2_class, exception_matches, [{elit, CA, JVM}, {evar, CA, R}]}]}
+           end,
+    %% a JVM-class catch binds a throwable: an ex-info as it is, an
+    %% Erlang error as an ex-info of its JVM class (clj2_rt:throwable/2)
+    Val = case lists:member(Class, [any, error, exit, throw]) of
+              true -> {evar, CA, R};
+              false -> {eremote, CA, clj2_rt, throwable, [{evar, CA, C}, {evar, CA, R}]}
+          end,
+    Bound = {eblock, CA, [{ematch, CA, {evar, CA, U}, Val}, Handler]},
+    {{ecase, CA, Test, [{eclause, CA, [{elit, CA, true}], [], [Bound]},
+                        {eclause, CA, [{elit, CA, false}], [], [Next]}]}, St2}.
+

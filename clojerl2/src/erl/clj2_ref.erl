@@ -33,7 +33,8 @@
 -export([future_call/1, future_cancel/1, is_future_done/1, is_future_cancelled/1]).
 -export([agent/2, send/3, await/2, agent_error/1, restart_agent/3,
          set_error_handler/2, error_handler/1, set_error_mode/2, error_mode/1]).
--export([deref/1, deref/3, is_realized/1, type_of/1]).
+-export([local_var/1]).
+-export([deref/1, deref/3, is_realized/1, type_of/1, version/1]).
 
 -define(ATOM, clj2_atom).
 -define(PROMISE, clj2_promise).
@@ -388,6 +389,7 @@ deref(G = {agent, _, _}) -> maps:get(state, agent_row(G));
 deref({promise, _, Key}) -> {ok, V} = await_row(Key, infinity, none), V;
 deref({future, _, {Key, Pid}}) -> {ok, R} = await_row(Key, infinity, Pid), future_result(R);
 deref({var, _, {Ns, Name}}) -> var_value(Ns, Name);
+deref({local_var, _, Cell}) -> deref(Cell);                    % with-local-vars
 deref({clj2_reduced, X}) -> X;
 deref(X) -> clj2_lazy:deref(X).                              % delay
 
@@ -419,3 +421,9 @@ is_realized(X) -> clj2_lazy:is_realized(X).
 %% for the printer
 type_of({Tag, _, _}) when Tag =:= atom; Tag =:= volatile; Tag =:= agent; Tag =:= promise; Tag =:= future -> Tag;
 type_of(_) -> none.
+
+%% @doc A with-local-vars var: a cell var-get/var-set/deref use
+local_var(V) -> {local_var, nil, atom(V)}.
+
+%% @doc An atom's version: it changes with every write (cache stamps).
+version(A = {atom, _, _}) -> element(1, current(A)).
