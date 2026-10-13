@@ -3,17 +3,14 @@
 ;; The bulk of clojure.core over 00-kernel: seq and collection library,
 ;; maps, higher-order fns, comparison/sorting, strings, exceptions,
 ;; control macros. Written in Clojure on the kernel and layer-0
-;; primitives (clj2_coll, clj2_rt). Reference types (atom, agent ...,
-;; 018), multimethods (017), regex and the IO layer (020) come later.
+;; primitives (clj2_coll, clj2_rt). Multimethods (017), regex and the IO
+;; layer (020) come later.
 
 (in-ns 'clojure.core)
 
-;; volatiles first: the stateful transducers below keep their state in them
-(defn volatile! [x] (clj2_ref/volatile x))
-(defn vreset! [vol v] (clj2_ref/vreset vol v))
-(defmacro vswap! [vol f & args]
-  `(let [v# ~vol] (vreset! v# (~f (deref v#) ~@args))))
-(defn volatile? [x] (= (clj2_ref/type_of x) 'volatile))
+;; the stateful transducers below keep their state in a per-process cell
+;; of the runtime (clj2_ref:volatile/vreset); Clojure's volatile! is not
+;; provided (designs/10)
 
 ;;;; ------------------------------------------------------------------
 ;;;; Seqs
@@ -54,18 +51,18 @@
 (defn map-indexed
   ([f]
    (fn [rf]
-     (let [i (volatile! -1)]
+     (let [i (clj2_ref/volatile -1)]
        (fn ([] (rf)) ([result] (rf result))
-         ([result input] (rf result (f (vswap! i inc) input)))))))
+         ([result input] (rf result (f (clj2_ref/vreset i (inc (deref i))) input)))))))
   ([f coll] (map f (range) coll)))
 
 (defn keep-indexed
   ([f]
    (fn [rf]
-     (let [iv (volatile! -1)]
+     (let [iv (clj2_ref/volatile -1)]
        (fn ([] (rf)) ([result] (rf result))
          ([result input]
-          (let [v (f (vswap! iv inc) input)]
+          (let [v (f (clj2_ref/vreset iv (inc (deref iv))) input)]
             (if (nil? v) result (rf result v))))))))
   ([f coll] (keep (fn [[i x]] (f i x)) (map vector (range) coll))))
 
@@ -106,18 +103,18 @@
 (defn partition-all
   ([n]
    (fn [rf]
-     (let [a (volatile! [])]
+     (let [a (clj2_ref/volatile [])]
        (fn
          ([] (rf))
          ([result]
           (let [result (if (zero? (count @a))
                          result
-                         (let [v @a] (vreset! a []) (unreduced (rf result v))))]
+                         (let [v @a] (clj2_ref/vreset a []) (unreduced (rf result v))))]
             (rf result)))
          ([result input]
-          (vswap! a conj input)
+          (clj2_ref/vreset a (conj (deref a) input))
           (if (= n (count @a))
-            (let [v @a] (vreset! a []) (rf result v))
+            (let [v @a] (clj2_ref/vreset a []) (rf result v))
             result))))))
   ([n coll] (partition-all n n coll))
   ([n step coll]
@@ -129,25 +126,25 @@
 (defn partition-by
   ([f]
    (fn [rf]
-     (let [buf (volatile! [])
-           pv (volatile! nil)
-           started (volatile! false)]
+     (let [buf (clj2_ref/volatile [])
+           pv (clj2_ref/volatile nil)
+           started (clj2_ref/volatile false)]
        (fn
          ([] (rf))
          ([result]
           (let [b @buf
                 result (if (zero? (count b))
                          result
-                         (do (vreset! buf []) (unreduced (rf result b))))]
+                         (do (clj2_ref/vreset buf []) (unreduced (rf result b))))]
             (rf result)))
          ([result input]
           (let [val (f input)]
             (if (or (not @started) (= val @pv))
-              (do (vreset! started true) (vreset! pv val) (vswap! buf conj input) result)
+              (do (clj2_ref/vreset started true) (clj2_ref/vreset pv val) (clj2_ref/vreset buf (conj (deref buf) input)) result)
               (let [b @buf]
-                (vreset! buf []) (vreset! pv val)
+                (clj2_ref/vreset buf []) (clj2_ref/vreset pv val)
                 (let [ret (rf result b)]
-                  (when-not (reduced? ret) (vswap! buf conj input))
+                  (when-not (reduced? ret) (clj2_ref/vreset buf (conj (deref buf) input)))
                   ret)))))))))
   ([f coll]
    (lazy-seq
@@ -166,12 +163,12 @@
 (defn distinct
   ([]
    (fn [rf]
-     (let [seen (volatile! #{})]
+     (let [seen (clj2_ref/volatile #{})]
        (fn ([] (rf)) ([result] (rf result))
          ([result input]
           (if (contains? @seen input)
             result
-            (do (vswap! seen conj input) (rf result input))))))))
+            (do (clj2_ref/vreset seen (conj (deref seen) input)) (rf result input))))))))
   ([coll]
   (let [step (fn step [xs seen]
                (lazy-seq
@@ -185,11 +182,11 @@
 (defn dedupe
   ([]
    (fn [rf]
-     (let [pv (volatile! ::none)]
+     (let [pv (clj2_ref/volatile ::none)]
        (fn ([] (rf)) ([result] (rf result))
          ([result input]
           (let [prior @pv]
-            (vreset! pv input)
+            (clj2_ref/vreset pv input)
             (if (= prior input) result (rf result input))))))))
   ([coll]
   (let [step (fn step [xs prev first?]
@@ -204,7 +201,7 @@
 (defn interpose
   ([sep]
    (fn [rf]
-     (let [started (volatile! false)]
+     (let [started (clj2_ref/volatile false)]
        (fn
          ([] (rf))
          ([result] (rf result))
@@ -212,7 +209,7 @@
           (if @started
             (let [sepr (rf result sep)]
               (if (reduced? sepr) sepr (rf sepr input)))
-            (do (vreset! started true) (rf result input))))))))
+            (do (clj2_ref/vreset started true) (rf result input))))))))
   ([sep coll]
    (drop 1 (interleave (repeat sep) coll))))
 
@@ -263,12 +260,12 @@
 (defn take-nth
   ([n]
    (fn [rf]
-     (let [iv (volatile! -1)]
+     (let [iv (clj2_ref/volatile -1)]
        (fn
          ([] (rf))
          ([result] (rf result))
          ([result input]
-          (if (zero? (rem (vswap! iv inc) n))
+          (if (zero? (rem (clj2_ref/vreset iv (inc (deref iv))) n))
             (rf result input)
             result))))))
   ([n coll]
@@ -493,7 +490,7 @@
     (throw (new IllegalArgumentException (str "Expected string, got " (if (nil? s) "nil" (clj2_class/class_of s))))))
   s)
 (defn parse-long [s] (let [s (parse-arg s)] (try (erlang/binary_to_integer s) (catch :error _ nil))))
-(defn parse-double [s] (clj2_jvm/parse_double_or_nil (parse-arg s)))
+(defn parse-double [s] (clj2_math/parse_double (parse-arg s)))
 (defn parse-boolean [s]
   (if (string? s)
     (case s "true" true "false" false nil)
@@ -728,28 +725,12 @@
 (defn bound?
   "True when every var has a root or a binding in this process."
   [& vars]
-  (every? (fn [v] (clj2_jvm/method v 'isBound ())) vars))
+  (every? (fn [v] (clj2_var/is_bound v)) vars))
 
 ;;;; ------------------------------------------------------------------
 ;;;; Refs and STM: not provided (designs/03 §5.2). BEAM has no
 ;;;; multi-object transactional memory and faking one would lie; these
 ;;;; raise instead of being missing (known divergence :refs/no-stm).
-
-(defn stm-unsupported
-  "Raises: refs and STM are not supported (designs/03 §5.2)."
-  [what]
-  (throw (ex-info (str what ": refs and STM (dosync) are not supported on clojerl2"
-                       " (known divergence :refs/no-stm); keep related state in one atom,"
-                       " or in one process (an agent) and update it by message")
-                  {:unsupported what})))
-
-(defn ref [& _] (stm-unsupported "ref"))
-(defn alter [& _] (stm-unsupported "alter"))
-(defn commute [& _] (stm-unsupported "commute"))
-(defn ref-set [& _] (stm-unsupported "ref-set"))
-(defn ensure [& _] (stm-unsupported "ensure"))
-(defmacro dosync [& _] `(stm-unsupported "dosync"))
-(defmacro sync [& _] `(stm-unsupported "sync"))
 
 ;; There are no chunked seqs (known divergence :lazy-seq/no-chunking).
 (defn chunked-seq? [s] false)
@@ -757,29 +738,18 @@
 ;;;; ------------------------------------------------------------------
 ;;;; Reference types (clojerl2-018, clj2_ref; designs/03 §5.2)
 ;;;;
-;;;; atom: an ETS row with compare-and-swap; volatile: a cell in this
-;;;; process; promise/future: delivered once, waiters woken by message;
-;;;; agent: one process per agent, actions in send order. Dynamic
-;;;; bindings travel to futures and agent actions (bound-fn semantics).
+;;;; There are no atoms, volatiles, agents, futures, promises or refs:
+;;;; state and concurrency are Erlang processes (designs/10). What stays
+;;;; is vars: dynamic bindings, bound-fn (conveys them to another
+;;;; process), var watches and validators.
 
-(defn atom
-  ([x] (clj2_ref/atom x))
-  ([x & options] (clj2_ref/atom x (apply hash-map options))))
-(defn swap! [a f & args] (clj2_ref/swap a f args))
-(defn swap-vals! [a f & args] (clj2_ref/swap_vals a f args))
-(defn reset! [a v] (clj2_ref/reset a v))
-(defn reset-vals! [a v] (clj2_ref/reset_vals a v))
-(defn compare-and-set! [a oldval newval] (clj2_ref/compare_and_set a oldval newval))
 (defn set-validator! [r f] (clj2_ref/set_validator r f))
 (defn get-validator [r] (clj2_ref/get_validator r))
 (defn add-watch [r k f] (clj2_ref/add_watch r k f))
 (defn remove-watch [r k] (clj2_ref/remove_watch r k))
 
 
-(defn promise [] (clj2_ref/promise))
-(defn deliver [p v] (clj2_ref/deliver p v))
 
-(def ^:dynamic *agent* nil)
 
 (defn bound-fn* [f] (clj2_var/bound_fn f))
 
@@ -820,26 +790,6 @@
        [~@(mapcat (fn [[v e]] [(list 'var v) e]) pairs)]
        (fn [] ~@body))))
 
-(defn future-call [f] (clj2_ref/future_call f))
-(defmacro future [& body] `(future-call (fn [] ~@body)))
-(defn future? [x] (= (clj2_ref/type_of x) 'future))
-(defn future-cancel [f] (clj2_ref/future_cancel f))
-(defn future-done? [f] (clj2_ref/is_future_done f))
-(defn future-cancelled? [f] (clj2_ref/is_future_cancelled f))
-
-(defn agent [state & options] (clj2_ref/agent state (apply hash-map options)))
-(defn send [a f & args] (clj2_ref/send a f args))
-(defn send-off [a f & args] (clj2_ref/send a f args))
-(defn send-via [executor a f & args] (clj2_ref/send a f args))
-(defn await [& agents] (clj2_ref/await agents 'infinity) nil)
-(defn await-for [timeout-ms & agents] (clj2_ref/await agents timeout-ms))
-(defn agent-error [a] (clj2_ref/agent_error a))
-(defn restart-agent [a new-state & options] (clj2_ref/restart_agent a new-state (apply hash-map options)))
-(defn set-error-handler! [a f] (clj2_ref/set_error_handler a f))
-(defn error-handler [a] (clj2_ref/error_handler a))
-(defn set-error-mode! [a mode] (clj2_ref/set_error_mode a mode))
-(defn error-mode [a] (clj2_ref/error_mode a))
-(defn shutdown-agents [] nil)
 
 ;; BEAM has no shared mutable memory to guard: a body that only touches
 ;; values needs no lock, and io! has no transaction to refuse.
@@ -888,7 +838,7 @@
 (defn make-hierarchy []
   {:parents {} :descendants {} :ancestors {}})
 
-(def global-hierarchy (atom (make-hierarchy)))
+(def global-hierarchy (clj2_ref/cell (make-hierarchy)))
 
 (defn- hier-assert [ok form]
   (when-not ok
@@ -935,7 +885,7 @@
    (hier-assert (or (clj2_class/is_class tag)
                     (and (or (keyword? tag) (symbol? tag)) (namespace tag)))
                 "(or (class? tag) (and (instance? clojure.lang.Named tag) (namespace tag)))")
-   (swap! global-hierarchy derive tag parent) nil)
+   (clj2_ref/swap global-hierarchy derive (list tag parent)) nil)
   ([h tag parent]
    (hier-assert (not= tag parent) "(not= tag parent)")
    (hier-assert (or (keyword? tag) (symbol? tag)) "(instance? clojure.lang.Named tag)")
@@ -963,7 +913,7 @@
       h))))
 
 (defn underive
-  ([tag parent] (swap! global-hierarchy underive tag parent) nil)
+  ([tag parent] (clj2_ref/swap global-hierarchy underive (list tag parent)) nil)
   ([h tag parent]
    (let [parent-map (:parents h)
          childs-parents (if (parent-map tag)
@@ -1154,12 +1104,12 @@
   ([prob coll] (filter (fn [_] (< (rand) prob)) coll)))
 
 (defn memoize [f]
-  (let [mem (atom {})]
+  (let [mem (clj2_ref/cell {})]
     (fn [& args]
       (if-let [e (find @mem args)]
         (val e)
         (let [ret (apply f args)]
-          (swap! mem assoc args ret)
+          (clj2_ref/swap mem assoc (list args ret))
           ret)))))
 
 (defn comparator [pred]
@@ -1171,7 +1121,7 @@
   (the processor count + 2) ahead of the consumer."
   ([f coll]
    (let [n (+ 2 (erlang/system_info 'schedulers_online))
-         rets (map (fn [x] (future (f x))) coll)
+         rets (map (fn [x] (clj2_ref/future_call (fn [] (f x)))) coll)
          step (fn step [[x & vs :as vs*] fs]
                 (lazy-seq
                   (if-let [s (seq fs)]
@@ -1187,7 +1137,6 @@
 (defn reversible? [x] (or (vector? x) (sorted? x)))
 (defn indexed? [x] (vector? x))
 (defn map-entry? [x] (and (vector? x) (= 2 (count x))))
-(defn atom? [x] (= (clj2_ref/type_of x) 'atom))
 (defn ident? [x] (or (keyword? x) (symbol? x)))
 (defn simple-ident? [x] (and (ident? x) (nil? (namespace x))))
 (defn qualified-ident? [x] (boolean (and (ident? x) (namespace x))))
@@ -1199,8 +1148,6 @@
   (contains? '#{def if do let* loop* fn* recur quote var throw try catch finally
                 letfn* case* new . set! monitor-enter monitor-exit deftype* reify* import* &} s))
 (defn uri? [x] false)
-(defn bytes? [x] (and (clj2_array/is_array x) (= 'byte (erlang/element 2 x))))
-(defn bytes [x] (if (bytes? x) x (byte-array x)))
 (defn decimal? [x] (clj2_decimal/is_decimal x))
 (defn bigdec [x] (clj2_decimal/from x *math-context*))
 
@@ -1380,9 +1327,9 @@
 (defn vary-meta [x f & args] (with-meta x (apply f (meta x) args)))
 
 (defn reset-meta! [iref m]
-  (cond (var? iref) (do (clj2_ns/set_var_meta iref m) m)
-        (#{'atom 'agent} (clj2_ref/type_of iref)) (clj2_ref/reset_ref_meta iref m)
-        :else (throw (ex-info "reset-meta!: only vars, atoms and agents carry mutable metadata" {:type :ClassCastException}))))
+  (if (var? iref)
+    (do (clj2_ns/set_var_meta iref m) m)
+    (throw (ex-info "reset-meta!: only vars carry mutable metadata" {:type :ClassCastException}))))
 (defn alter-meta! [iref f & args] (reset-meta! iref (apply f (meta iref) args)))
 (defn var? [x] (clj2_rt/is_var x))
 
@@ -1412,55 +1359,6 @@
   ([sc start-test start-key end-test end-key]
    (clj2_sorted/subseq sc start-test start-key (erlang/list_to_tuple (list end-test end-key)) 'desc)))
 
-
-;;;; ------------------------------------------------------------------
-;;;; Java arrays (clj2_array): mutable, as on the JVM; an array is
-;;;; {array, Type, Cell}. seq, count, nth, vec work on them.
-
-(defn- array-of [type]
-  (fn ([size-or-seq] (clj2_array/make type size-or-seq))
-      ([size init-or-seq] (clj2_array/make type size init-or-seq))))
-(def long-array (array-of 'long))
-(def int-array (array-of 'int))
-(def short-array (array-of 'short))
-(def byte-array (array-of 'byte))
-(def char-array (array-of 'char))
-(def double-array (array-of 'double))
-(def float-array (array-of 'float))
-(def boolean-array (array-of 'boolean))
-(def object-array (array-of 'object))
-(defn to-array [coll] (clj2_array/from_seq 'object (if (nil? coll) [] coll)))
-(defn into-array
-  ([aseq] (into-array nil aseq))
-  ([type aseq] (clj2_array/from_seq (clj2_array/type_of_class type) (if (nil? aseq) [] aseq))))
-(defn make-array
-  ([type len] (clj2_array/make (clj2_array/type_of_class type) len))
-  ([type dim & more]
-   (clj2_array/from_seq 'object (repeatedly dim #(apply make-array type more)))))
-(defn to-array-2d [coll] (clj2_array/from_seq 'object (map to-array coll)))
-(defn array? [x] (clj2_array/is_array x))
-(defn aget
-  ([a i] (clj2_array/get a i))
-  ([a i & idxs] (apply aget (aget a i) idxs)))
-(defn aset
-  ([a i v] (clj2_array/set a i v))
-  ([a i j & ivs] (apply aset (aget a i) j ivs)))
-(def aset-int aset) (def aset-long aset) (def aset-short aset) (def aset-byte aset)
-(def aset-char aset) (def aset-double aset) (def aset-float aset) (def aset-boolean aset)
-(defn alength [a] (clj2_array/length a))
-(defn aclone [a] (clj2_array/clone a))
-(defn ints [xs] xs) (defn longs [xs] xs) (defn shorts [xs] xs)
-(defn chars [xs] xs) (defn doubles [xs] xs) (defn floats [xs] xs) (defn booleans [xs] xs)
-(defmacro amap [a idx ret expr]
-  `(let [a# ~a ~ret (aclone a#)]
-     (loop [~idx 0]
-       (if (< ~idx (alength a#))
-         (do (aset ~ret ~idx ~expr) (recur (unchecked-inc ~idx)))
-         ~ret))))
-(defmacro areduce [a idx ret init expr]
-  `(let [a# ~a]
-     (loop [~idx 0 ~ret ~init]
-       (if (< ~idx (alength a#)) (recur (unchecked-inc ~idx) ~expr) ~ret))))
 
 ;; primitive vectors are vectors here
 (defn vector-of [t & elements]
@@ -1510,11 +1408,6 @@
 
 (defn xml-seq [root]
   (tree-seq (complement string?) (comp seq :content) root))
-
-(defn iterator-seq [iter]
-  (if (= (clj2_class/class_of iter) (quote java.util.Iterator))
-    (lazy-seq (when (.hasNext iter) (cons (.next iter) (iterator-seq iter))))
-    (seq iter)))
 
 ;; tagged literals and reader conditionals as data (the reader makes them
 ;; for #tag forms it has no reader for, and for #? under :read-cond :preserve)

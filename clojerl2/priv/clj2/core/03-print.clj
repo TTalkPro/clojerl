@@ -7,7 +7,7 @@
 (in-ns 'clojure.core)
 
 ;; Erlang io devices (clj2_io): rebinding them redirects printing and
-;; reading, also inside futures and agent actions.
+;; reading, also in a process started with bound-fn.
 (def ^:dynamic *out* 'standard_io)
 (def ^:dynamic *err* 'standard_error)
 (def ^:dynamic *in* 'standard_io)
@@ -98,3 +98,9 @@
 (defn erl->clj
   ([x] (clj2_data/from_erl x))
   ([x opts] (clj2_data/from_erl x (clj2_data/clj_opts opts))))
+
+;; (receive pattern expr ... (after ms expr ...)): an Erlang selective
+;; receive (the receive* special form). A vector pattern matches a tuple,
+;; a map pattern a map with those keys; symbols bind, _ matches anything,
+;; literals and 'quoted data match themselves, ~x the value of x.
+(defmacro receive [& clauses] `(receive* ~@clauses))

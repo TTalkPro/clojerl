@@ -61,10 +61,11 @@
 
 (defn extenders [p] (seq (clj2_proto/extenders p)))
 
-;; Inst: what inst-ms reads (no #inst type of its own here; a type extends it)
+;; Inst: what inst-ms reads; #inst is an integer of milliseconds (Erlang
+;; time), a type may extend it
 (defprotocol Inst (inst-ms* [inst]))
 (defn inst-ms [inst] (inst-ms* inst))
-(extend-protocol Inst java.util.Date (inst-ms* [d] (clj2_inst/millis d)))
+(extend-protocol Inst java.lang.Long (inst-ms* [ms] ms))
 (defn inst? [x] (satisfies? Inst x))
 
 ;; eduction: a reducible, seqable application of a transducer; not a seq,
