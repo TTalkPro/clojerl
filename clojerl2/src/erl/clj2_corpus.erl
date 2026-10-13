@@ -72,7 +72,8 @@ run(Opts) ->
 in_user(#{actual := A, expected := E0}) ->
     E = case is_binary(E0) of true -> E0; false -> <<>> end,         % or :throws
     %% user/x, #user.R, (in-ns 'user), or the namespace named: (ns-map 'user)
-    re:run([A, " ", E], "user[/.][^ ]|\\(quote user\\)|'user[) \\]]", [unicode]) =/= nomatch.
+    %% *ns*: the JVM evaluated each entry at a REPL in user
+    re:run([A, " ", E], "user[/.][^ ]|\\(quote user\\)|'user[) \\]]|\\*ns\\*", [unicode]) =/= nomatch.
 
 global_effects(Src) ->
     %% spit too: rows share temp file names (/tmp/jolt-spit-test.txt)
@@ -275,6 +276,9 @@ judge(Ns, Actual, Expected) ->
             end
     end.
 
+%% a symbol no JVM namespace defines either is the JVM's compile error too;
+%% one JVM Clojure has (priv/clj2/jvm-docs.eterm) is a gap here
+raises_on_jvm({resolve, {unresolved_symbol, S}}) -> not clj2_rt:is_jvm_var(S);
 raises_on_jvm({resolve, _}) -> false;
 raises_on_jvm({unsupported, _}) -> false;
 raises_on_jvm(_) -> true.

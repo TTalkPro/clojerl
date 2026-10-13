@@ -9,7 +9,7 @@
 
 -export([transient/1, is_transient/1, persistent/1]).
 -export([meta/1, with_meta/2, is_var/1, merge_var_meta/2, defn_meta/3]).
--export([invoke/2, call_loading/3, fn_const/1, var_fn/3, var_value/3, var/2, is_ratio/1, numerator/1, denominator/1, existing_keyword/2]).
+-export([invoke/2, call_loading/3, fn_const/1, is_jvm_var/1, var_fn/3, var_value/3, var/2, is_ratio/1, numerator/1, denominator/1, existing_keyword/2]).
 
 %% layer-0 primitives for clojure.core (00-kernel)
 -export([str/1, keyword/1, keyword/2, symbol/1, symbol/2, name/1, namespace/1,
@@ -690,6 +690,12 @@ jvm_doc(Ns, Name, M) ->
                 false -> M1
             end
     end.
+
+%% @doc Does JVM Clojure have a public var by this (bare or qualified) name?
+is_jvm_var(S) when is_atom(S) ->
+    Name = lists:last(string:split(atom_to_list(S), "/")),
+    lists:any(fun({_, N}) -> atom_to_list(N) =:= Name end, maps:keys(jvm_docs()));
+is_jvm_var(_) -> false.
 
 jvm_docs() ->
     case persistent_term:get({?MODULE, jvm_docs}, undefined) of
