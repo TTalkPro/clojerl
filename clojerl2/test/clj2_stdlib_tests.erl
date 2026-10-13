@@ -261,6 +261,23 @@ nested_redefinition_and_name_meta_test() ->
                  plain(ev("[(:private (meta #'nm-p1)) (:doc (meta #'nm-p2)) (:private (meta #'nm-p3)) (:private (meta #'nm-p4))]"))).
 
 
+%% clojerl2-043: clojure-test-suite sweep - key metadata, def names with
+%% metadata through macros, case on sequential constants, argument checks
+cts_sweep_test() ->
+    setup(),
+    ?assertEqual([true, true, 2, abc, 'clojure.core/inc', [1, a, x, 2, b, y]],
+                 plain(ev("[(contains? {^:foo [:a 1] 17} [:a 1]) (contains? #{[:a 1]} ^:bar [:a 1]) (count (conj #{^:a [1] [2]} ^:b [1]))"
+                          " (symbol :abc) (symbol #'inc) (interleave [1 2] '[a b] '[x y])]"))),
+    ev("(defmacro ctsw [& body] `(do ~@body))"),
+    ev("(ctsw (def ^:dynamic *cts-x* :unset) (defn ^:dynamic *cts-f* [x] (inc x)))"),
+    ?assertEqual([':set', 0], plain(ev("[(binding [*cts-x* :set] *cts-x*) (binding [*cts-f* dec] (*cts-f* 1))]"))),
+    ?assertEqual([':v', ':v', false, true, ':t', ':t'],
+                 plain(ev("(let [f (fn [x] (case x [:vec :kws] :v :d))]"
+                          " [(f '(:vec :kws)) (f [:vec :kws]) ((some-fn even?) 1) (contains? (int-array [0 1]) 1)"
+                          "  (try (contains? '(1 2) 0) (catch IllegalArgumentException _ :t))"
+                          "  (try (shuffle nil) (catch Exception _ :t))])"))),
+    ?assertEqual({map, nil, #{':foo' => true}}, ev("(let [x 1] (meta ^:foo [x]))")).
+
 %% clojerl2-042 follow-up: type and extension forms inside expressions,
 %% mutable deftype fields
 expression_type_forms_test() ->
