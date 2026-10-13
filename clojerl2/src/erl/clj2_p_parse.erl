@@ -627,8 +627,54 @@ list_form_atom(S, Head, Args, F, A, E) -> list_form_plain(S, Head, Args, F, A, E
 list_form_plain(S, Head, Args, F, A, E) ->
     case kernel_form(S, E) of
         none -> list_form_call(S, Head, Args, F, A, E);
+        %% inside an expression extend-type/extend-protocol extend at run
+        %% time, as (extend T P {:m (fn ...)}) does
+        'extend-type' -> form(runtime_extend_type(Args, A), A, E);
+        'extend-protocol' -> form(runtime_extend_protocol(Args, A), A, E);
+        %% a type or protocol defined inside an expression: its definition is
+        %% hoisted ahead of the top-level form (the JVM defines the class
+        %% when it compiles the form); the expression is its class / name
+        K when K =:= deftype; K =:= defrecord; K =:= defprotocol ->
+            is_list(get(?HOIST_KEY)) orelse syntax(A, {not_at_top_level, K}),
+            Tops = case K of
+                       defprotocol -> defprotocol_form(Args, A, E);
+                       _ -> deftype_form(K, Args, A, E)
+                   end,
+            put(?HOIST_KEY, lists:reverse(Tops) ++ get(?HOIST_KEY)),
+            Name = unwrap(hd(Args)),
+            case K of
+                defprotocol -> {const, A, Name};
+                _ -> {const, A, dotted(maps:get(ns, E), Name)}
+            end;
         K -> syntax(A, {not_at_top_level, K})
     end.
+
+runtime_extend_type([T | Specs], A) ->
+    ['clojure.core/extend', T |
+     lists:append([[P, method_map(Ms)] || {P, Ms} <- group_specs(Specs, A)])];
+runtime_extend_type([], A) -> syntax(A, bad_extend_type).
+
+runtime_extend_protocol([P | Specs], A) ->
+    ['do' | [['clojure.core/extend', T, P, method_map(Ms)] || {T, Ms} <- group_specs(Specs, A)]];
+runtime_extend_protocol([], A) -> syntax(A, bad_extend_protocol).
+
+%% (m [x] body) (m ([x] ..) ([x y] ..)) ... → {:m (fn ([x] ..) ..) ...}
+method_map(Specs) ->
+    Grouped = lists:foldl(
+                fun(Sp, Acc) ->
+                        [M | Rest] = unwrap(Sp),
+                        Name = unwrap(M),
+                        Clauses = case Rest of
+                                      [P | Body] ->
+                                          case clj2_form:vector_items(unwrap(P)) of
+                                              false -> Rest;
+                                              _ -> [[P | Body]]
+                                          end;
+                                      [] -> []
+                                  end,
+                        orddict:append_list(Name, Clauses, Acc)
+                end, orddict:new(), Specs),
+    {map, [], [{clj2_rt:keyword(atom_to_binary(Name)), ['clojure.core/fn' | Cs]} || {Name, Cs} <- Grouped]}.
 
 %% (. Target member args) / (. Target (member args)): a static member
 %% when Target names a JVM class (and is not a local), else an instance
@@ -1075,15 +1121,66 @@ destructured_params([Params | Body]) ->
 %% `this' as a fresh name and binds the user's name and every field not
 %% shadowed by a parameter.
 with_fields(Clause, none) -> Clause;
-with_fields([Params | Body], {Kind, FieldNames}) ->
+with_fields([Params | Body], {Kind, FieldNames, Mutable}) ->
     [This | Ps] = [unwrap(X) || X <- clj2_form:vector_items(unwrap(Params))],
     G = 'this__auto__',
     Shadowed = [This | Ps],
+    Live = [F || F <- Mutable, not lists:member(F, Shadowed)],
+    %% a mutable field is a cell: the body reads and set!s it live
     Binds = [[This, G] || This =/= '_'] ++
-            [[F, field_access(Kind, G, F, I)]
+            [[case lists:member(F, Live) of true -> cell_name(F); false -> F end,
+              field_access(Kind, G, F, I)]
              || {I, F} <- lists:zip(lists:seq(1, length(FieldNames)), FieldNames),
                 not lists:member(F, Shadowed)],
-    [clj2_coll:vector([G | Ps]), ['let*', clj2_coll:vector(lists:append(Binds)) | Body]].
+    Body1 = case Live of
+                [] -> Body;
+                _ -> [live_fields(X, Live) || X <- Body]
+            end,
+    [clj2_coll:vector([G | Ps]), ['let*', clj2_coll:vector(lists:append(Binds)) | Body1]].
+
+cell_name(F) -> list_to_atom(atom_to_list(F) ++ "__cell").
+
+%% a mutable field F in a method body: F reads its cell, (set! F x) writes
+%% it; quoted data is left alone, and in a syntax-quote only what is
+%% unquoted
+live_fields(W, Live) when ?CLJ2_IS_LOC(W) -> live_fields(?CLJ2_LOC_FORM(W), Live);
+live_fields(S, Live) when is_atom(S) ->
+    case lists:member(S, Live) of
+        true -> [qsym(clj2_ref, deref), cell_name(S)];
+        false -> S
+    end;
+live_fields([Q | _] = F, _Live) when Q =:= quote -> F;
+live_fields(['set!', T, X] = F, Live) ->
+    case unwrap(T) of
+        S when is_atom(S) ->
+            case lists:member(S, Live) of
+                true -> [qsym(clj2_ref, reset), cell_name(S), live_fields(X, Live)];
+                false -> ['set!', T, live_fields(X, Live)]
+            end;
+        _ -> F
+    end;
+live_fields(L, Live) when is_list(L) ->
+    case L of
+        [H | _] when ?CLJ2_IS_LOC(H) andalso ?CLJ2_LOC_FORM(H) =:= quote -> L;
+        [H, T, X] when ?CLJ2_IS_LOC(H) andalso ?CLJ2_LOC_FORM(H) =:= 'set!' -> live_fields(['set!', T, X], Live);
+        _ -> [live_fields(X, Live) || X <- L]
+    end;
+live_fields({syntax_quote, [], T}, Live) -> {syntax_quote, [], unquoted_only(T, Live)};
+live_fields({Tag, [], Items}, Live) when (Tag =:= vector orelse Tag =:= set), is_list(Items) ->
+    {Tag, [], [live_fields(X, Live) || X <- Items]};
+live_fields({map, [], Pairs}, Live) when is_list(Pairs) ->
+    {map, [], [{live_fields(K, Live), live_fields(V, Live)} || {K, V} <- Pairs]};
+live_fields({fnstar, [], [{arity, [], [Ps, Body]}]}, Live) -> {fnstar, [], [{arity, [], [Ps, live_fields(Body, Live)]}]};
+live_fields(X, _Live) -> X.
+
+unquoted_only(W, Live) when ?CLJ2_IS_LOC(W) -> unquoted_only(?CLJ2_LOC_FORM(W), Live);
+unquoted_only({U, [], X}, Live) when U =:= unquote; U =:= unquote_splicing -> {U, [], live_fields(X, Live)};
+unquoted_only(L, Live) when is_list(L) -> [unquoted_only(X, Live) || X <- L];
+unquoted_only({Tag, [], Items}, Live) when (Tag =:= vector orelse Tag =:= set), is_list(Items) ->
+    {Tag, [], [unquoted_only(X, Live) || X <- Items]};
+unquoted_only({map, [], Pairs}, Live) when is_list(Pairs) ->
+    {map, [], [{unquoted_only(K, Live), unquoted_only(V, Live)} || {K, V} <- Pairs]};
+unquoted_only(X, _Live) -> X.
 
 field_access(deftype, G, _F, I) -> [qsym(clj2_proto, record_field), G, I];
 field_access(defrecord, G, F, _I) ->
@@ -1095,16 +1192,25 @@ field_access(defrecord, G, F, _I) ->
 deftype_form(Kind, [N, FieldsVec | Specs], A, E = #{ns := Ns}) ->
     Name = binder(N, A),
     Tag = dotted(Ns, Name),
-    Fields = case clj2_form:vector_items(unwrap(FieldsVec)) of
-                 false -> syntax(A, {bad_fields, Name});
-                 Fs -> [binder(F, A) || F <- Fs]
-             end,
+    FieldForms = case clj2_form:vector_items(unwrap(FieldsVec)) of
+                     false -> syntax(A, {bad_fields, Name});
+                     Fs -> Fs
+                 end,
+    Fields = [binder(F, A) || F <- FieldForms],
+    %% ^:unsynchronized-mutable / ^:volatile-mutable fields (deftype): cells
+    Mutable = [binder(F, A) || F <- FieldForms, Kind =:= deftype,
+                               maps:is_key(':unsynchronized-mutable', name_meta(F))
+                               orelse maps:is_key(':volatile-mutable', name_meta(F))],
+    CtorVals = [case lists:member(F, Mutable) of
+                    true -> [qsym(clj2_ref, atom), F];
+                    false -> F
+                end || F <- Fields],
     Kws = [list_to_atom(":" ++ atom_to_list(F)) || F <- Fields],
     Ctor = list_to_atom("->" ++ atom_to_list(Name)),
     CtorBody = case Kind of
                    deftype ->
                        [qsym(erlang, list_to_tuple),
-                        cons_chain([[quote, Tag], nil, [qsym(erlang, list_to_tuple), cons_chain(Fields)]])];
+                        cons_chain([[quote, Tag], nil, [qsym(erlang, list_to_tuple), cons_chain(CtorVals)]])];
                    defrecord ->
                        [qsym(clj2_proto, record), [quote, Tag], [quote, Kws], cons_chain(Fields)]
                end,
@@ -1118,7 +1224,7 @@ deftype_form(Kind, [N, FieldsVec | Specs], A, E = #{ns := Ns}) ->
     Specs1 = drop_options(Specs),
     Defs ++ case Specs1 of
                 [] -> [];
-                _ -> extend_type_form([Name | Specs1], A, E, {Kind, Fields})
+                _ -> extend_type_form([Name | Specs1], A, E, {Kind, Fields, Mutable})
             end;
 deftype_form(Kind, _, A, _E) -> syntax(A, {bad_form, Kind}).
 
