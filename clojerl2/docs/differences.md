@@ -6,9 +6,9 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **实测佐证**:`test/clj2_divergence_evidence_tests.erl` 为每一条准备一个测试。如果哪天行为变了,测试就会失败,登记表必须跟着更新。CI 还会检查本文是否覆盖了每一条。
 - **corpus 门控**:corpus 里因这些差异而与 JVM 结果不同的条目,都标注了对应的差异编号(`make certify`)。
 
-下面共 32 条。每条依次是:JVM 上的行为 → clojerl2 上的行为 → 替代写法。
+下面共 33 条。每条依次是:JVM 上的行为 → clojerl2 上的行为 → 替代写法。
 
-另外有很多功能是**还没做**,不属于有意的差异,例如 atom、多方法、正则。那些列在 [README](README.md#现状2026-10)。
+另外有很多功能是**还没做**,不属于有意的差异,例如 atom、多方法。那些列在 [README](README.md#现状2026-10)。
 
 ---
 
@@ -49,6 +49,13 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **替代写法**:尽量直接操作字符串(`subs`、`clojure.string` 的函数、正则)。要表示某个字符组成的字符串,直接写字符串字面量,如 `"\u3000"`,JVM 上也成立;要从码点拼回字符串,用 `(unicode/characters_to_binary (list c))`。
 - 依据:designs/03 §1.1、§7。
 
+### `:regex/erlang-semantics` 正则按 Erlang 的 re
+
+- **JVM**:正则是 java.util.regex。
+- **clojerl2**:正则是 Erlang 的 `re`(PCRE2),这是项目决定(2026-10-13)。两者共有的语法(字符类、分组、命名分组、环视、`\p{..}`、内联标志)行为相同;Java 独有的写法与细节按 PCRE:不支持字符类交集 `[a&&b]`,`\cX` 是 PCRE 的控制字符(`\ca` 是 `\u0001`,不是 Java 对原字符异或 64),`(?x)` 不作用于转义的花括号与量词边界内部,look-behind 的长度规则与报错消息是 PCRE 的。
+- **替代写法**:写两者共有的子集:交集改写成一个字符类(`[a-z&&[^aeiou]]` 写成 `[b-df-hj-np-tv-z]`),控制字符写 `\x01` 或 `\u0001`,`(?x)` 的空白不要放进转义和量词边界里。
+- 依据:designs/03 §7。
+
 ## 函数与编译
 
 ### `:fn/arity-at-compile-time` 元数错误在编译期报告
@@ -75,7 +82,7 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 ### `:macros/defmacro-form` defmacro 是编译器形式
 
 - **JVM**:`(macroexpand-1 '(defmacro m [a] a))` 展开成 `(do (clojure.core/defn m ([&form &env a] a)) (. (var m) (setMacro)) (var m))`。
-- **clojerl2**:`defmacro` 由编译器直接处理,不是宏,`macroexpand-1` 原样返回它。
+- **clojerl2**:`defmacro` 由编译器直接处理,不是宏,`macroexpand-1` 原样返回它。`ns` 等其余内核形式也一样:clojure.core 里没有它们的 var,`(resolve 'defmacro)`、`(resolve 'ns)` 为 nil,`ns-map` 里也没有。
 - **替代写法**:不要依赖 `defmacro` 的展开结果;要判断一个 var 是不是宏,用 `(:macro (meta #'m))`。
 - 依据:designs/01 §5(parse 的内核形式)。
 
@@ -236,7 +243,7 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 ### `:host/jvm-classes` 只有常用的 JVM 成员
 
 - **JVM**:任何 Java 类都可以用互操作语法调用。
-- **clojerl2**:没有 JVM。互操作语法落到宿主垫片(`clj2_jvm`),实现了 java.lang、java.util、clojure.lang 里常用的成员(`Integer/parseInt`、`Math`、String 方法、异常构造器、`StringBuilder`、Var/Symbol/Keyword 成员……)。其他类不可用:java.io 的文件、流、reader 和 URL,java.net,java.text 与 java.time/Calendar(因此 `format` 的 `%t`),带种子的 `java.util.Random`,具名字符集,Thread 对象。用到时抛 IllegalArgumentException(no matching method)。
+- **clojerl2**:没有 JVM。互操作语法落到宿主垫片(`clj2_jvm`),实现了 java.lang、java.util、clojure.lang 里常用的成员(`Integer/parseInt`、`Math`、String 方法、异常构造器、`StringBuilder`、Var/Symbol/Keyword 成员……)。其他类不可用:java.io 的文件、流、reader 和 URL,java.net,java.text 与 java.time/Calendar(因此 `format` 的 `%t`),带种子的 `java.util.Random`,具名字符集,Thread 对象。用到时抛 IllegalArgumentException(no matching method)。类就是它的名字(一个符号):`(class "")` 是符号 `java.lang.String`,所以 `(str (class ""))` 是 `"java.lang.String"`(JVM 是 `"class java.lang.String"`)。
 - **替代写法**:用 Clojure 函数(`slurp`、`spit`、`clojure.string`、不带 `%t` 的 `format`、`rand`),或直接调 Erlang 模块:`file`、`filename`、`io`、`calendar`、`unicode`、`rand`、`erlang:system_time`(`(file/read_file path)`、`(calendar/universal_time)` ……)。
 - 依据:designs/09 §3。
 

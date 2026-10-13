@@ -22,21 +22,21 @@ clojerl2 还在开发中。下面是诚实的现状,不是路线图。
 - 标准库命名空间:`clojure.string`、`clojure.set`、`clojure.walk`、`clojure.template`、`clojure.test`(`deftest`/`is`/`are`/`run-tests` ……,见 [getting-started.md](getting-started.md))、`clojure.edn`(`read-string` 的 `:readers`/`:default`/`:eof`,按 EDN 严格校验)、`clojure.math`、`clojure.pprint`(`pprint`/`cl-format`)、`clojure.repl`(`doc`/`source`/`dir`/`apropos`);
 - reader:数字分组下划线(`1_000_000`)、记录字面量 `#ns.Rec{...}`/`#ns.Rec[...]`、`#=`、`*data-readers*`/`*default-data-reader-fn*`、`read-string` 的 `:features`/`:eof`,读错误的消息与异常类型同 JVM;
 - `#inst` 字面量(`java.util.Date`,`inst-ms`)与 `*print-length*`/`*print-level*`/`*print-namespace-maps*`;
-- 引用类型:atom、volatile、agent、future、promise、`binding`/`bound-fn`(ref/STM 有意不提供);
+- 引用类型:atom(`:meta`/`:validator` 选项、`alter-meta!`)、volatile、agent、future、promise、`binding`/`bound-fn`、`with-local-vars`(ref/STM 有意不提供);
+- 读与打印:`read`/`read+string`/`line-seq`、`print-method`/`print-dup` 多方法、`*print-meta*`、异常打印为 `#error {...}`;core 与标准库 var 带 JVM 的文档字符串和 arglists(`(doc map)`);Var 对象的 Java 方法(`bindRoot`/`alterRoot`/`setMacro`/`getTag`/`unbindRoot` ……);
 - var 的运行时改值:表达式里的 `def`、同一文件里重复的顶层 `def`、`alter-var-root`、`with-redefs`/`with-redefs-fn`(包括别的命名空间里的 var)、var 的 watch 与 validator、对动态 var 的 `set!`、`locking`;clojure.core 的 fn 不能改值(见 differences.md);
 - 多方法与层次:`defmulti`/`defmethod`、`derive`/`isa?`/`prefer-method`,支持自定义层次;
-- 字符串与 IO:正则(Java 语法,`re-find`/`re-seq`/`re-matches`…)、`clojure.string`、`format`/`printf`(java.util.Formatter 语法)、`*out*`/`*in*`/`*err*` 重定向、`with-out-str`/`with-in-str`、`slurp`/`spit`、UUID;
+- 字符串与 IO:正则(Erlang 的 re/PCRE,`re-find`/`re-seq`/`re-matches`…)、`clojure.string`、`format`/`printf`(java.util.Formatter 语法)、`*out*`/`*in*`/`*err*` 重定向、`with-out-str`/`with-in-str`、`slurp`/`spit`、UUID;
+- 宿主类:`Thread`(`.start`/`.join`)、`Executors` 线程池(`submit`/`invokeAll`/`invokeAny`)、命名字符集(`(String. bytes "windows-1252")`、`.getBytes`、`URLEncoder`/`URLDecoder`,UTF-8 坏字节按 JVM 替换)、`Murmur3`/`Util` 哈希、Keyword 方法、`Class/forName`;`deftype`/`defrecord` 可以声明 JVM 接口(`clojure.lang.IReduceInit`、`ISeq` ……),扩展到接口的协议能分派到它们,实现 `ISeq` 的类型可以当 seq 用;
 - BigDecimal:`1.5M` 字面量、算术、`with-precision`、`bigdec`、`format` 与常用的 `java.math.BigDecimal` 方法;
 - 字符串是 UTF-8,中文可直接使用。
 
-**还没有的**(括号里是 corpus 中因此失败的条目数,见 [corpus 基线](../notes/corpus-baseline.md);corpus 通过 4183 / 4841):
-- 编译器尚不接受的形式:`defrecord`/`extend-protocol` 写在表达式里、对字段的 `set!` 等(2 + 5)
-- 其余命名空间与 var 操作:`read`/`read+string`、一个文件里多个 `ns` 形式、`intern` 带元数据等(31)
-- 部分宿主类型与方法,例如从字节数组构造 `String`、字符集、JVM 接口分派(54)
-- var 对象的 Java 方法(`isBound`/`bindRoot`/`setMacro` 等)与局部 var 的绑定(18)
-- 打印:`print-method` 多方法、`*print-meta*`、`cl-format` 的 `~R` 英文基数词等(20);惰性求值的时机:`iterate`/`pmap` 等(9)
-- 其余 core 宏与函数的错误结果,例如 `for` 的 `:while`、`definline`(20);record(5);正则与 format 的边角(12 + 8)
+**还没有的**(括号里是 corpus 中因此失败的条目数,见 [corpus 基线](../notes/corpus-baseline.md);corpus 通过 4314 / 4841):
+- 编译器尚不接受的形式:`defrecord`/`extend-protocol` 写在表达式里、宏在编译期读取同一文件里 var 的运行时元数据(3);deftype 可变字段的 `set!`(1)
+- 列表的元数据在 `conj`/`pop`/`into` 后不保留(3)
+- 惰性求值的时机:带 transducer 的 `sequence` 不在调用时实现首元素、宏展开结果里 `~@` 的惰性(2)
+- 另有 17 条是 corpus 生成环境的问题(期望值来自 jolt 特有的写法或 JVM 上没有导入的类),不是功能缺失
 
-**clojure-test-suite**:[jank-lang/clojure-test-suite](https://github.com/jank-lang/clojure-test-suite)(`vendor/clojure-test-suite`,子模块)全量跑在 CI 里(`make cts`),247 个命名空间,断言通过 5733 / 失败 243 / 错误 388,逐命名空间的失败数登记在 `test/cts-known-failures.txt`,变好变坏都会让 CI 变红。
+**clojure-test-suite**:[jank-lang/clojure-test-suite](https://github.com/jank-lang/clojure-test-suite)(`vendor/clojure-test-suite`,子模块)全量跑在 CI 里(`make cts`),247 个命名空间,断言通过 5743 / 失败 233 / 错误 388,逐命名空间的失败数登记在 `test/cts-known-failures.txt`,变好变坏都会让 CI 变红。
 
-**与 JVM 有意不同的**:见 [differences.md](differences.md)。共 32 条,每条都有替代写法。
+**与 JVM 有意不同的**:见 [differences.md](differences.md)。共 33 条,每条都有替代写法。
