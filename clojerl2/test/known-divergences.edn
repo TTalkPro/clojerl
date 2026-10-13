@@ -65,7 +65,7 @@
   :alternative "Nothing to change for code that compiles on the JVM; use declare where the JVM needs it, for code meant to run on both."}
  {:id :macros/defmacro-form
   :area :compiler
-  :reason "defmacro is a form the compiler handles itself, not a macro: (macroexpand-1 '(defmacro m [a] a)) returns the form unchanged (JVM: a do with a defn taking &form and &env and a .setMacro call)."
+  :reason "defmacro is a form the compiler handles itself, not a macro: (macroexpand-1 '(defmacro m [a] a)) returns the form unchanged (JVM: a do with a defn taking &form and &env and a .setMacro call). So are ns and the other kernel forms: there is no clojure.core var for them, (resolve 'defmacro) and (resolve 'ns) are nil and ns-map does not list them."
   :design "designs/01 §5 (parse: kernel forms)"
   :alternative "Do not rely on the expansion of defmacro; use (:macro (meta #'m)) to ask whether a var is a macro."}
  {:id :interop/erlang-module-calls
@@ -154,9 +154,13 @@
   :design "designs/03 §1.3"
   :alternative "Do not rely on map order (Clojure does not promise it for hash maps either): sort the entries, keep an ordered vector of keys beside the map, or use a sorted-map when order matters."} {:id :host/jvm-classes
   :area :interop
-  :reason "There is no JVM: interop syntax reaches host shims (clj2_jvm) that implement the commonly used members of java.lang, java.util and clojure.lang (Integer/parseInt, Math, String methods, exception constructors, StringBuilder, Var/Symbol/Keyword ...). Other classes are not available: java.io files, streams, readers and URLs, java.net, java.text and java.time/Calendar (and so format's %t), seeded java.util.Random, named charsets, Thread objects. Using one raises IllegalArgumentException (no matching method)."
+  :reason "There is no JVM: interop syntax reaches host shims (clj2_jvm) that implement the commonly used members of java.lang, java.util and clojure.lang (Integer/parseInt, Math, String methods, exception constructors, StringBuilder, Var/Symbol/Keyword ...). Other classes are not available: java.io files, streams, readers and URLs, java.net, java.text and java.time/Calendar (and so format's %t), seeded java.util.Random, named charsets, Thread objects. Using one raises IllegalArgumentException (no matching method). A class is its name, a symbol: (class \"\") is the symbol java.lang.String, so str of a class is \"java.lang.String\" (JVM: \"class java.lang.String\")."
   :design "designs/09 §3"
-  :alternative "Use the Clojure functions (slurp, spit, clojure.string, format without %t, rand) or the Erlang modules directly: file, filename, io, calendar, unicode, rand, erlang:system_time ((file/read_file path), (calendar/universal_time) ...)."} {:id :reader/platform-feature
+  :alternative "Use the Clojure functions (slurp, spit, clojure.string, format without %t, rand) or the Erlang modules directly: file, filename, io, calendar, unicode, rand, erlang:system_time ((file/read_file path), (calendar/universal_time) ...)."} {:id :regex/erlang-semantics
+  :area :strings
+  :reason "Regular expressions are Erlang's re (PCRE2), not java.util.regex (a project decision): the syntax both share (classes, groups, named groups, lookaround, \\p{..}, inline flags) behaves the same, but Java-only constructs and quirks follow PCRE: character-class intersection [a&&b] is not supported, \\cX is PCRE's control escape (\\ca is \\u0001, not Java's xor-64 of the raw char), (?x) does not reach inside an escape's braces or a quantifier bound, look-behind length rules and error messages are PCRE's."
+  :design "designs/03 §7"
+  :alternative "Write patterns in the shared Java/PCRE subset: spell an intersection as a class of its own ([a-z&&[^aeiou]] as [b-df-hj-np-tv-z]), write control characters as \\x01 or \\u0001, keep (?x) whitespace outside escapes and bounds."} {:id :reader/platform-feature
   :area :interop
   :reason "The reader-conditional platform feature is :clje (as in clojerl 1.0), not :clj: #?(:clj a :clje b) reads b, and a #? with only :clj and :cljs branches reads as nothing. A .cljc library's :clj branches are JVM code (Java classes, interop), so they are skipped rather than compiled here. (read-string {:read-cond :allow :features #{:clj}} s) adds a feature when it is wanted."
   :design "designs/01 §1.1"
