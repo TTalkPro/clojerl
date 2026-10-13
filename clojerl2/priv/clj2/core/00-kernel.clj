@@ -79,12 +79,12 @@
 (def fn? (fn* fn? [x] (clj2_rt/is_fn x)))
 (def ifn? (fn* ifn? [x] (clj2_rt/is_ifn x)))
 (def vector? (fn* vector? [x] (clj2_coll/is_vector x)))
-(def map? (fn* map? [x] (clj2_coll/is_any_map x)))
+(def map? (fn* map? [x] (if (clj2_coll/is_any_map x) true (clj2_coll/is_record x))))
 (def set? (fn* set? [x] (clj2_coll/is_any_set x)))
 (def list? (fn* list? [x] (erlang/is_list x)))
 (def seq? (fn* seq? [x] (clj2_coll/is_seq x)))
 (def coll? (fn* coll? [x] (if (seq? x) true (if (vector? x) true (if (map? x) true (set? x))))))
-(def sequential? (fn* sequential? [x] (if (seq? x) true (vector? x))))
+(def sequential? (fn* sequential? [x] (if (seq? x) true (if (vector? x) true (clj2_class/is_instance 'clojure.lang.Sequential x)))))
 (def empty? (fn* empty? [coll] (nil? (seq coll))))
 
 ;;;; ------------------------------------------------------------------
@@ -110,7 +110,7 @@
 
 (def map
   (fn* map
-    ([f] (fn* [rf] (fn* ([] (rf)) ([r] (rf r)) ([r x] (rf r (f x))))))
+    ([f] (fn* [rf] (fn* ([] (rf)) ([r] (rf r)) ([r x] (rf r (f x))) ([r x & xs] (rf r (apply f x xs))))))
     ([f coll]
      (lazy-seq
        (let* [s (seq coll)]
@@ -276,7 +276,7 @@
                   (lazy-seq
                     (loop* [s (seq coll)]
                       (if s (if (pred (erlang/hd s)) (recur (next s)) s) nil)))))
-(def iterate (fn* iterate [f x] (lazy-seq (cons x (iterate f (f x))))))
+(def iterate (fn* iterate [f x] (lazy-seq (cons x (lazy-seq (iterate f (f x)))))))
 (def repeat (fn* repeat ([x] (lazy-seq (cons x (repeat x))))
               ;; the count is checked and truncated at the call (JVM: a long)
               ([n x] (if (erlang/is_number n) (take (erlang/trunc n) (repeat x)) (clj2_rt/not_number n)))))
@@ -458,17 +458,21 @@
     (if (symbol? pat)
       (list pat init)
       (if (vector? pat)
-        (let* [g (gensym "vec__")]
-          (loop* [ps (seq pat) i 0 out (list g init)]
+        ;; with a rest pattern the positions walk (seq init), as on the JVM,
+        ;; so a map or a set destructures too
+        (let* [g (gensym "vec__")
+               rest? (some (fn* [p] (= p '&)) pat)
+               gs (if rest? (gensym "seq__") g)]
+          (loop* [ps (seq pat) i 0 out (if rest? (list g init gs (list 'clojure.core/seq g)) (list g init))]
             (if ps
               (let* [p (erlang/hd ps)]
                 (if (= p '&)
                   (recur (nnext ps) i
-                         (concat out (destructure-1 (second ps) (list 'clojure.core/nthnext g i))))
+                         (concat out (destructure-1 (second ps) (list 'clojure.core/nthnext gs i))))
                   (if (= p :as)
                     (recur (nnext ps) i (concat out (list (second ps) g)))
                     (recur (next ps) (erlang/+ i 1)
-                           (concat out (destructure-1 p (list 'clojure.core/nth g i nil)))))))
+                           (concat out (destructure-1 p (list 'clojure.core/nth gs i nil)))))))
               out)))
         (if (map? pat)
           (let* [g (gensym "map__")

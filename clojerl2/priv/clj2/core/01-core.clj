@@ -513,7 +513,7 @@
     `(when-let [s# (seq ~xs)] (let [~x (first s#)] ~@body))))
 
 (defmacro cond-> [expr & clauses]
-  (let [g (gensym "cond__")
+  (let [g (gensym)
         steps (map (fn [[test step]]
                      `(if ~test (-> ~g ~step) ~g))
                    (partition 2 clauses))]
@@ -521,7 +521,7 @@
        ~(if (empty? steps) g (last steps)))))
 
 (defmacro cond->> [expr & clauses]
-  (let [g (gensym "cond__")
+  (let [g (gensym)
         steps (map (fn [[test step]]
                      `(if ~test (->> ~g ~step) ~g))
                    (partition 2 clauses))]
@@ -529,13 +529,13 @@
        ~(if (empty? steps) g (last steps)))))
 
 (defmacro some-> [expr & forms]
-  (let [g (gensym "some__")
+  (let [g (gensym)
         steps (map (fn [step] `(if (nil? ~g) nil (-> ~g ~step))) forms)]
     `(let [~g ~expr ~@(interleave (repeat g) (butlast steps))]
        ~(if (empty? steps) g (last steps)))))
 
 (defmacro some->> [expr & forms]
-  (let [g (gensym "some__")
+  (let [g (gensym)
         steps (map (fn [step] `(if (nil? ~g) nil (->> ~g ~step))) forms)]
     `(let [~g ~expr ~@(interleave (repeat g) (butlast steps))]
        ~(if (empty? steps) g (last steps)))))
@@ -581,20 +581,43 @@
      ret#))
 
 ;; (for [x xs :when t :let [..] :while t y ys] body), lazy
-(defmacro for [seq-exprs body-expr]
-  (let [emit (fn emit [bs]
-               (if (seq bs)
-                 (let [b (first bs) v (second bs) more (nnext bs)]
-                   (cond
-                     (= b :when) `(if ~v ~(emit more) '())
-                     (= b :let) `(let ~v ~(emit more))
-                     (= b :while) (emit more)
-                     :else
-                     (let [while-test (when (= :while (first more)) (second more))
-                           coll (if while-test `(take-while (fn [~b] ~while-test) ~v) v)]
-                       `(mapcat (fn [~b] ~(emit more)) ~coll))))
-                 `(list ~body-expr)))]
-    (emit (seq seq-exprs))))
+(defmacro for
+  "List comprehension. Modifiers after a binding apply in source order:
+  :let binds, :when skips an element, :while ends that binding's walk."
+  [seq-exprs body-expr]
+  (let [;; [[binding coll [[mod-key mod-val] ...]] ...]
+        groups (fn groups [bs acc]
+                 (if (seq bs)
+                   (let [k (first bs) v (second bs)]
+                     (if (keyword? k)
+                       (let [g (peek acc)]
+                         (groups (nnext bs) (conj (pop acc) [(nth g 0) (nth g 1) (conj (nth g 2) [k v])])))
+                       (groups (nnext bs) (conj acc [k v []]))))
+                   acc))
+        emit (fn emit [gs]
+               (let [g (first gs) more (next gs)
+                     b (nth g 0) coll (nth g 1) mods (nth g 2)
+                     step (gensym "step__") s (gensym "s__")
+                     inner (if more
+                             `(concat ~(emit more) (~step (rest ~s)))
+                             `(cons ~body-expr (~step (rest ~s))))
+                     chain (loop [ms (reverse mods) acc inner]
+                             (if (seq ms)
+                               (let [m (first ms) k (nth m 0) v (nth m 1)]
+                                 (recur (rest ms)
+                                        (cond
+                                          (= k :let) `(let ~v ~acc)
+                                          (= k :when) `(if ~v ~acc (~step (rest ~s)))
+                                          (= k :while) `(if ~v ~acc nil)
+                                          :else (throw (ex-info (str "Invalid 'for' keyword " k) {})))))
+                               acc))]
+                 `((fn ~step [~s]
+                     (lazy-seq
+                       (let [~s (seq ~s)]
+                         (when ~s
+                           (let [~b (first ~s)] ~chain)))))
+                   ~coll)))]
+    (emit (groups (seq seq-exprs) []))))
 
 ;;;; ------------------------------------------------------------------
 ;;;; Evaluation and namespaces (clojerl2-023, clj2_rt_eval)
@@ -761,8 +784,9 @@
 (defn var-set [v val] (clj2_var/var_set v val))
 (defmacro with-local-vars [name-vals-vec & body]
   (let [pairs (partition 2 name-vals-vec)]
-    `(let [~@(mapcat (fn [[n v]] [n (list 'clj2_ref/local_var v)]) pairs)]
-       ~@body)))
+    `(let [~@(mapcat (fn [[n v]] [n (list 'clj2_ref/local_var nil)]) pairs)]
+       (push-thread-bindings (hash-map ~@(mapcat (fn [[n v]] [n v]) pairs)))
+       (try ~@body (finally (pop-thread-bindings))))))
 (defmacro bound-fn [& fntail] `(bound-fn* (fn ~@fntail)))
 
 (defmacro binding [bindings & body]
@@ -1021,7 +1045,14 @@
        ~@body)))
 
 ;; a definline is a fn here (the compiler inlines nothing it is told to)
-(defmacro definline [name & decl] `(defn ~name ~@decl))
+(defmacro definline
+  "Like defmacro, but also a fn: its body is the template instantiated with
+  the argument symbols."
+  [name & decl]
+  (let [[pre-args [args expr]] (split-with (comp not vector?) decl)]
+    `(do (defn ~name ~@pre-args ~args ~(apply (eval (list `fn args expr)) args))
+         (alter-meta! (var ~name) assoc :inline (fn ~name ~args ~expr))
+         (var ~name))))
 
 (defmacro pvalues [& exprs] `(pcalls ~@(map (fn [e] (list `fn [] e)) exprs)))
 
@@ -1054,8 +1085,6 @@
 
 ;; an eduction is the transformed sequence (realized lazily, re-run per walk
 ;; on the JVM; here it is a lazy seq over the xform)
-(defn ->Eduction [xform coll] (sequence xform coll))
-(defn eduction [& args] (->Eduction (apply comp (butlast args)) (last args)))
 
 (defn partitionv
   ([n coll] (partitionv n n coll))
@@ -1108,8 +1137,19 @@
 
 ;; futures do the work in parallel; results come back in order
 (defn pmap
-  ([f coll] (map deref (doall (map (fn [x] (future (f x))) coll))))
-  ([f coll & colls] (map deref (doall (apply map (fn [& xs] (future (apply f xs))) coll colls)))))
+  "Like map, but f runs in parallel: semi-lazy, it stays a few elements
+  (the processor count + 2) ahead of the consumer."
+  ([f coll]
+   (let [n (+ 2 (erlang/system_info 'schedulers_online))
+         rets (map (fn [x] (future (f x))) coll)
+         step (fn step [[x & vs :as vs*] fs]
+                (lazy-seq
+                  (if-let [s (seq fs)]
+                    (cons (deref x) (step vs (rest s)))
+                    (map deref vs*))))]
+     (step rets (drop n rets))))
+  ([f coll & colls]
+   (pmap (fn [xs] (apply f xs)) (apply map vector coll colls))))
 (defn pcalls [& fns] (pmap (fn [f] (f)) fns))
 (defn seque ([s] (seq s)) ([n-or-q s] (seq s)))
 
@@ -1259,7 +1299,7 @@
 (def ^:dynamic *verbose-defrecords* false)
 (def ^:dynamic *allow-unresolved-vars* false)
 (def ^:dynamic *use-context-classloader* true)
-(def ^:dynamic *suppress-read* false)
+(def ^:dynamic *suppress-read* nil)
 (def ^:dynamic *file* nil)
 (def ^:dynamic *source-path* nil)
 (def ^:dynamic *math-context* nil)
@@ -1310,9 +1350,9 @@
 (defn vary-meta [x f & args] (with-meta x (apply f (meta x) args)))
 
 (defn reset-meta! [iref m]
-  (if (var? iref)
-    (do (clj2_ns/set_var_meta iref m) m)
-    (throw (ex-info "reset-meta!: only vars carry mutable metadata here" {:type :ClassCastException}))))
+  (cond (var? iref) (do (clj2_ns/set_var_meta iref m) m)
+        (#{'atom 'agent} (clj2_ref/type_of iref)) (clj2_ref/reset_ref_meta iref m)
+        :else (throw (ex-info "reset-meta!: only vars, atoms and agents carry mutable metadata" {:type :ClassCastException}))))
 (defn alter-meta! [iref f & args] (reset-meta! iref (apply f (meta iref) args)))
 (defn var? [x] (clj2_rt/is_var x))
 
@@ -1441,7 +1481,10 @@
 (defn xml-seq [root]
   (tree-seq (complement string?) (comp seq :content) root))
 
-(defn iterator-seq [iter] (seq iter))
+(defn iterator-seq [iter]
+  (if (= (clj2_class/class_of iter) (quote java.util.Iterator))
+    (lazy-seq (when (.hasNext iter) (cons (.next iter) (iterator-seq iter))))
+    (seq iter)))
 
 ;; tagged literals and reader conditionals as data (the reader makes them
 ;; for #tag forms it has no reader for, and for #? under :read-cond :preserve)
@@ -1457,8 +1500,7 @@
   (throw (ex-info "construct-proxy: proxies are not supported (no JVM classes)" {:type :UnsupportedOperationException})))
 (defn init-proxy [proxy mappings] nil)
 (defn update-proxy [proxy mappings] nil)
-(defn print-dup [x w]
-  (throw (ex-info "print-dup is not supported" {:type :UnsupportedOperationException})))
+
 
 ;; struct maps: maps that start with the basis keys
 (defn create-struct [& keys] (vec keys))

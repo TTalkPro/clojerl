@@ -39,7 +39,10 @@
 (defn satisfies?
   "True when x's type extends protocol p (directly or through default)."
   [p x]
-  (clj2_proto/satisfies (get p :name) x))
+  ;; a class or interface (clojure.lang.IObj ...): instance?
+  (if (map? p)
+    (clj2_proto/satisfies (get p :name) x)
+    (instance? p x)))
 
 (defn extends?
   "True when type tag t extends protocol p."
@@ -48,7 +51,7 @@
 
 (defn record?
   [x]
-  (if (clj2_proto/is_type_value x) (erlang/is_map (erlang/element 3 x)) false))
+  (clj2_coll/is_record x))
 
 (defn extend
   "Extends protocols to type at run time: (extend T P1 {:m (fn ...)} P2 {...})."
@@ -63,3 +66,12 @@
 (defn inst-ms [inst] (inst-ms* inst))
 (extend-protocol Inst java.util.Date (inst-ms* [d] (clj2_inst/millis d)))
 (defn inst? [x] (satisfies? Inst x))
+
+;; eduction: a reducible, seqable application of a transducer; not a seq,
+;; not a collection, no count (as the JVM's clojure.core.Eduction)
+(deftype Eduction [xform coll]
+  clojure.lang.Sequential
+  clojure.lang.Seqable
+  (seq [_] (seq (sequence xform coll)))
+  (count [_] (throw (ex-info "count not supported on this type: Eduction" {:type :UnsupportedOperationException}))))
+(defn eduction [& args] (->Eduction (apply comp (butlast args)) (last args)))
