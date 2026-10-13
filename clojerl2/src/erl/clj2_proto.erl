@@ -348,6 +348,7 @@ is_type_value(_) -> false.
 record(Tag, Fields, Values) when is_list(Values) ->
     note_fields(Tag, Fields),
     {Tag, nil, maps:from_list(lists:zip(Fields, Values))};
+record(Tag, Fields, M0) when is_map(M0) -> record(Tag, Fields, {map, nil, M0});
 record(Tag, Fields, {map, _, M}) ->
     note_fields(Tag, Fields),
     {Tag, nil, M}.

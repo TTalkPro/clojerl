@@ -17,7 +17,8 @@
 %%%-------------------------------------------------------------------
 -module(clj2_coll).
 
--export([ vector/1
+-export([ mk_map/2, raw_map/1
+        , vector/1
         , hash_map_kv/1
         , hash_set/1
         , vec_to_list/1
@@ -57,7 +58,13 @@ vector(L) when is_list(L) ->
     end.
 
 %% @doc A map from a flat `[K1, V1, K2, V2, ...]' list; later keys win.
-hash_map_kv(KVs) -> {map, nil, kv(KVs, #{})}.
+%% a map without metadata is a plain Erlang map (designs/10); one with
+%% metadata is {map, Meta, Map}
+hash_map_kv(KVs) -> kv(KVs, #{}).
+
+%% @doc A map value: plain, or wrapped when it carries metadata
+mk_map(nil, M) -> M;
+mk_map(Meta, M) -> {map, Meta, M}.
 
 kv([], M) -> M;
 kv([K, V | Rest], M) when is_list(Rest) -> kv(Rest, M#{nk(K) => V});
@@ -71,7 +78,8 @@ hash_set(L) when is_list(L) ->
 %% a map key or set element: metadata does not take part in equality, so
 %% a collection key is kept without it (^:foo [:a 1] and [:a 1] are the
 %% same key, as on the JVM)
-nk({Tag, M, D}) when M =/= nil, (Tag =:= vector orelse Tag =:= map orelse Tag =:= set
+nk({map, M, D}) when M =/= nil, is_map(D) -> D;                % maps are plain without meta
+nk({Tag, M, D}) when M =/= nil, (Tag =:= vector orelse Tag =:= set
                                  orelse Tag =:= lazy_seq orelse Tag =:= sorted_map
                                  orelse Tag =:= sorted_set) -> {Tag, nil, D};
 nk(K) -> K.
@@ -99,7 +107,6 @@ to_list({map, _, M}) -> [vector([K, V]) || {K, V} <- maps:to_list(M)];
 %% a native Erlang map is a Clojure map too (designs/10: host data in place)
 to_list(M) when is_map(M) -> [vector([K, V]) || {K, V} <- maps:to_list(M)];
 to_list({Tag, _, M}) when is_atom(Tag), is_map(M) -> [vector([K, V]) || {K, V} <- maps:to_list(M)];
-to_list({array, _, _} = A) -> clj2_array:to_list(A);
 to_list({Tag, _, _} = X) when is_atom(Tag) ->
     case type_seq(X) of
         {ok, S} -> to_list(S);
@@ -235,7 +242,6 @@ count(M) when is_map(M) -> map_size(M);
 count({set, _, M}) -> map_size(M);
 count(B) when is_binary(B) -> string:length(B);
 count({Tag, _, M}) when is_atom(Tag), is_map(M) -> map_size(M);
-count({array, _, _} = A) -> clj2_array:length(A);
 %% a deftype: its count method (Counted, IPersistentCollection ...), else
 %% the length of its seq
 count({Tag, _, _} = X) when is_atom(Tag) ->
@@ -266,11 +272,6 @@ nth(L, I, NotFound) when (is_list(L) orelse element(1, L) =:= lazy_seq), is_inte
 %% a string is indexed by code point, walking the UTF-8 binary: O(n)
 %% (JVM: UTF-16 units, O(1); known divergence :string/code-point-indexing)
 nth(B, I, NotFound) when is_binary(B), is_integer(I), I >= 0 -> nth_utf8(B, I, NotFound);
-nth({array, _, _} = A, I, NotFound) when is_integer(I) ->
-    case I >= 0 andalso I < clj2_array:length(A) of
-        true -> clj2_array:get(A, I);
-        false -> NotFound
-    end;
 nth(nil, _, NotFound) -> NotFound;
 %% a re-matcher: the groups of its last match (JVM Matcher.group(n))
 nth({matcher, _, _} = M, I, NotFound) when is_integer(I) ->
@@ -310,10 +311,9 @@ get({Tag, _, {_, _, _}} = S, K, NotFound) when Tag =:= sorted_map; Tag =:= sorte
         sorted_set -> case clj2_sorted:contains(S, K) of true -> K; false -> NotFound end
     end;
 get({map, _, M}, K, NotFound) -> maps:get(nk(K), M, NotFound);
-get(M, K, NotFound) when is_map(M) -> maps:get(K, M, NotFound);
+get(M, K, NotFound) when is_map(M) -> maps:get(nk(K), M, NotFound);
 %% a string by index: its code point
 get(B, I, NotFound) when is_binary(B), is_integer(I), I >= 0 -> nth(B, I, NotFound);
-get({array, _, _} = Arr, I, NotFound) when is_integer(I) -> nth(Arr, I, NotFound);
 %% a list by index too: JSON arrays from a host are Erlang lists, and
 %% (get-in body ["messages" 0 "content"]) is how a rule reads them
 %% (JVM: nil; known divergence :collections/list-index-get)
@@ -331,15 +331,15 @@ get({vector, _, T}, I, NotFound) when is_integer(I) ->
 get({Tag, _, M}, K, NotFound) when is_atom(Tag), is_map(M) -> maps:get(K, M, NotFound);  % record
 get(_, _, NotFound) -> NotFound.
 
-assoc(nil, K, V) -> {map, nil, #{K => V}};
+assoc(nil, K, V) -> #{K => V};
 assoc({map, Meta, M}, K, V) -> {map, Meta, M#{nk(K) => V}};
-assoc(M, K, V) when is_map(M) -> M#{K => V};
+assoc(M, K, V) when is_map(M) -> M#{nk(K) => V};
 assoc({sorted_map, _, {_, _, _}} = S, K, V) -> clj2_sorted:assoc(S, K, V);
 assoc({vector, Meta, T}, I, V) when is_integer(I), I >= 0, I < tuple_size(T) ->
     {vector, Meta, setelement(I + 1, T, V)};
 assoc({vector, Meta, T}, I, V) when I =:= tuple_size(T) ->
     {vector, Meta, erlang:append_element(T, V)};
-assoc({Tag, Meta, M}, K, V) when is_atom(Tag), is_map(M), Tag =/= set -> {Tag, Meta, M#{K => V}};   % record
+assoc({Tag, Meta, M}, K, V) when is_atom(Tag), is_map(M), Tag =/= set, Tag =/= transient -> {Tag, Meta, M#{K => V}};   % record
 assoc({vector, _, _}, I, _) when is_integer(I) ->
     erlang:error(clj2_rt:ex_info(<<"Index ", (integer_to_binary(I))/binary, " out of bounds">>,
                                  hash_map_kv([':type', ':IndexOutOfBoundsException']), nil));
@@ -350,13 +350,13 @@ assoc(X, _, _) ->
 
 dissoc(nil, _) -> nil;
 dissoc({map, Meta, M}, K) -> {map, Meta, maps:remove(nk(K), M)};
-dissoc(M, K) when is_map(M) -> maps:remove(K, M);
+dissoc(M, K) when is_map(M) -> maps:remove(nk(K), M);
 dissoc({sorted_map, _, {_, _, _}} = S, K) -> clj2_sorted:dissoc(S, K);
 %% a record: an extension key goes, the record stays; a declared field
 %% gone makes it a plain map (as on the JVM)
-dissoc({Tag, Meta, M}, K) when is_atom(Tag), is_map(M), Tag =/= set ->
+dissoc({Tag, Meta, M}, K) when is_atom(Tag), is_map(M), Tag =/= set, Tag =/= transient ->
     case lists:member(K, clj2_proto:record_fields(Tag)) of
-        true -> {map, Meta, maps:remove(K, M)};
+        true -> mk_map(Meta, maps:remove(K, M));
         false -> {Tag, Meta, maps:remove(K, M)}
     end;
 dissoc(X, _) -> cast_error(X, <<"clojure.lang.IPersistentMap">>).
@@ -376,10 +376,13 @@ conj({set, Meta, M}, X) -> {set, Meta, M#{nk(X) => nil}};
 conj({Tag, _, {_, _, _}} = S, X) when Tag =:= sorted_map; Tag =:= sorted_set -> clj2_sorted:conj(S, X);
 conj({map, Meta, M}, {vector, _, {K, V}}) -> {map, Meta, M#{nk(K) => V}};
 conj({map, Meta, M}, M2) when is_map(M2) -> {map, Meta, maps:merge(M, M2)};
-conj(M, {vector, _, {K, V}}) when is_map(M) -> M#{K => V};
+conj(M, {vector, _, {K, V}}) when is_map(M) -> M#{nk(K) => V};
 conj(M, {map, _, M2}) when is_map(M) -> maps:merge(M, M2);
 conj(M, M2) when is_map(M), is_map(M2) -> maps:merge(M, M2);
 conj(M, nil) when is_map(M) -> M;
+conj(M, {vector, _, _}) when is_map(M) ->
+    erlang:error(clj2_rt:ex_info(<<"Vector arg to map conj must be a pair">>,
+                                 hash_map_kv([':type', ':IllegalArgumentException']), nil));
 conj(M, X) when is_map(M) -> conj_entries(M, X);
 conj({map, Meta, M}, {map, _, M2}) -> {map, Meta, maps:merge(M, M2)};
 conj({map, _, _} = M, nil) -> M;
@@ -420,7 +423,7 @@ conj_entries(M, X) ->
 contains({transient, _, C}, K) -> contains(C, K);
 contains({Tag, _, {_, _, _}} = S, K) when Tag =:= sorted_map; Tag =:= sorted_set -> clj2_sorted:contains(S, K);
 contains({map, _, M}, K) -> is_map_key(nk(K), M);
-contains(M, K) when is_map(M) -> is_map_key(K, M);
+contains(M, K) when is_map(M) -> is_map_key(nk(K), M);
 contains({set, _, M}, K) -> is_map_key(nk(K), M);
 contains({vector, _, T}, I) when is_integer(I) -> I >= 0 andalso I < tuple_size(T);
 contains({Tag, _, M}, K) when is_atom(Tag), is_map(M) -> is_map_key(K, M);
@@ -429,7 +432,6 @@ contains(B, _) when is_binary(B) ->
     erlang:error(clj2_rt:ex_info(<<"contains? not supported on type: java.lang.String">>,
                                  hash_map_kv([':type', ':IllegalArgumentException']), nil));
 contains(nil, _) -> false;
-contains({array, _, _} = A, I) when is_integer(I) -> I >= 0 andalso I < clj2_array:length(A);
 contains({vector, _, _}, _) -> false;                        % a key that is no index
 %% lists, seqs, numbers, keywords ... are not associative: the JVM refuses
 contains(X, _) ->
@@ -481,6 +483,8 @@ equals(A, B) when A =:= B -> true;
 %% BigDecimals are equal by value (1.0M and 1.00M), as compareTo
 equals({decimal, _, _} = A, {decimal, _, _} = B) -> clj2_decimal:equals(A, B);
 %% a native Erlang map equals a Clojure map with the same entries
+equals({Tag, _, {_, _, _}} = S, X) when Tag =:= sorted_map; Tag =:= sorted_set -> equals(unsort(S), unsort(X));
+equals(X, {Tag, _, {_, _, _}} = S) when Tag =:= sorted_map; Tag =:= sorted_set -> equals(unsort(X), unsort(S));
 equals(A, B) when is_map(A); is_map(B) ->
     case {raw_map(A), raw_map(B)} of
         {MA, MB} when is_map(MA), is_map(MB) -> equals({map, nil, MA}, {map, nil, MB});
@@ -535,6 +539,6 @@ hash(X) -> clj2_hash:hasheq(X).
 
 %% a sorted collection's hash counterpart (for = and hash)
 unsort({sorted_map, _, {_, _, _}} = S) ->
-    {map, nil, maps:from_list([{K, V} || {vector, _, {K, V}} <- clj2_sorted:to_list(S)])};
+    maps:from_list([{K, V} || {vector, _, {K, V}} <- clj2_sorted:to_list(S)]);
 unsort({sorted_set, _, {_, _, _}} = S) -> {set, nil, maps:from_keys(clj2_sorted:to_list(S), nil)};
 unsort(X) -> X.

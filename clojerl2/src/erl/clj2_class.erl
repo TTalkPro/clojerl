@@ -51,22 +51,19 @@ class_of({sorted_map, _, {_, _, _}}) -> 'clojure.lang.PersistentTreeMap';
 class_of({sorted_set, _, {_, _, _}}) -> 'clojure.lang.PersistentTreeSet';
 class_of({ratio, _, _}) -> 'clojure.lang.Ratio';
 class_of({decimal, _, _}) -> 'java.math.BigDecimal';
-class_of({'java.util.Date', _, Ms}) when is_integer(Ms) -> 'java.util.Date';
 class_of({clj2_fn, _, _}) -> 'clojure.lang.AFunction';
 class_of({fnmeta, _, _}) -> 'clojure.lang.AFunction';
 class_of({clj2_reduced, _}) -> 'clojure.lang.Reduced';
-class_of({atom, _, _}) -> 'clojure.lang.Atom';
 class_of({volatile, _, _}) -> 'clojure.lang.Volatile';
-class_of({agent, _, _}) -> 'clojure.lang.Agent';
 class_of({delay, _, _}) -> 'clojure.lang.Delay';
 class_of({var, _, _}) -> 'clojure.lang.Var';
 class_of({regex, _, _}) -> 'java.util.regex.Pattern';
 class_of({uuid, _, _}) -> 'java.util.UUID';
 class_of({multifn, _, _}) -> 'clojure.lang.MultiFn';
-class_of({array, _, {atom, _, _}} = A) -> clj2_array:class_of(A);
 class_of({local_var, _, _}) -> 'clojure.lang.Var';
 class_of({transient, _, {vector, _, _}}) -> 'clojure.lang.PersistentVector$TransientVector';
 class_of({transient, _, {map, _, _}}) -> 'clojure.lang.PersistentHashMap$TransientHashMap';
+class_of({transient, _, M}) when is_map(M) -> 'clojure.lang.PersistentHashMap$TransientHashMap';
 class_of({transient, _, _}) -> 'clojure.lang.PersistentHashSet$TransientHashSet';
 class_of({'clojure.lang.ExceptionInfo', _, _} = E) -> exception_class(E);
 class_of({Host, nil, _}) when Host =:= 'java.lang.Thread'; Host =:= 'java.util.Iterator';
@@ -80,6 +77,7 @@ class_of(_) -> 'java.lang.Object'.
 type_of(X) ->
     case clj2_rt:meta(X) of
         {map, _, #{':type' := T}} -> T;
+        #{':type' := T} -> T;
         _ -> class_of(X)
     end.
 
@@ -242,7 +240,8 @@ simple(C) ->
 %%====================================================================
 
 %% @doc The JVM class of a caught error reason
-exception_class({'clojure.lang.ExceptionInfo', _, #{':data' := {map, _, #{':type' := T}}}}) when is_atom(T) ->
+exception_class({'clojure.lang.ExceptionInfo', _, #{':data' := D}}) when is_map(D), is_atom(map_get(':type', D)); is_tuple(D), element(1, D) =:= map, is_map(element(3, D)), is_atom(map_get(':type', element(3, D))) ->
+    T = case D of #{':type' := T0} -> T0; {map, _, #{':type' := T0}} -> T0 end,
     %% the runtime's own errors name the JVM class they stand for
     case clj2_rt:is_keyword(T) andalso by_simple_name(list_to_atom(tl(atom_to_list(T)))) of
         {ok, C} -> C;

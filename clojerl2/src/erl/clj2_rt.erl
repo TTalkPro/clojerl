@@ -43,7 +43,6 @@ invoke({clj2_fn, Fixed, Var} = F, Args) ->
 invoke(F, Args) when is_function(F) ->
     erlang:error({clj2_arity, length(Args), F});
 invoke({multifn, _, _} = MF, Args) -> clj2_multi:invoke(MF, Args);
-invoke({promise, _, _} = P, [V]) -> clj2_ref:deliver(P, V);          % a promise delivers when called
 invoke({fnmeta, _, F}, Args) -> invoke(F, Args);
 invoke({transient, _, C}, Args) -> invoke(C, Args);                       % lookup on a transient
 invoke({var, _, {_, _}} = V, Args) -> invoke(clj2_ref:deref(V), Args);     % a var calls its value
@@ -130,7 +129,6 @@ str1(A) when is_atom(A) -> atom_to_binary(A);           % symbols, keywords (':k
 str1(I) when is_integer(I) -> integer_to_binary(I);
 str1(F) when is_float(F) -> clj2_print:float_str(F);
 str1({Tag, _, S}) when (Tag =:= regex orelse Tag =:= uuid), is_binary(S) -> S;
-str1({'java.lang.StringBuilder', _, _} = B) -> clj2_jvm:builder_text(B);
 %% Throwable.toString: "class: message"; an ExceptionInfo adds its data
 str1({'clojure.lang.ExceptionInfo', _, _} = E) -> exception_str(E);
 %% a deftype or defrecord with its own toString
@@ -159,7 +157,7 @@ identical(X, Y) -> X =:= Y.
 %% @doc ifn?: what invoke takes (fns, keywords, symbols, maps, sets,
 %% vectors, vars, multimethods, transients of those)
 is_ifn(X) when is_atom(X) -> X =/= nil andalso X =/= true andalso X =/= false;
-is_ifn({Tag, _, _}) when Tag =:= map; Tag =:= set; Tag =:= vector; Tag =:= var; Tag =:= multifn; Tag =:= promise;
+is_ifn({Tag, _, _}) when Tag =:= map; Tag =:= set; Tag =:= vector; Tag =:= var; Tag =:= multifn;
                          Tag =:= sorted_map; Tag =:= sorted_set; Tag =:= transient -> true;
 is_ifn(M) when is_map(M) -> true;
 is_ifn(X) -> is_fn(X).
@@ -358,7 +356,7 @@ format(nil, _) -> cast_string(nil);
 format(Fmt, _) -> cast_string(Fmt).
 
 %% ex-info: a record-shaped value, thrown with erlang:error
-ex_info(Msg, nil, Cause) -> ex_info(Msg, {map, nil, #{}}, Cause);            % nil data reads back as {}
+ex_info(Msg, nil, Cause) -> ex_info(Msg, #{}, Cause);            % nil data reads back as {}
 ex_info(Msg, Data, Cause) ->
     {'clojure.lang.ExceptionInfo', nil, #{':message' => Msg, ':data' => Data, ':cause' => Cause}}.
 
@@ -372,7 +370,7 @@ throwable(_, {'clojure.lang.ExceptionInfo', _, _} = E) -> E;
 throwable(error, {clj2_compile, Loc, Why} = R) ->
     {Cause, CauseMsg} = compile_cause(Why),
     Inner = {'clojure.lang.ExceptionInfo', nil,
-             #{':message' => CauseMsg, ':data' => {map, nil, #{':type' => Cause}},
+             #{':message' => CauseMsg, ':data' => #{':type' => Cause},
                ':cause' => nil, ':host' => true, ':erlang' => {error, Why}}},
     Where = case Loc of
                 {L, C} when is_integer(L) -> io_lib:format("(~b:~b)", [L, C]);
@@ -381,7 +379,7 @@ throwable(error, {clj2_compile, Loc, Why} = R) ->
             end,
     {'clojure.lang.ExceptionInfo', nil,
      #{':message' => iolist_to_binary(["Syntax error compiling at ", Where, "."]),
-       ':data' => {map, nil, #{':type' => ':CompilerException'}},
+       ':data' => #{':type' => ':CompilerException'},
        ':cause' => Inner, ':host' => true, ':erlang' => {error, R}}};
 throwable(Class, Reason) ->
     C = case Class of
@@ -391,7 +389,7 @@ throwable(Class, Reason) ->
     [Simple | _] = lists:reverse(string:split(atom_to_binary(C), ".", all)),
     {'clojure.lang.ExceptionInfo', nil,
      #{':message' => erlang_message(Class, Reason),
-       ':data' => {map, nil, #{':type' => binary_to_atom(<<":", Simple/binary>>)}},
+       ':data' => #{':type' => binary_to_atom(<<":", Simple/binary>>)},
        ':cause' => nil, ':host' => true, ':erlang' => {Class, Reason}}}.
 
 %% @doc An Erlang error refined by the call that raised it, which the
@@ -438,7 +436,7 @@ refine(R, M, F, Args) ->
 
 host_error(Type, Msg, Orig) ->
     {'clojure.lang.ExceptionInfo', nil,
-     #{':message' => Msg, ':data' => {map, nil, #{':type' => Type}},
+     #{':message' => Msg, ':data' => #{':type' => Type},
        ':cause' => nil, ':host' => true, ':erlang' => Orig}}.
 
 compile_cause({_, {not_public, Msg}}) -> {':IllegalStateException', Msg};
@@ -638,11 +636,14 @@ meta({Tag, M, _}) when Tag =:= vector; Tag =:= map; Tag =:= set; Tag =:= lazy_se
                        Tag =:= fnmeta; Tag =:= sorted_map; Tag =:= sorted_set -> M;
 meta({Tag, M, D}) when is_atom(Tag), is_map(D) -> M;          % records
 meta({var, _, {Ns, Name}}) -> var_meta(Ns, Name);
-meta({Tag, _, _} = R) when Tag =:= atom; Tag =:= agent -> clj2_ref:ref_meta(R);
 meta(_) -> nil.
 
 %% a lazy seq is realized (seq) when it is given metadata, as on the JVM
 with_meta({lazy_seq, _, _} = L, M) -> _ = clj2_lazy:seq(L), {lazy_seq, M, element(3, L)};
+%% a map without metadata is a plain Erlang map
+with_meta({map, _, D}, nil) when is_map(D) -> D;
+with_meta(D, nil) when is_map(D) -> D;
+with_meta(D, M) when is_map(D) -> {map, M, D};
 with_meta({Tag, _, D}, M) when Tag =:= vector; Tag =:= map; Tag =:= set;
                                Tag =:= sorted_map; Tag =:= sorted_set ->
     {Tag, M, D};
@@ -671,7 +672,7 @@ var_meta(Ns, Name) ->
                        end,
             Extra = maps:get(meta, I, #{}),
             M0 = clj2_coll:hash_map_kv(Base ++ Opt ++ Arglists),
-            {map, nil, jvm_doc(Ns, Name, maps:merge(element(3, M0), Extra))};
+            jvm_doc(Ns, Name, maps:merge(clj2_coll:raw_map(M0), Extra));
         _ -> nil
     end.
 
@@ -724,12 +725,12 @@ jvm_docs() ->
 %% :arglists (quoted) unless the attr-map has one (Clojure's order)
 defn_meta(Doc, Attr, Sigs) ->
     M0 = case Doc of nil -> #{}; _ -> #{':doc' => Doc} end,
-    M1 = case Attr of {map, _, A} -> maps:merge(M0, A); _ -> M0 end,
+    M1 = case clj2_coll:raw_map(Attr) of A when is_map(A) -> maps:merge(M0, A); _ -> M0 end,
     M2 = case M1 of
              #{':arglists' := _} -> M1;
              _ -> M1#{':arglists' => [quote, [elide_env(S) || S <- clj2_coll:to_list(Sigs)]]}
          end,
-    {map, nil, M2}.
+    M2.
 
 %% a leading &form &env (a fn written as a macro's) is not in :arglists
 elide_env({vector, _, _} = V) ->
@@ -740,10 +741,11 @@ elide_env({vector, _, _} = V) ->
 elide_env(S) -> S.
 
 %% @doc Merge evaluated metadata into a var's (def with expression values)
-merge_var_meta({var, _, {Ns, Name}} = V, {map, _, M}) ->
+merge_var_meta({var, _, {Ns, Name}} = V, MM) when is_map(MM); element(1, MM) =:= map ->
+    M = clj2_coll:raw_map(MM),
     case clj2_ns:info(Ns) of
         {ok, #{vars := #{Name := I}}} ->
-            clj2_ns:set_var_meta(V, {map, nil, maps:merge(maps:get(meta, I, #{}), M)});
+            clj2_ns:set_var_meta(V, maps:merge(maps:get(meta, I, #{}), M));
         %% a compile-time segment's var is not registered (the namespace's
         %% own module registers it, with its metadata, when it loads)
         _ -> ok
