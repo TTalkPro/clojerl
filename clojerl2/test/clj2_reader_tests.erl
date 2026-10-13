@@ -294,7 +294,7 @@ quote_test_() ->
       , {<<"~x">>,       {1,1}, {unquote, [], x}}
       , {<<"~@x">>,      {1,1}, {unquote_splicing, [], x}}
       , {<<"@a">>,       {1,1}, {deref, [], a}}
-      , {<<"@(atom 1)">>, {1,1}, {deref, [], [atom, 1]}}
+      , {<<"@(box 1)">>, {1,1}, {deref, [], [box, 1]}}
       , {<<"`(a ~b ~@c)">>, {1,1},
          {syntax_quote, [], [a, {unquote, [], b}, {unquote_splicing, [], c}]}}
       , {<<"`(a ~(b))">>, {1,1},

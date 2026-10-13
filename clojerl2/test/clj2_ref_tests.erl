@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
-%%% @doc Reference types (clojerl2-018, designs/03 §5.2): atoms under
-%%% concurrent swap!, agent ordering, promises and futures across
+%%% @doc Reference types (clojerl2-018, designs/03 §5.2): the internal
+%%% cell under concurrent updates, the removed reference types, bindings across
 %%% processes, binding conveyance, the STM refusal.
 %%%-------------------------------------------------------------------
 -module(clj2_ref_tests).
@@ -20,124 +20,63 @@ plain(X) ->
         false -> X
     end.
 
-%% acceptance: many processes swap! one atom; no update is lost
-atom_concurrent_swap_test() ->
+%% the runtime's internal cell (no Clojure atom): many processes update
+%% one cell; no update is lost
+cell_concurrent_swap_test() ->
     setup(),
-    A = ev("(atom 0)"),
-    Inc = ev("(fn [a] (swap! a inc))"),
+    C = clj2_ref:cell(0),
+    Inc = fun(X) -> X + 1 end,
     Procs = 50, Each = 200,
     Self = self(),
-    [spawn(fun() -> [clj2_rt:invoke(Inc, [A]) || _ <- lists:seq(1, Each)], Self ! done end)
+    [spawn(fun() -> [clj2_ref:swap(C, Inc, nil) || _ <- lists:seq(1, Each)], Self ! done end)
      || _ <- lists:seq(1, Procs)],
     [receive done -> ok end || _ <- lists:seq(1, Procs)],
-    ?assertEqual(Procs * Each, clj2_ref:deref(A)).
+    ?assertEqual(Procs * Each, clj2_ref:deref(C)).
 
-atom_concurrent_maps_test() ->
+%% Clojure's atom is gone (designs/10): state lives in processes
+no_atom_test() ->
     setup(),
-    %% values that are themselves large: CAS compares versions, not values
-    A = ev("(atom {})"),
-    Put = ev("(fn [a i] (swap! a assoc i (vec (range 50))))"),
-    Self = self(),
-    [spawn(fun() -> [clj2_rt:invoke(Put, [A, P * 1000 + I]) || I <- lists:seq(1, 50)], Self ! done end)
-     || P <- lists:seq(1, 20)],
-    [receive done -> ok end || _ <- lists:seq(1, 20)],
-    ?assertEqual(1000, clj2_coll:count(clj2_ref:deref(A))).
+    {'EXIT', {{clj2_compile, _, {resolve, {unresolved_symbol, atom}}}, _}} = (catch ev("(atom 0)")),
+    {'EXIT', {{clj2_compile, _, {resolve, {unresolved_symbol, 'swap!'}}}, _}} = (catch ev("(swap! x inc)")).
 
-atom_ops_test() ->
+%% no future or promise (designs/10): concurrency is Erlang processes
+no_future_promise_test() ->
     setup(),
-    ?assertEqual([[1, 2], [2, 9], true, false, 10],
-                 plain(ev(
-                    "(let [a (atom 1)] [(swap-vals! a inc) (reset-vals! a 9) "
-                    "(compare-and-set! a 9 10) (compare-and-set! a 9 11) @a])"))),
-    ?assertEqual(':invalid', ev("(let [a (atom 1 :validator pos?)] (try (reset! a -1) (catch Exception e :invalid)))")),
-    ?assertEqual(1, ev("(let [a (atom 1 :validator pos?)] (try (swap! a dec) (catch Exception e nil)) @a)")),
-    ?assertEqual([[':k', 0, 1], [':k', 1, 5]],
-                 plain(ev("(let [log (atom []) a (atom 0)] "
-                                         "(add-watch a :k (fn [k r o n] (swap! log conj [k o n]))) "
-                                         "(swap! a inc) (reset! a 5) (remove-watch a :k) (reset! a 6) @log)"))),
-    %% an atom only read has no row; identity survives copies
-    ?assertEqual(true, ev("(let [a (atom 1) b a] (= a b))")),
-    ?assertEqual(false, ev("(= (atom 1) (atom 1))")).
-
-%% acceptance: actions run in the order they were sent
-agent_order_test() ->
-    setup(),
-    ?assertEqual(lists:seq(0, 199),
-                 plain(ev("(let [g (agent [])] (doseq [i (range 200)] (send g conj i)) (await g) @g)"))),
-    %% from several processes: each sender's actions stay in its order
-    G = ev("(agent [])"),
-    Send = ev("(fn [g p i] (send g conj [p i]))"),
-    Self = self(),
-    [spawn(fun() -> [clj2_rt:invoke(Send, [G, P, I]) || I <- lists:seq(1, 50)], Self ! done end)
-     || P <- lists:seq(1, 5)],
-    [receive done -> ok end || _ <- lists:seq(1, 5)],
-    true = clj2_ref:await([G], 5000),
-    Got = [clj2_coll:vec_to_list(X) || X <- clj2_coll:vec_to_list(clj2_ref:deref(G))],
-    ?assertEqual(250, length(Got)),
-    [?assertEqual(lists:seq(1, 50), [I || [Q, I] <- Got, Q =:= P]) || P <- lists:seq(1, 5)].
-
-agent_errors_test() ->
-    setup(),
-    ?assertEqual([true, 5, 5, nil],
-                 plain(ev("(let [g (agent 1)] (send g (fn [_] (throw (ex-info \"bad\" {})))) (await g) "
-                                         "[(some? (agent-error g)) (restart-agent g 5) @g (agent-error g)])"))),
-    %% a failed agent refuses sends
-    ?assertEqual(':refused', ev("(let [g (agent 1)] (send g (fn [_] (throw (ex-info \"bad\" {})))) (await g) "
-                                "(try (send g inc) :sent (catch Exception e :refused)))")),
-    %% :continue mode with a handler keeps going
-    ?assertEqual(2, ev("(let [seen (atom 0) g (agent 1 :error-handler (fn [a e] (swap! seen inc)))] "
-                       "(send g (fn [_] (throw (ex-info \"bad\" {})))) (send g inc) (await g) (+ @g (dec @seen)))")).
-
-promise_waiters_test() ->
-    setup(),
-    P = ev("(promise)"),
-    Self = self(),
-    [spawn(fun() -> Self ! {got, clj2_ref:deref(P)} end) || _ <- lists:seq(1, 10)],
-    timer:sleep(20),
-    ?assertEqual(P, clj2_ref:deliver(P, 42)),
-    ?assertEqual(nil, clj2_ref:deliver(P, 43)),          % delivered once
-    ?assertEqual(lists:duplicate(10, 42), [receive {got, V} -> V end || _ <- lists:seq(1, 10)]),
-    ?assertEqual(':timeout', ev("(deref (promise) 20 :timeout)")).
-
-future_test() ->
-    setup(),
-    ?assertEqual(3, ev("@(future (+ 1 2))")),
-    ?assertEqual(<<"in future">>, ev("(let [f (future (throw (ex-info \"in future\" {})))] "
-                                     "(try @f (catch Exception e (ex-message e))))")),
-    ?assertEqual([true, true, true], plain(ev(
-        "(let [f (future (clj2_proc/receive_any))] [(future-cancel f) (future-cancelled? f) (future-done? f)])"))),
-    ?assertEqual(':slow', ev("(deref (future (clj2_proc/receive_any)) 20 :slow)")).
+    [?assertMatch({'EXIT', {{clj2_compile, _, {resolve, {unresolved_symbol, S}}}, _}}, (catch ev(Src)))
+     || {S, Src} <- [{future, "(future 1)"}, {promise, "(promise)"}, {deliver, "(deliver p 1)"},
+                     {'future-call', "(future-call f)"}]],
+    %% pmap still runs in parallel processes
+    ?assertEqual([2, 3, 4], plain(ev("(pmap inc [1 2 3])"))).
 
 binding_test() ->
     setup(),
     ev("(def ^:dynamic *d* 1)"),
     ?assertEqual([2, 1], plain(ev("[(binding [*d* 2] *d*) *d*]"))),
     ?assertEqual(1, ev("(try (binding [*d* 2] (throw (ex-info \"x\" {}))) (catch Exception e *d*))")),
-    ?assertEqual(2, ev("(binding [*d* 2] @(future *d*))")),             % conveyed to the future
     ?assertEqual(3, ev("(let [f (binding [*d* 3] (bound-fn [] *d*))] (f))")),
-    ?assertEqual(4, ev("(let [g (agent 0)] (binding [*d* 4] (send g (fn [_] *d*))) (await g) @g)")),
+    ?assertEqual(4, ev("(binding [*d* 4] (let [me (erlang/self)] (erlang/spawn (bound-fn [] (erlang/send me *d*))) (clj2_proc/receive_any 1000 :timeout)))")),
     ev("(def plain 1)"),
     ?assertError({'clojure.lang.ExceptionInfo', _, #{':message' := <<"Can't dynamically bind non-dynamic var: t.refs/plain">>}},
                  ev("(binding [plain 2] plain)")).
 
-%% acceptance: STM raises, naming the registered divergence
-stm_refused_test() ->
+%% no STM, agents or volatiles either
+no_stm_agent_volatile_test() ->
     setup(),
-    {'EXIT', {{'clojure.lang.ExceptionInfo', _, #{':message' := Msg}}, _}} = (catch ev("(dosync 1)")),
-    ?assertNotEqual(nomatch, binary:match(Msg, <<":refs/no-stm">>)).
+    [?assertMatch({'EXIT', {{clj2_compile, _, {resolve, {unresolved_symbol, S}}}, _}}, (catch ev(Src)))
+     || {S, Src} <- [{dosync, "(dosync 1)"}, {ref, "(ref 1)"}, {agent, "(agent 1)"}, {'volatile!', "(volatile! 1)"}]].
 
-%% bugs the corpus showed once atoms could observe them
+%% bugs the corpus showed once side effects could observe them
 doseq_bindings_test() ->
     setup(),
-    ?assertEqual(4, ev("(let [c (atom 0)] (doseq [x [1 2] y [10 20]] (swap! c inc)) @c)")),
-    ?assertEqual([1, 3], plain(ev("(let [a (atom [])] (doseq [x [1 2 3] :when (odd? x)] (swap! a conj x)) @a)"))),
-    ?assertEqual(6, ev("(let [a (atom 0)] (doseq [x (range 10) :while (< x 4)] (swap! a + x)) @a)")),
+    ?assertEqual(4, ev("(let [c (clj2_ref/cell 0)] (doseq [x [1 2] y [10 20]] (clj2_ref/swap c inc nil)) @c)")),
+    ?assertEqual([1, 3], plain(ev("(let [a (clj2_ref/cell [])] (doseq [x [1 2 3] :when (odd? x)] (clj2_ref/swap a conj (list x))) @a)"))),
+    ?assertEqual(6, ev("(let [a (clj2_ref/cell 0)] (doseq [x (range 10) :while (< x 4)] (clj2_ref/swap a + (list x))) @a)")),
     ?assertEqual([10, 11, 20, 21],
-                 plain(ev("(let [a (atom [])] (doseq [x [1 2] :let [y (* x 10)] z [y (inc y)]] (swap! a conj z)) @a)"))),
+                 plain(ev("(let [a (clj2_ref/cell [])] (doseq [x [1 2] :let [y (* x 10)] z [y (inc y)]] (clj2_ref/swap a conj (list z))) @a)"))),
     ?assertEqual(nil, ev("(doseq [x []] (throw (ex-info \"never\" {})))")).
 
 delay_raises_once_test() ->
     setup(),
-    ?assertEqual([1, true], plain(ev("(let [n (atom 0) d (delay (swap! n inc) (throw (ex-info \"e\" {})))] "
+    ?assertEqual([1, true], plain(ev("(let [n (clj2_ref/cell 0) d (delay (clj2_ref/swap n inc nil) (throw (ex-info \"e\" {})))] "
                                      "(dotimes [_ 3] (try (deref d) (catch Exception _ nil))) [(deref n) (realized? d)])"))).
 

@@ -48,7 +48,7 @@ cerr(Src) ->
         "(defmacro my-and ([] true) ([x] x) ([x & r] `(let* [a# ~x] (if a# (my-and ~@r) a#))))\n"
         "(defn and3 [a b c] (my-and a b c))\n"
         %% &env and &form
-        "(defmacro nlocals [] (maps/size (erlang/element 3 &env)))\n"
+        "(defmacro nlocals [] (count &env))\n"
         "(defn two-locals [] (let* [a 1 b 2] (nlocals)))\n"
         "(defmacro form-len [& _] (erlang/length &form))\n"
         "(def three (form-len x y))\n"
@@ -118,7 +118,7 @@ syntax_quote_test_() ->
     , ?_assertEqual([1, 2, 3, 4], clj2_coll:to_list(ev("(let* [x 1 ys '(2 3)] `(~x ~@ys 4))")))
     , ?_assertEqual(nil, ev("(let* [ys []] `(~@ys))"))
     , ?_assertEqual({vector, nil, {1, 2}}, ev("(let* [x 2] `[1 ~x])"))
-    , ?_assertEqual({map, nil, #{':a' => 1}}, ev("(let* [x 1] `{:a ~x})"))
+    , ?_assertEqual(#{':a' => 1}, ev("(let* [x 1] `{:a ~x})"))
       %% the same x# within one syntax-quote is one symbol
     , ?_assertMatch([S, S], ev("`(x# x#)"))
     , ?_assertEqual({vector, nil, {}}, ev("`[]"))
@@ -127,12 +127,12 @@ syntax_quote_test_() ->
 literals_test_() ->
     [ ?_assertEqual({vector, nil, {1, 2}}, ev("[1 (erlang/+ 1 1)]"))
     , ?_assertEqual({vector, nil, {1, 2}}, ev("[1 2]"))
-    , ?_assertEqual({map, nil, #{':a' => 2}}, ev("{:a (erlang/+ 1 1)}"))
+    , ?_assertEqual(#{':a' => 2}, ev("{:a (erlang/+ 1 1)}"))
     , ?_assertEqual({set, nil, #{1 => nil}}, ev("#{1}"))
     , ?_assertEqual({vector, nil, {a, {vector, nil, {b}}}}, ev("'[a [b]]"))
     , ?_assertEqual(3, ev("(#(erlang/+ %1 %2) 1 2)"))
       %% a constant literal is built from its elements' values
-    , ?_assertEqual({map, nil, #{':a' => [1]}}, ev("{:a '(1)}"))
+    , ?_assertEqual(#{':a' => [1]}, ev("{:a '(1)}"))
     , ?_assertEqual({vector, nil, {[quote, x]}}, ev("'['x]"))
     ].
 

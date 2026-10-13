@@ -46,8 +46,8 @@ out_redirect_test() ->
     ?assertEqual(<<"captured 中\n"/utf8>>,
                  ev("(let [w (clj2_io/string_writer)] (binding [*out* w] (println \"captured\" \"中\")) (clj2_io/contents w))")),
     ?assertEqual(<<"a [1 x]\"q\"\n">>, ev("(with-out-str (print \"a\" [1 \"x\"]) (prn \"q\"))")),
-    %% bindings travel: a future's output is captured too
-    ?assertEqual(<<"from future">>, ev("(with-out-str @(future (print \"from future\")))")),
+    %% bindings travel: output from a process started with bound-fn is captured too
+    ?assertEqual(<<"from process">>, ev("(with-out-str (let [me (erlang/self)] (erlang/spawn (bound-fn [] (print \"from process\") (erlang/send me :done))) (clj2_proc/receive_any 1000 :timeout)))")),
     %% *err* is a device like any other
     ?assertEqual(<<"to err">>, ev("(with-out-str (binding [*err* *out*] (binding [*out* *err*] (print \"to err\"))))")),
     ?assertEqual(<<"x=3, y=ok">>, ev("(with-out-str (printf \"x=%d, y=%s\" 3 \"ok\"))")).

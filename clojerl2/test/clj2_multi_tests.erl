@@ -96,7 +96,7 @@ hierarchy_test() ->
 options_test() ->
     setup(),
     %% a pure hierarchy, through :hierarchy
-    ev("(def local-h (atom (-> (make-hierarchy) (derive :dog :animal))))"),
+    ev("(def local-h (-> (make-hierarchy) (derive :dog :animal)))"),
     ev("(defmulti speak identity :hierarchy #'local-h)"),
     ev("(defmethod speak :animal [_] :generic)"),
     ?assertEqual(':generic', ev("(speak :dog)")),

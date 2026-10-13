@@ -69,10 +69,7 @@ numbers_test() ->
     ?assertEqual(<<"[123 3]">>, pr("[(bigint \"123\") (bigint 7/2)]")),
     ?assertEqual(':t', ev("(try (parse-long 42) (catch IllegalArgumentException _ :t))")),
     ?assertEqual(<<"[3.0 -31.0 1.5 nil 0.5]">>,
-                 pr("[(parse-double \"0x1.8p1\") (parse-double \"-0x1fp0\") (Double/parseDouble \"1.5d\") (parse-double \"abc\") (parse-double \".5\")]")),
-    ?assertEqual(<<"[:nfe :nfe 127]">>,
-                 pr("[(try (Long/parseLong \"9223372036854775808\") (catch NumberFormatException _ :nfe))"
-                    " (try (Byte/decode \"0x80\") (catch NumberFormatException _ :nfe)) (Byte/decode \"0x7f\")]")).
+                 pr("[(parse-double \"0x1.8p1\") (parse-double \"-0x1fp0\") (parse-double \"1.5d\") (parse-double \"abc\") (parse-double \".5\")]")).
 
 alias_refer_test() ->
     setup(),
@@ -90,21 +87,17 @@ class_designators_test() ->
     %% an impl added later is seen by values that fell back before
     ?assertEqual(':set', ev("(do (pe #{}) (extend-protocol Pe java.util.Set (pe [s] :set)) (pe #{}))")).
 
-arrays_and_vars_test() ->
+vars_test() ->
     setup(),
-    ?assertEqual(<<"[[0 5 0] 3 (1 2 44) [\"a\" \"b\"] [2 4 6]]">>,
-                 pr("(let [a (long-array 3)] (aset a 1 5)"
-                    " [(vec a) (alength a) (seq (byte-array [1 2 300])) (vec (into-array [\"a\" \"b\"]))"
-                    "  (vec (amap (int-array [1 2 3]) i r (* 2 (aget r i))))])")),
-    ?assertEqual('[J', ev("(class (long-array 1))")),
-    ?assertEqual(<<"Index 5 out of bounds for length 1">>,
-                 ev("(try (aget (long-array 1) 5) (catch ArrayIndexOutOfBoundsException e (ex-message e)))")),
+    %% Java arrays are not provided (clojerl2-053)
+    [?assertError({clj2_compile, _, {resolve, {unresolved_symbol, S}}}, ev(atom_to_list(S) ++ " 1"))
+     || S <- ['long-array', 'aget', 'into-array', 'make-array']],
     ?assertEqual(<<"[10 2]">>, pr("(with-local-vars [x 1 y 2] (var-set x 10) [(var-get x) @y])")),
     ev("(def ^:dynamic *wb* 1)"),
     ?assertEqual(<<"[2 [3 1]]">>,
                  pr("[(with-bindings* {(var *wb*) 2} (fn [] *wb*))"
                     " (do (push-thread-bindings {(var *wb*) 3}) (let [v *wb*] (pop-thread-bindings) [v *wb*]))]")),
-    ?assertEqual(<<"(\"A\" \"B\")">>, pr("(map (memfn toUpperCase) [\"a\" \"b\"])")).
+    ?assertEqual(<<"(\"A\" \"B\")">>, pr("(map (memfn getMessage) [(ex-info \"A\" {}) (ex-info \"B\" {})])")).
 
 extend_test() ->
     setup(),

@@ -30,8 +30,4 @@ hash_code_test() ->
     setup(),
     ?assertEqual([-1640531430, -626406081, -1640531527],
                  clj2_coll:to_list(ev("[(hash-combine 0 \"a\") (hash-combine 17 :kw) (hash-combine 0 nil)]"))),
-    ?assertEqual([1014124337, 1013910665, 99162322],
-                 clj2_coll:to_list(ev("[(.hashCode :kw) (.hashCode :a/b) (.hashCode \"hello\")]"))),
-    ?assertEqual(<<"17862">>, ev("(format \"%h\" \"abc\")")),
-    %% a code point beyond the BMP counts as two UTF-16 units
-    ?assertEqual(1772899, ev("(.hashCode \"\\uD83D\\uDE00\")")).
+    ?assertEqual(<<"17862">>, ev("(format \"%h\" \"abc\")")).
