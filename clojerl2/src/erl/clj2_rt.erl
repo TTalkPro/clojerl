@@ -184,7 +184,13 @@ keyword(Ns, Name) -> cast_string(if is_binary(Ns) -> Name; true -> Ns end).
 
 symbol(nil) ->
     erlang:error(ex_info(<<"no conversion to symbol">>, clj2_coll:hash_map_kv([':type', ':IllegalArgumentException']), nil));
-symbol(S) when is_atom(S) -> S;
+%% a keyword's symbol drops the colon; a var's is its qualified name
+symbol(S) when is_atom(S) ->
+    case is_keyword(S) of
+        true -> list_to_atom(tl(atom_to_list(S)));
+        false -> S
+    end;
+symbol({var, _, {Ns, Name}}) -> binary_to_atom(<<(atom_to_binary(Ns))/binary, $/, (atom_to_binary(Name))/binary>>);
 symbol(B) when is_binary(B) -> binary_to_atom(B);
 symbol(_) ->
     erlang:error(ex_info(<<"no conversion to symbol">>, clj2_coll:hash_map_kv([':type', ':IllegalArgumentException']), nil)).

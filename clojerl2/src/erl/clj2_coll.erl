@@ -60,14 +60,21 @@ vector(L) when is_list(L) ->
 hash_map_kv(KVs) -> {map, nil, kv(KVs, #{})}.
 
 kv([], M) -> M;
-kv([K, V | Rest], M) when is_list(Rest) -> kv(Rest, M#{K => V});
+kv([K, V | Rest], M) when is_list(Rest) -> kv(Rest, M#{nk(K) => V});
 kv([_], _) -> erlang:error({clj2_odd_map_literal});
 kv(L, M) -> kv(to_list(L), M).                       % a lazy tail (apply's rest)
 
 hash_set(L) when is_list(L) ->
-    try {set, nil, maps:from_keys(L, nil)}
-    catch error:badarg -> {set, nil, maps:from_keys(to_list(L), nil)}
-    end.
+    Xs = try length(L) of _ -> L catch error:badarg -> to_list(L) end,   % a lazy tail
+    {set, nil, maps:from_keys([nk(X) || X <- Xs], nil)}.
+
+%% a map key or set element: metadata does not take part in equality, so
+%% a collection key is kept without it (^:foo [:a 1] and [:a 1] are the
+%% same key, as on the JVM)
+nk({Tag, M, D}) when M =/= nil, (Tag =:= vector orelse Tag =:= map orelse Tag =:= set
+                                 orelse Tag =:= lazy_seq orelse Tag =:= sorted_map
+                                 orelse Tag =:= sorted_set) -> {Tag, nil, D};
+nk(K) -> K.
 
 vec_to_list({vector, _, T}) -> tuple_to_list(T).
 
@@ -261,6 +268,13 @@ nth({array, _, _} = A, I, NotFound) when is_integer(I) ->
         false -> NotFound
     end;
 nth(nil, _, NotFound) -> NotFound;
+%% a re-matcher: the groups of its last match (JVM Matcher.group(n))
+nth({matcher, _, _} = M, I, NotFound) when is_integer(I) ->
+    case clj2_re:groups(M) of
+        {vector, _, _} = G -> nth(G, I, NotFound);
+        S when I =:= 0 -> S;
+        _ -> NotFound
+    end;
 nth({vector, _, _}, _, NotFound) -> NotFound;
 nth(L, _, NotFound) when is_list(L); is_binary(L) -> NotFound;
 nth({lazy_seq, _, _}, _, NotFound) -> NotFound;
@@ -291,12 +305,13 @@ get({Tag, _, {_, _, _}} = S, K, NotFound) when Tag =:= sorted_map; Tag =:= sorte
         sorted_map -> clj2_sorted:get(S, K, NotFound);
         sorted_set -> case clj2_sorted:contains(S, K) of true -> K; false -> NotFound end
     end;
-get({map, _, M}, K, NotFound) -> maps:get(K, M, NotFound);
+get({map, _, M}, K, NotFound) -> maps:get(nk(K), M, NotFound);
 %% a string by index: its code point
 get(B, I, NotFound) when is_binary(B), is_integer(I), I >= 0 -> nth(B, I, NotFound);
+get({array, _, _} = Arr, I, NotFound) when is_integer(I) -> nth(Arr, I, NotFound);
 get({set, _, M}, K, NotFound) ->
-    case is_map_key(K, M) of
-        true -> K;
+    case is_map_key(nk(K), M) of
+        true -> nk(K);
         false -> NotFound
     end;
 get({vector, _, T}, I, NotFound) when is_integer(I) ->
@@ -308,7 +323,7 @@ get({Tag, _, M}, K, NotFound) when is_atom(Tag), is_map(M) -> maps:get(K, M, Not
 get(_, _, NotFound) -> NotFound.
 
 assoc(nil, K, V) -> {map, nil, #{K => V}};
-assoc({map, Meta, M}, K, V) -> {map, Meta, M#{K => V}};
+assoc({map, Meta, M}, K, V) -> {map, Meta, M#{nk(K) => V}};
 assoc({sorted_map, _, {_, _, _}} = S, K, V) -> clj2_sorted:assoc(S, K, V);
 assoc({vector, Meta, T}, I, V) when is_integer(I), I >= 0, I < tuple_size(T) ->
     {vector, Meta, setelement(I + 1, T, V)};
@@ -324,7 +339,7 @@ assoc(X, _, _) ->
                                  hash_map_kv([':type', ':ClassCastException']), nil)).
 
 dissoc(nil, _) -> nil;
-dissoc({map, Meta, M}, K) -> {map, Meta, maps:remove(K, M)};
+dissoc({map, Meta, M}, K) -> {map, Meta, maps:remove(nk(K), M)};
 dissoc({sorted_map, _, {_, _, _}} = S, K) -> clj2_sorted:dissoc(S, K);
 %% a record: an extension key goes, the record stays; a declared field
 %% gone makes it a plain map (as on the JVM)
@@ -346,9 +361,9 @@ conj(nil, X) -> [X];
 conj(L, X) when is_list(L) -> [X | L];
 conj({lazy_seq, _, _} = L, X) -> [X | L];
 conj({vector, Meta, T}, X) -> {vector, Meta, erlang:append_element(T, X)};
-conj({set, Meta, M}, X) -> {set, Meta, M#{X => nil}};
+conj({set, Meta, M}, X) -> {set, Meta, M#{nk(X) => nil}};
 conj({Tag, _, {_, _, _}} = S, X) when Tag =:= sorted_map; Tag =:= sorted_set -> clj2_sorted:conj(S, X);
-conj({map, Meta, M}, {vector, _, {K, V}}) -> {map, Meta, M#{K => V}};
+conj({map, Meta, M}, {vector, _, {K, V}}) -> {map, Meta, M#{nk(K) => V}};
 conj({map, Meta, M}, {map, _, M2}) -> {map, Meta, maps:merge(M, M2)};
 conj({map, _, _} = M, nil) -> M;
 conj({map, _, _}, {vector, _, _}) ->
@@ -387,15 +402,22 @@ conj_entries(M, X) ->
 
 contains({transient, _, C}, K) -> contains(C, K);
 contains({Tag, _, {_, _, _}} = S, K) when Tag =:= sorted_map; Tag =:= sorted_set -> clj2_sorted:contains(S, K);
-contains({map, _, M}, K) -> is_map_key(K, M);
-contains({set, _, M}, K) -> is_map_key(K, M);
+contains({map, _, M}, K) -> is_map_key(nk(K), M);
+contains({set, _, M}, K) -> is_map_key(nk(K), M);
 contains({vector, _, T}, I) when is_integer(I) -> I >= 0 andalso I < tuple_size(T);
 contains({Tag, _, M}, K) when is_atom(Tag), is_map(M) -> is_map_key(K, M);
 contains(B, I) when is_binary(B), is_integer(I) -> I >= 0 andalso I < string:length(B);
 contains(B, _) when is_binary(B) ->
     erlang:error(clj2_rt:ex_info(<<"contains? not supported on type: java.lang.String">>,
                                  hash_map_kv([':type', ':IllegalArgumentException']), nil));
-contains(_, _) -> false.
+contains(nil, _) -> false;
+contains({array, _, _} = A, I) when is_integer(I) -> I >= 0 andalso I < clj2_array:length(A);
+contains({vector, _, _}, _) -> false;                        % a key that is no index
+%% lists, seqs, numbers, keywords ... are not associative: the JVM refuses
+contains(X, _) ->
+    erlang:error(clj2_rt:ex_info(<<"contains? not supported on type: ",
+                                   (atom_to_binary(clj2_class:class_of(X)))/binary>>,
+                                 hash_map_kv([':type', ':IllegalArgumentException']), nil)).
 
 keys({map, _, M}) -> seq(maps:keys(M));
 keys({sorted_map, _, {_, _, _}} = S) -> clj2_sorted:keys(S);
@@ -422,7 +444,7 @@ pop_vector({vector, _, {}}) ->
 pop_vector({vector, M, T}) -> {vector, M, erlang:delete_element(tuple_size(T), T)}.
 
 %% @doc disj of a hash set (its metadata kept)
-disj_set({set, M, S}, K) -> {set, M, maps:remove(K, S)}.
+disj_set({set, M, S}, K) -> {set, M, maps:remove(nk(K), S)}.
 
 %% @doc (subvec v start end): indices truncate, as the JVM's (int) casts do
 subvec({vector, _, T}, S0, E0) ->
