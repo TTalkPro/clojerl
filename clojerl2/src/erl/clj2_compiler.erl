@@ -119,7 +119,8 @@ impl_unit({extend, A, TypeSym, ProtoSym, Methods}, Ns, NsVars, Ctx, Opts) ->
     Proto = protocol_id(A, ProtoSym, Ns, NsVars, Ctx),
     Mod = clj2_proto:impl_module(Proto, Tag),
     {Forms, _} = compile_tops(Methods, Ns, Mod, NsVars, false,
-                              Ctx#{unit => impl, impl_of => {Proto, Tag}}, Opts),
+                              Ctx#{unit => impl, impl_of => {Proto, Tag},
+                                   inline => erl_anno:generated(A)}, Opts),
     {Mod, Forms}.
 
 %% The protocol a symbol names: `ns.P' for the var P of namespace ns.
@@ -136,9 +137,21 @@ protocol_id(A, Sym, Ns, NsVars, #{aliases := Al, refers := Rf}) ->
             _ ->
                 case Rf of
                     #{Sym := T} -> clj2_ns:refer_target(Sym, T);
-                    _ -> fail(A, {unresolved_protocol, Sym})
+                    _ -> {interface, Sym}
                 end
         end,
+    protocol_id1(A, Sym, PNs, Name, Ns, NsVars).
+
+%% a JVM interface or class a deftype/defrecord declares
+%% (clojure.lang.IReduceInit, ISeq ...): its methods are an impl of their
+%% own, under the class's name, and the class is among the type's supers
+%% (clj2_class:direct/1), so protocols extended to it reach the type
+protocol_id1(A, Sym, interface, _, _, _) ->
+    case clj2_class:resolve(Sym) of
+        {ok, C} -> C;
+        error -> fail(A, {unresolved_protocol, Sym})
+    end;
+protocol_id1(A, Sym, PNs, Name, Ns, NsVars) ->
     Known = case PNs =:= Ns of
                 true -> is_map_key(Name, NsVars);
                 false -> case clj2_ns:info(PNs) of
@@ -146,8 +159,14 @@ protocol_id(A, Sym, Ns, NsVars, #{aliases := Al, refers := Rf}) ->
                              error -> false
                          end
             end,
-    Known orelse fail(A, {unresolved_protocol, Sym}),
-    list_to_atom(atom_to_list(PNs) ++ "." ++ atom_to_list(Name)).
+    case Known of
+        true -> list_to_atom(atom_to_list(PNs) ++ "." ++ atom_to_list(Name));
+        false ->
+            case clj2_class:resolve(Sym) of
+                {ok, C} -> C;
+                error -> fail(A, {unresolved_protocol, Sym})
+            end
+    end.
 
 %% @doc Compile and load a namespace; its `__ns_init__' runs on load.
 %%
@@ -457,7 +476,10 @@ compile_time_require(Args, C = #{ns := Ns, aliases := Al, refers := Rf}) ->
         false -> C;
         true ->
             {Aliases, Refers} = clj2_rt_eval:load_specs([V || {const, _, V} <- Args], Ns),
-            C#{aliases := maps:merge(Al, Aliases), refers := maps:merge(Rf, Refers)}
+            %% an alias rebound to another namespace raises when the
+            %% require runs (clj2_rt_eval:require/1); the first one stands
+            Fresh = maps:filter(fun(A, _) -> not is_map_key(A, Al) end, Aliases),
+            C#{aliases := maps:merge(Al, Fresh), refers := maps:merge(Rf, Refers)}
     end.
 
 %% A top-level refer or refer-clojure with constant arguments runs now,
@@ -688,7 +710,7 @@ compile_tops(Tops, Ns, M, Prior, Register, Ctx, Opts) ->
     #{vars := Declared} = St1,
     Vars = maps:merge(Prior, Declared),
     St2 = St1#{ns := Ns, vars := Vars, unit => Unit, module => M, register => Register,
-               impl_of => maps:get(impl_of, Ctx, none),
+               impl_of => maps:get(impl_of, Ctx, none), inline => maps:get(inline, Ctx, false),
                %% what the module's init registers besides its vars: the
                %% explicit aliases and refers (the implicit clojure.core
                %% refer is known to the registry already)

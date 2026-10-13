@@ -158,7 +158,7 @@ top1(F, A0, E) ->
 
 %% (def name) | (def name init) | (def name "doc" init)
 def_form([N | Rest], A, E) ->
-    def_form(binder(N, A), name_meta(N), Rest, A, E);
+    def_form(def_name(N, A, E), name_meta(N), Rest, A, E);
 def_form([], A, _E) -> syntax(A, bad_def).
 
 def_form(Name, Meta00, Rest, A, E) ->
@@ -429,6 +429,13 @@ form({clj2_loc, _, _, Inner, Meta} = W, _Anno, E) when is_map(Meta), map_size(Me
 form(W, _Anno, E) when ?CLJ2_IS_LOC(W) ->
     form(?CLJ2_LOC_FORM(W), anno(W), E);
 form(X, A, _E) when is_integer(X); is_float(X); is_binary(X) -> {const, A, X};
+%% a fn value in code (a macro spliced one in): a fun is no BEAM literal,
+%% so it is kept in this node's table and fetched when the code runs
+%% (the JVM cannot embed one in AOT-compiled code either)
+form(F, A, E) when is_function(F); is_tuple(F), (element(1, F) =:= clj2_fn orelse element(1, F) =:= fnmeta) ->
+    Key = erlang:phash2(F),
+    persistent_term:put({clj2_fn_const, Key}, F),
+    form(['clj2_rt/fn_const', Key], A, E);
 form(X, A, _E) when X =:= nil; X =:= true; X =:= false -> {const, A, X};
 form(X, A, E) when is_atom(X) ->
     case is_keyword(X) of
@@ -526,7 +533,14 @@ coll(Ctor, Items, _X, A, E) ->
         false -> {invoke, A, {sym, A, qsym(clj2_coll, Ctor)}, [{list, A, Nodes}]}
     end.
 
-list_form(quote, _, [D], _F, A, E) -> {const, A, kws(quoted_data(D, A, E), E)};
+list_form(quote, _, [D], _F, A, E) ->
+    case kws(quoted_data(D, A, E), E) of
+        %% a list with metadata is a lazy seq holding it: no literal, so it
+        %% is rebuilt when the code runs
+        {lazy_seq, M, _} = L when M =/= nil ->
+            call(A, clj2_rt, with_meta, [{const, A, clj2_coll:to_list(L)}, {const, A, M}]);
+        V -> {const, A, V}
+    end;
 list_form('if', _, [C, T], _F, A, E) -> {'if', A, form(C, A, E), form(T, A, E), {const, A, nil}};
 list_form('if', _, [C, T, El], _F, A, E) -> {'if', A, form(C, A, E), form(T, A, E), form(El, A, E)};
 list_form('do', _, Body, _F, A, E) -> body(Body, A, E);
@@ -714,8 +728,9 @@ data_form(F, Ns) ->
 %% a collection's reader metadata (^:k [..]) stays on the value, as it does
 %% on the JVM (clj2_form:to_data keeps it the same way)
 form_data({clj2_loc, _, _, Inner, Meta} = W, _A, E)
-  when is_map(Meta), map_size(Meta) > 0, is_tuple(Inner),
-       (element(1, Inner) =:= vector orelse element(1, Inner) =:= map orelse element(1, Inner) =:= set) ->
+  when is_map(Meta), map_size(Meta) > 0,
+       (is_list(Inner) orelse is_tuple(Inner) andalso
+        (element(1, Inner) =:= vector orelse element(1, Inner) =:= map orelse element(1, Inner) =:= set)) ->
     clj2_rt:with_meta(form_data(Inner, anno(W), E),
                       clj2_coll:hash_map_kv(lists:append([[K, form_data(V, anno(W), E)] || {K, V} <- maps:to_list(Meta)])));
 form_data(W, _A, E) when ?CLJ2_IS_LOC(W) -> form_data(?CLJ2_LOC_FORM(W), anno(W), E);
@@ -828,6 +843,22 @@ pairs_of([S, X | Rest]) -> [{S, X} | pairs_of(Rest)].
 add_locals(Names, E = #{locals := Ls}) ->
     E#{locals := maps:merge(Ls, maps:from_keys(Names, true))}.
 
+%% a def's name: ns/name is the name when ns is this namespace (a
+%% syntax-quoted def in a macro), as on the JVM
+def_name(W, A, E = #{ns := Ns}) ->
+    case unwrap(W) of
+        S when is_atom(S) ->
+            case is_qualified(S) andalso string:split(atom_to_list(S), "/") of
+                [Q, N] when N =/= "" ->
+                    case list_to_atom(Q) =:= Ns orelse maps:get(list_to_atom(Q), maps:get(aliases, E, #{}), none) =:= Ns of
+                        true -> list_to_atom(N);
+                        false -> syntax(pos(W, A), {def_outside_namespace, S})
+                    end;
+                _ -> binder(W, A)
+            end;
+        _ -> binder(W, A)
+    end.
+
 binder(W, A) ->
     case unwrap(W) of
         S when is_atom(S), S =/= nil, S =/= true, S =/= false, S =/= '&' ->
@@ -926,9 +957,13 @@ defprotocol_form([N | Rest0], A, E = #{ns := Ns}) ->
                     {MName, pos(S, A), Params, MDoc};
                 _ -> syntax(pos(S, A), bad_protocol_method)
             end || S <- drop_options(Rest), not is_binary(unwrap(S))],
-    Methods = [{def, MA, MName, #{},
+    %% a method var's meta names its protocol's var, as on the JVM
+    Methods = [{def, MA, MName,
+                maps:merge(#{':protocol' => {var, nil, {Ns, Name}},
+                             ':arglists' => [clj2_form:to_data(P) || P <- Params]},
+                           case MDoc of nil -> #{}; _ -> #{':doc' => MDoc} end),
                 fn([MName | [dispatch_clause(Proto, MName, P, MA) || P <- Params]], MA, E)}
-               || {MName, MA, Params, _} <- Sigs],
+               || {MName, MA, Params, MDoc} <- Sigs],
     %% :sigs as on the JVM: {:msig {:name msig :arglists ([this] ...) :doc .. :tag nil}}
     SigMap = clj2_coll:hash_map_kv(
                lists:append([[clj2_rt:keyword(atom_to_binary(M)),
@@ -968,7 +1003,10 @@ extend_type_form([T | Specs], A, E, Fields) ->
                S when is_atom(S) -> S;
                _ -> syntax(A, bad_extend_type)
            end,
-    [{extend, A, Type, P, method_tops(Ms, A, E, Fields)} || {P, Ms} <- group_specs(Specs, A)];
+    %% an inline impl (deftype/defrecord's own) is marked generated: it is
+    %% not an extension that (extenders P) lists
+    A1 = case Fields of none -> A; _ -> erl_anno:set_generated(true, A) end,
+    [{extend, A1, Type, P, method_tops(Ms, A, E, Fields)} || {P, Ms} <- group_specs(Specs, A)];
 extend_type_form([], A, _E, _) -> syntax(A, bad_extend_type).
 
 %% (extend-protocol P T1 (m ...) T2 (m ...))
