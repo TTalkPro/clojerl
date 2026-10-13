@@ -32,3 +32,19 @@ clojerl2 保持通用:不包含任何特定宿主的代码。宿主怎么接入,
 
 见 TASK.md M7:044 嵌入 API、045 Erlang 原生 map 作为 Clojure 集合、046 数据转换、047 版本化热替换、
 048 性能基准、049 嵌入文档与示例。
+
+## 4. 后续决定(2026-10-13)
+
+- **并发与状态用 Erlang**:保留 Clojure 的核心语法体系;atom、volatile、agent、future、promise、ref/STM 一律删除,
+  并发就是 Erlang 进程与消息。保留 var(动态绑定、`bound-fn`、watch、validator)。
+- **`receive`**:带模式匹配的选择性接收,编译成 Erlang 原生 receive;向量模式匹配 tuple 或 list。
+- **数据直接交给 Erlang**:没有元数据的 map 就是 Erlang map;向量在调用 Erlang 函数时自动深层转成 list
+  (运行时模块、标准库、运算符与类型判断除外)。
+
+- **JVM 特性只留与语言本身相关的**(053):保留 deftype、defrecord、协议,异常(构造、方法、按类 catch),
+  BigDecimal,作为 writer 的 io 设备,以及任何值的 toString / equals / hashCode;删除 Java 类的垫片
+  (String、Math、Integer/Long/Double/Character 等静态成员、System、Thread/Executors、StringBuilder、
+  Java 集合与 Iterator、UUID/Random 类、字符集与 URL 编码、Keyword/Symbol/Var/RT/Murmur3 的成员)和 Java 数组。
+  `clojure.math` 改由 `clj2_math` 实现。`#inst` 读作 Erlang 时间(毫秒整数)。
+
+任务:TASK.md M7 的 050–053。

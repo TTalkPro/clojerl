@@ -39,7 +39,7 @@ ok = clj2:ensure(),                                   %% 启动运行时、加�
 
 宿主的数据通常是 Erlang 原生 term(JSON 解码后是 map、binary、list、`null`)。Clojure 代码可以直接操作它们:
 
-- **Erlang map 就是 Clojure map**:`get`、`assoc`、`dissoc`、`update`、`get-in`、`assoc-in`、`update-in`、`keys`、`vals`、`seq`、
+- **Erlang map 就是 Clojure map**(同一种值):`get`、`assoc`、`dissoc`、`update`、`get-in`、`assoc-in`、`update-in`、`keys`、`vals`、`seq`、
   `count`、`contains?`、`merge`、`select-keys`、`reduce-kv`、`map?`、`=`,以及把 map 当函数用 `(m "k")`。修改 Erlang map
   得到的仍是 Erlang map,交还宿主不需要转换。
 - **字符串是 binary**,`clojure.string` 与正则直接可用。
@@ -48,11 +48,12 @@ ok = clj2:ensure(),                                   %% 启动运行时、加�
 - **键保留原样**:JSON 的键是 binary,就写 `"model"`;不会转成关键字,不产生新的 atom。
 - **`null`** 是 atom `null`,在 Clojure 里是符号 `'null`,不是 `nil`。
 
-Clojure 代码用字面量和函数新建的值是 Clojure 自己的结构(`[...]` 是 vector、`{...}` 是 Clojure map、`:k` 是关键字)。
+Clojure 的 map 就是 Erlang map,脚本新建的 `{...}` 宿主可以直接用。还需要注意的是向量:`[...]` 是 Clojure 自己的结构
+(脚本调用 Erlang 函数时会自动转成 list,但作为 `clj2:call/3` 的返回值交还宿主时不会),关键字 `:k` 是 atom `':k'`。
 要交给只认 Erlang term 的宿主(例如 JSON 编码器)时,在边界上转换一次:
 
 ```erlang
-clj2_data:to_erl(V)                    %% vector、set、seq → list;Clojure map → map;:k → <<"k">>
+clj2_data:to_erl(V)                    %% vector、set、seq → list;带元数据的 map → map;:k → <<"k">>
 clj2_data:to_erl(V, #{nil => null})    %% 另把 nil 转成 null
 clj2_data:from_erl(T, #{keys => keyword, null => nil, lists => vector})   %% 反方向
 ```

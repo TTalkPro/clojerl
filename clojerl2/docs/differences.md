@@ -8,7 +8,7 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 
 下面共 34 条。每条依次是:JVM 上的行为 → clojerl2 上的行为 → 替代写法。
 
-另外有很多功能是**还没做**,不属于有意的差异,例如 atom、多方法。那些列在 [README](README.md#现状2026-10)。
+另外有很多功能是**还没做**,不属于有意的差异。那些列在 [README](README.md#现状2026-10)。
 
 ---
 
@@ -101,8 +101,7 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
   - 运行时自身抛出的错误在 `ex-data` 的 `:type` 里注明了对应的 JVM 类;
   - Erlang 的 exit 和 throw 只能被 `:exit`/`:throw`/`:default`/`Exception`/`Throwable` 捕获;
   - 模型里没有的 JVM 类在编译期报错;
-  - future 主体抛出的异常,`deref` 时原样重新抛出,不包装成 `ExecutionException`。
-- **替代写法**:照 JVM 的写法捕获需要的类即可;如果要区分 Erlang 错误对应的具体 JVM 子类,就捕获一个更宽的类(`RuntimeException`),再在处理代码里看 `(ex-data e)` 或消息。
+  - **替代写法**:照 JVM 的写法捕获需要的类即可;如果要区分 Erlang 错误对应的具体 JVM 子类,就捕获一个更宽的类(`RuntimeException`),再在处理代码里看 `(ex-data e)` 或消息。
 - 依据:designs/09 §3。
 
 ## 协议
@@ -159,34 +158,24 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 ### `:dynamic/per-process-bindings` 动态绑定属于进程
 
 - **JVM**:任何线程上都可以用 `bound-fn` 带上绑定;`future`、agent 自动带上。
-- **clojerl2**:动态绑定存在进程字典里。`future`、agent 的动作和 `bound-fn` 会把调用方的绑定带过去,与 JVM 一致;其他进程(`erlang/spawn` 启动的、Erlang 回调的)一开始没有任何绑定,看到的是根值。REPL 的当前命名空间,以及 `*1`/`*2`/`*3`/`*e`,也是绑定。
+- **clojerl2**:动态绑定存在进程字典里。`bound-fn` 会把调用方的绑定带过去(也带进用它启动的进程),与 JVM 一致;其他进程(`erlang/spawn` 启动的、Erlang 回调的)一开始没有任何绑定,看到的是根值。REPL 的当前命名空间,以及 `*1`/`*2`/`*3`/`*e`,也是绑定。
 - **替代写法**:交给 `erlang/spawn` 或 Erlang 代码的 fn,先用 `bound-fn` 包一层;或者把值显式作为参数、消息传过去。
 - 依据:designs/03 §3。
 
 ## 状态
 
-### `:refs/no-stm` 没有 ref 和 STM
+### `:state/erlang-concurrency` 并发与状态用 Erlang 进程
 
-- **JVM**:`ref`、`dosync`、`alter` 提供多对象事务。
-- **clojerl2**:`ref`/`dosync`/`sync`/`alter`/`commute`/`ref-set`/`ensure` 都会抛出 ex-info 说明不支持。BEAM 没有多对象事务内存,假装支持就是在隔离性上说谎。
-- **替代写法**:把一起变化的状态放进同一个值:用一个 atom 存一个 map(`swap!` 原子地更新它),或者交给一个 agent / gen_server 持有,通过消息更新。
-- 依据:designs/03 §5.2。
+- **JVM**:atom、volatile、agent、future、promise、ref/STM 提供共享状态与并发。
+- **clojerl2**:这些都不提供(`atom`、`swap!`、`reset!`、`compare-and-set!`、`volatile!`、`vswap!`、`agent`、`send`、`await`、`future`、`promise`、`deliver`、`ref`、`dosync`、`alter` ……)。BEAM 上的状态与并发就是 Erlang 进程与消息(designs/10)。保留的是 var:动态绑定、`bound-fn`(把绑定带进它启动的进程)、`with-local-vars`、var 的 watch 与 validator;`pmap`、`pcalls` 仍在多个进程里并行执行。
+- **替代写法**:一个进程自己的状态用 `loop`/`recur` 的值或进程自身的循环状态;并发用 `erlang/spawn`(需要动态绑定时配合 `bound-fn`)、`erlang/send` 与 `receive`;多个进程共享的状态交给一个进程(gen_server)通过消息更新;计数器、缓存可以通过 Erlang 互操作用 ets 表。
+- 依据:designs/10 §2。
 
 ### `:state/explicit-lifetime` 可变单元不会被回收
 
-- **JVM**:atom、promise、agent 不再被引用时由 GC 回收。
-- **clojerl2**:BEAM 没有终结器,也没有弱引用,无法得知一个值何时不再被引用。因此:
-  - 写过的 atom 会一直保留它的 ETS 行,直到虚拟机停止;只读过的 atom 不占任何空间;
-  - promise、future 的结果行,以及 agent 的进程,也一直保留;
-  - volatile 存在创建它的进程的进程字典里,进程退出时才释放,其他进程读不到。
-- **替代写法**:长期存在的 atom 和 agent 只创建一次(用 `def`),不要在长期运行的进程里每次调用都新建;每个请求的临时状态放在局部绑定、`loop`/`recur` 或进程自身的状态里;短期工作交给单独的进程,进程退出时它的 volatile 随之释放。
-- 依据:designs/03 §5.2。
-
-### `:agents/process-per-agent` 每个 agent 一个进程
-
-- **JVM**:`send` 和 `send-off` 用不同的线程池;动作执行期间发出的 send 会暂存,动作成功后才派发;`shutdown-agents` 之后再 send 会抛异常。
-- **clojerl2**:每个 agent 是一个进程,按到达顺序执行动作。`send` 和 `send-off` 共用这一个队列;动作执行期间发出的 send 立即派发;`shutdown-agents` 什么也不做。
-- **替代写法**:普通用法不用改。不要依赖"失败的动作里发出的 send 会被丢弃",也不要依赖 `shutdown-agents` 停止 agent。
+- **JVM**:不再被引用的对象由 GC 回收。
+- **clojerl2**:运行时自己的可变单元(Java 数组、StringBuilder、deftype 的可变字段、memoize 的缓存)一经写入,就保留一行 ETS 直到虚拟机停止。BEAM 没有终结器,也没有弱引用,无法得知值何时变成垃圾。
+- **替代写法**:长期存在的数组、builder、memoize 的函数只创建一次(用 `def`),不要在长期运行的进程里每次调用都新建;每个请求的临时状态放在局部绑定或 `loop`/`recur` 的值里。
 - 依据:designs/03 §5.2。
 
 ### `:values/no-identity` 值没有对象身份
@@ -248,12 +237,25 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 
 ## 宿主
 
-### `:host/jvm-classes` 只有常用的 JVM 成员
+### `:host/jvm-classes` 不提供 Java 类
 
 - **JVM**:任何 Java 类都可以用互操作语法调用。
-- **clojerl2**:没有 JVM。互操作语法落到宿主垫片(`clj2_jvm`),实现了 java.lang、java.util、clojure.lang 里常用的成员(`Integer/parseInt`、`Math`、String 方法、异常构造器、`StringBuilder`、Var/Symbol/Keyword 成员……)。其他类不可用:java.io 的文件、流、reader 和 URL,java.net,java.text 与 java.time/Calendar(因此 `format` 的 `%t`),带种子的 `java.util.Random`,具名字符集,Thread 对象。用到时抛 IllegalArgumentException(no matching method)。类就是它的名字(一个符号):`(class "")` 是符号 `java.lang.String`,所以 `(str (class ""))` 是 `"java.lang.String"`(JVM 是 `"class java.lang.String"`)。
-- **替代写法**:用 Clojure 函数(`slurp`、`spit`、`clojure.string`、不带 `%t` 的 `format`、`rand`),或直接调 Erlang 模块:`file`、`filename`、`io`、`calendar`、`unicode`、`rand`、`erlang:system_time`(`(file/read_file path)`、`(calendar/universal_time)` ……)。
-- 依据:designs/09 §3。
+- **clojerl2**:没有 JVM,也不提供 Java 类,它们的工作由 Clojure 函数和 Erlang 模块来做。互操作语法只保留给 clojerl2 自己有的东西:deftype/defrecord 的值(协议方法、字段、`(Rec. ...)`、`__extmap`/`__meta`),异常(`(Exception. msg)`、`(.getMessage e)`、按类 catch),BigDecimal(构造、方法、MathContext、RoundingMode),作为 writer 的 io 设备(`.write`/`.append`/`.flush`,给 print-method 用),以及任何值的 `toString`/`equals`/`hashCode`。Java 类的静态成员、字段和方法(String、Math、`Long/MAX_VALUE`、Character、System、Thread、Executors、StringBuilder、ArrayList、Iterator、UUID、Random、字符集、URLEncoder、Keyword/Symbol/Var/RT/Murmur3 的成员)和 Java 数组(`long-array`、`aget`、`into-array`……)用到时抛 IllegalArgumentException(no matching method),或者编译时报符号无法解析。类就是它的名字(一个符号):`(class "")` 是符号 `java.lang.String`,所以 `(str (class ""))` 是 `"java.lang.String"`(JVM 是 `"class java.lang.String"`)。
+- **替代写法**:用 Clojure 函数(`clojure.string`、`clojure.math`、`parse-long`、`slurp`、`spit`、`format`、`rand`),或直接调 Erlang 模块:`math`、`string`、`binary`、`lists`、`file`、`io`、`calendar`、`unicode`、`rand`、`erlang:system_time`(`(math/sqrt 2.0)`、`(binary/part s 0 3)`、`(erlang/spawn f)` ……);数组用向量和列表代替。
+- 依据:designs/09 §3,designs/10 §4。
+
+### `:host/inst-millis` `#inst` 是 Erlang 时间
+
+- **JVM**:`#inst "2020-01-01"` 读作 `java.util.Date`,打印回 `#inst "..."`。
+- **clojerl2**:读作 Erlang 时间,即自纪元(UTC)起的毫秒整数,和 `erlang:system_time(millisecond)` 的表示相同。它打印成那个整数;`Inst`(`inst?`、`inst-ms`)扩展到整数上,所以 `(inst? 42)` 为 true,`(inst-ms 42)` 是 42。
+
+```clojure
+#inst "2020-01-01T00:00:00Z"
+;=> 1577836800000
+```
+
+- **替代写法**:时刻就用毫秒整数;要格式化用 `calendar:system_time_to_rfc3339`,解析用 `#inst` 或 `calendar:rfc3339_to_system_time`。
+- 依据:designs/10 §4。
 
 ### `:reader/platform-feature` reader 条件的平台特性是 `:clje`
 
