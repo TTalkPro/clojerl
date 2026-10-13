@@ -612,10 +612,7 @@
 (defn read-string
   ([s] (clj2_rt_eval/read_string s))
   ;; opts: :eof is the value at end of input (none: end of input is an error)
-  ([opts s]
-   (if (and (contains? opts :eof) (clj2_string/is_blank s))
-     (:eof opts)
-     (clj2_rt_eval/read_string s))))
+  ([opts s] (clj2_rt_eval/read_string opts s)))
 (defn load-string [s] (clj2_rt_eval/load_string s))
 (defn load-file [path] (clj2_rt_eval/load_file path))
 (defn macroexpand-1 [form] (clj2_rt_eval/macroexpand_1 form))
@@ -1251,7 +1248,7 @@
 (def ^:dynamic *flush-on-newline* true)
 (def ^:dynamic *read-eval* true)
 (def ^:dynamic *data-readers* {})
-(def default-data-readers {})
+(def default-data-readers {'inst (fn [s] (clj2_inst/parse s)) 'uuid (fn [s] (clj2_string/uuid s))})
 (def ^:dynamic *default-data-reader-fn* nil)
 (def ^:dynamic *assert* true)
 (def ^:dynamic *unchecked-math* false)

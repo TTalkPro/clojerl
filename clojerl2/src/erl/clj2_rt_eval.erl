@@ -17,7 +17,7 @@
 -module(clj2_rt_eval).
 
 -export([current_ns/0, set_current_ns/1, in_ns/1, save_ns/0, restore_ns/1]).
--export([eval/1, read_string/1, load_string/1, macroexpand_1/1, macroexpand/1]).
+-export([eval/1, read_string/1, read_string/2, load_string/1, macroexpand_1/1, macroexpand/1]).
 -export([alias/2]).
 -export([req_refers/1, refer/2, refer_clojure/1]).
 -export([resolve/2, ns_publics/1, ns_interns/1, ns_map/1, ns_aliases/1, ns_refers/1,
@@ -71,15 +71,36 @@ eval({Tag, _, _} = F) when Tag =:= clj2_fn; Tag =:= fnmeta -> F;
 eval(Form) -> clj2_compiler:eval({forms, [clj2_form:from_value(Form)]}).
 
 %% @doc (read-string s): the first form of `s' as data.
-read_string(S) when is_binary(S) ->
-    case clj2_reader:read_all(S) of
-        {ok, [F | _], _} -> clj2_p_parse:data_form(F, current_ns());
-        {ok, [], _} -> erlang:error({clj2_read, <<"EOF while reading">>});
-        %% a read error is the JVM's RuntimeException (a ReaderException
-        %% there) with the reader's message
-        {error, _Where, Msg} ->
-            erlang:error(clj2_rt:ex_info(Msg, clj2_coll:hash_map_kv([':type', ':RuntimeException']), nil))
+read_string(S) -> read_string(nil, S).
+
+%% @doc (read-string opts s): opts :eof (the value at end of input; none:
+%% an error) and :features (more reader-conditional features than :clje).
+read_string(Opts, S) when is_binary(S) ->
+    Extra = case Opts =/= nil andalso clj2_coll:get(Opts, ':features') of
+                Fs when Fs =/= false, Fs =/= nil -> clj2_coll:to_list(Fs);
+                _ -> []
+            end,
+    case clj2_reader:read(S, #{features => [':clje' | Extra]}) of
+        {ok, F, _, _} -> clj2_p_parse:data_form(F, current_ns());
+        {eof, _} ->
+            case Opts =/= nil andalso clj2_coll:contains(Opts, ':eof') of
+                true -> clj2_coll:get(Opts, ':eof');
+                false -> erlang:error(read_error(<<"EOF while reading">>))
+            end;
+        {error, _Where, Msg} -> erlang:error(read_error(Msg))
     end.
+
+%% a read error is the JVM's RuntimeException (a ReaderException there)
+%% with the reader's message; a bad number, duplicate key or % literal is
+%% the exception the JVM reader throws for it
+read_error(Msg) ->
+    Type = case Msg of
+               <<"Invalid number", _/binary>> -> ':NumberFormatException';
+               <<"Duplicate key", _/binary>> -> ':IllegalArgumentException';
+               <<"arg literal", _/binary>> -> ':IllegalStateException';
+               _ -> ':RuntimeException'
+           end,
+    clj2_rt:ex_info(Msg, clj2_coll:hash_map_kv([':type', Type]), nil).
 
 %% @doc (load-string s): evaluate every form; the last value.
 load_string(S) when is_binary(S) -> clj2_compiler:eval(S).
