@@ -73,6 +73,7 @@ type_tag(X) when is_list(X) -> list;
 type_tag(X) when is_function(X) -> fn;
 type_tag({vector, _, T}) when is_tuple(T) -> vector;
 type_tag({map, _, M}) when is_map(M) -> map;
+type_tag(M) when is_map(M) -> map;
 type_tag({set, _, M}) when is_map(M) -> set;
 type_tag({clj2_fn, _, _}) -> fn;
 type_tag({ratio, _, _}) -> ratio;

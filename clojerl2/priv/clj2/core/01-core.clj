@@ -340,6 +340,7 @@
 (defn empty [coll]
   (let [e (cond (clj2_sorted/is_sorted coll) (clj2_sorted/empty coll)
                 (vector? coll) []
+                (erlang/is_map coll) (maps/new)
                 (clj2_coll/is_record coll)
                 (throw (ex-info (str "Can't create empty: " (clj2_class/class_of coll))
                                 {:type :UnsupportedOperationException}))

@@ -44,6 +44,7 @@ hasheq({decimal, _, _} = D) -> clj2_decimal:hash(D);
 hasheq({ratio, N, D}) -> signed(big_integer_hash_code(N) bxor big_integer_hash_code(D));
 hasheq({vector, _, T}) when is_tuple(T) -> hash_ordered(tuple_to_list(T));
 hasheq({map, _, M}) when is_map(M) -> map_hash(maps:to_list(M));
+hasheq(M) when is_map(M) -> map_hash(maps:to_list(M));
 hasheq({set, _, M}) when is_map(M) -> hash_unordered(maps:keys(M));
 hasheq({sorted_map, _, {_, _, _}} = S) ->
     map_hash([{K, V} || {vector, _, {K, V}} <- clj2_sorted:to_list(S)]);
@@ -85,6 +86,7 @@ java_hash_code(A) when is_atom(A) ->
 java_hash_code({decimal, _, _} = D) -> clj2_decimal:hash(D);
 java_hash_code({ratio, N, D}) -> signed(big_integer_hash_code(N) bxor big_integer_hash_code(D));
 java_hash_code({vector, _, T}) when is_tuple(T) -> list_hash_code(tuple_to_list(T));
+java_hash_code(M) when is_map(M) -> java_hash_code({map, nil, M});
 java_hash_code({map, _, M}) when is_map(M) ->
     signed(lists:foldl(fun({K, V}, Acc) -> (Acc + u(u(java_hash_code(K)) bxor u(java_hash_code(V)))) band ?M32 end,
                        0, maps:to_list(M)));

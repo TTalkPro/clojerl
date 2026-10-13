@@ -43,6 +43,8 @@ class_of(P) when is_pid(P) -> 'java.lang.Thread';
 class_of({lazy_seq, _, _}) -> 'clojure.lang.LazySeq';
 class_of({vector, _, T}) when is_tuple(T) -> 'clojure.lang.PersistentVector';
 class_of({map, _, M}) when is_map(M), map_size(M) =< 8 -> 'clojure.lang.PersistentArrayMap';
+class_of(M) when is_map(M), map_size(M) =< 8 -> 'clojure.lang.PersistentArrayMap';
+class_of(M) when is_map(M) -> 'clojure.lang.PersistentHashMap';
 class_of({map, _, M}) when is_map(M) -> 'clojure.lang.PersistentHashMap';
 class_of({set, _, M}) when is_map(M) -> 'clojure.lang.PersistentHashSet';
 class_of({sorted_map, _, {_, _, _}}) -> 'clojure.lang.PersistentTreeMap';

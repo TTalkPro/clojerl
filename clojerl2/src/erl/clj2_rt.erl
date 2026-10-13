@@ -54,6 +54,8 @@ invoke(K, [Coll]) when is_atom(K), K =/= nil, K =/= true, K =/= false -> clj2_co
 invoke(K, [Coll, NotFound]) when is_atom(K), K =/= nil, K =/= true, K =/= false ->
     clj2_coll:get(Coll, K, NotFound);
 invoke({Tag, _, _} = Coll, [K]) when Tag =:= map; Tag =:= set -> clj2_coll:get(Coll, K);
+invoke(M, [K]) when is_map(M) -> maps:get(K, M, nil);
+invoke(M, [K, NotFound]) when is_map(M) -> maps:get(K, M, NotFound);
 invoke({Tag, _, _} = Coll, [K, NotFound]) when Tag =:= map; Tag =:= set -> clj2_coll:get(Coll, K, NotFound);
 invoke({vector, _, _} = V, [I]) -> clj2_coll:nth(V, I);
 invoke(X, _Args) ->
@@ -159,6 +161,7 @@ identical(X, Y) -> X =:= Y.
 is_ifn(X) when is_atom(X) -> X =/= nil andalso X =/= true andalso X =/= false;
 is_ifn({Tag, _, _}) when Tag =:= map; Tag =:= set; Tag =:= vector; Tag =:= var; Tag =:= multifn; Tag =:= promise;
                          Tag =:= sorted_map; Tag =:= sorted_set; Tag =:= transient -> true;
+is_ifn(M) when is_map(M) -> true;
 is_ifn(X) -> is_fn(X).
 
 is_fn(F) when is_function(F) -> true;
@@ -606,6 +609,7 @@ is_boxed_number(_) -> false.
 %% a sorted collection, a seq or a record is a ClassCastException)
 transient({vector, _, T} = C) when is_tuple(T) -> {transient, nil, C};
 transient({map, _, M} = C) when is_map(M) -> {transient, nil, C};
+transient(M) when is_map(M) -> {transient, nil, M};
 transient({set, _, M} = C) when is_map(M) -> {transient, nil, C};
 transient(nil) ->
     erlang:error(ex_info(<<"transient: nil">>, clj2_coll:hash_map_kv([':type', ':NullPointerException']), nil));

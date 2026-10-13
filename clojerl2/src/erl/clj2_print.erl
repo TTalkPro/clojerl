@@ -151,6 +151,7 @@ pr1(L, R) when is_list(L) -> seq_str(L, R);
 pr1({lazy_seq, _, _} = L, R) -> seq_str(L, R);
 pr1({vector, _, T}, R) when is_tuple(T) -> coll($[, $], " ", tuple_to_list(T), fun(X) -> pr(X, R) end);
 pr1({map, _, M}, R) when is_map(M) -> map_str(M, R);
+pr1(M, R) when is_map(M) -> map_str(M, R);                   % a native Erlang map
 %% sorted ones print in their order
 pr1({sorted_map, _, {_, _, _}} = S, R) ->
     entries_str([{K, V} || {vector, _, {K, V}} <- clj2_sorted:to_list(S)], R);
