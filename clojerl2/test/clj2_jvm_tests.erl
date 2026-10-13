@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
-%%% @doc JVM interop syntax over host shims (clj2_jvm): expected values
-%%% are what Clojure 1.12 on the JVM gives.
+%%% @doc The JVM interop syntax that is kept (clj2_jvm, clojerl2-053):
+%%% deftype/defrecord methods and fields, exceptions, BigDecimal, writers,
+%%% toString/equals/hashCode. Java classes (String, Math, Long ...) are not.
 %%%-------------------------------------------------------------------
 -module(clj2_jvm_tests).
 
@@ -16,46 +17,32 @@ setup() -> {ok, _} = clj2_core:ensure(), clj2_ns:ensure('t.jvm').
 
 statics_test() ->
     setup(),
-    ?assertEqual(4.0, ev("(Math/sqrt 16)")),
-    ?assertEqual(9223372036854775807, ev("Long/MAX_VALUE")),
-    ?assertEqual(9223372036854775807, ev("(. Long MAX_VALUE)")),
-    ?assertEqual(-2147483648, ev("Integer/MIN_VALUE")),
-    ?assertEqual(42, ev("(Integer/parseInt \"42\")")),
-    ?assertEqual(255, ev("(Long/parseLong \"ff\" 16)")),
-    ?assertEqual(255, ev("(java.lang.Long/parseLong \"ff\" 16)")),
-    ?assertEqual(1000.0, ev("(Double/parseDouble \"1e3\")")),
-    ?assertEqual(<<"ff">>, ev("(Long/toHexString 255)")),
-    ?assertEqual(<<"ffffffffffffffff">>, ev("(Long/toHexString -1)")),
-    ?assertEqual(-4, ev("(Math/floorDiv -7 2)")),
-    ?assertEqual(1, ev("(Math/floorMod -7 2)")),
-    ?assertEqual(3, ev("(Math/round 2.5)")),
-    ?assertEqual(true, ev("(Character/isDigit \\5)")),
-    ?assertEqual(true, ev("(Character/isLetter \\中)")),
-    ?assertEqual(<<"\n">>, ev("(System/getProperty \"line.separator\")")).
+    ?assertEqual(<<"0">>, ev("(str BigDecimal/ZERO)")),
+    ?assertEqual(<<"1.5M">>, pr("(BigDecimal/valueOf 1.5)")),
+    %% Java classes' statics are gone: Erlang and Clojure do that work
+    [?assertMatch({'clojure.lang.ExceptionInfo', _, _}, catch_error(S))
+     || S <- ["(Math/sqrt 16)", "Long/MAX_VALUE", "(Integer/parseInt \"42\")", "(System/getProperty \"x\")"]],
+    ?assertEqual(4.0, ev("(math/sqrt 16)")),
+    ?assertEqual(42, ev("(parse-long \"42\")")).
 
 methods_test() ->
     setup(),
-    ?assertEqual(<<"ABC">>, ev("(.toUpperCase \"abc\")")),
-    ?assertEqual(<<"ABC">>, ev("(. \"abc\" toUpperCase)")),
-    ?assertEqual(<<"bc">>, ev("(. \"abc\" (substring 1))")),
-    ?assertEqual(<<"el">>, ev("(.substring \"hello\" 1 3)")),
-    ?assertEqual(<<"BC">>, ev("(.. \"abc\" toUpperCase (substring 1))")),
-    ?assertEqual(3, ev("(.length \"日本語\")")),
-    ?assertEqual(2, ev("(.indexOf \"hello\" \"l\")")),
-    ?assertEqual(-1, ev("(.indexOf \"hello\" \"z\")")),
-    ?assertEqual(true, ev("(.startsWith \"hello\" \"he\")")),
-    ?assertEqual(<<"a-b">>, ev("(.replace \"a b\" \" \" \"-\")")),
-    ?assertEqual(-1, ev("(.compareTo \"a\" \"b\")")),
-    ?assertEqual(3, ev("(.size [1 2 3])")),
-    ?assertEqual(2, ev("(.get [1 2 3] 1)")),
-    ?assertEqual(1, ev("(.intValue 1.9)")),
-    ?assertEqual(<<"t.jvm.P">>, ev("(do (defrecord P [x]) (.getName (class (->P 1))))")),
+    ?assertEqual('t.jvm.P', ev("(do (defrecord P [x]) (class (->P 1)))")),
     ?assertEqual(1, ev("(.-x (->P 1))")),
+    ?assertEqual(<<"#t.jvm.P{:x 1}">>, ev("(.toString (->P 1))")),
+    ?assertEqual(true, ev("(.equals (->P 1) (->P 1))")),
+    %% a deftype's protocol methods
+    ?assertEqual(3, ev("(do (defprotocol Sz (size [x])) (deftype Bag [n] Sz (size [_] n)) (.size (Bag. 3)))")),
+    ?assertEqual(<<"m">>, ev("(.getMessage (ex-info \"m\" {}))")),
+    ?assertEqual(<<"1.50">>, ev("(.toPlainString (.setScale 1.5M 2))")),
+    %% an io device as a writer
+    ?assertEqual(<<"ab">>, ev("(with-out-str (.write *out* \"a\") (.append *out* \\b))")),
     %% a member on a local of the same name as a class is an instance call
-    ?assertEqual(<<"X">>, ev("(let [String \"x\"] (.toUpperCase String))")),
+    ?assertEqual(<<"x">>, ev("(let [String (->P \"x\")] (.-x String))")),
     %% syntax-quote leaves member and class symbols alone
-    ?assertEqual(<<"Q">>, ev("(do (defmacro up [s] `(.toUpperCase ~s)) (up \"q\"))")),
     ?assertEqual(<<"(.toUpperCase String)">>, pr("`(.toUpperCase String)")),
+    %% String's methods are not provided: clojure.string does that work
+    ?assertMatch({'clojure.lang.ExceptionInfo', _, _}, catch_error("(.toUpperCase \"abc\")")),
     ?assertMatch({'clojure.lang.ExceptionInfo', _, _}, catch_error("(.foo 1)")).
 
 constructors_test() ->
@@ -68,10 +55,10 @@ constructors_test() ->
     ?assertEqual(<<":outer">>,
                  pr("(try (try (throw (IllegalStateException. \"s\")) (catch ArithmeticException _ :inner))"
                     "  (catch RuntimeException _ :outer))")),
-    ?assertEqual(<<"For input string: \"x\"">>,
-                 ev("(try (Integer/parseInt \"x\") (catch NumberFormatException e (.getMessage e)))")),
-    ?assertEqual(<<"ab1">>, ev("(str (doto (StringBuilder. \"a\") (.append \"b\") (.append 1)))")),
-    ?assertEqual(<<"#t.jvm.Q{:a 1}">>, pr("(do (defrecord Q [a]) (new Q 1))")).
+    ?assertEqual(<<"#t.jvm.Q{:a 1}">>, pr("(do (defrecord Q [a]) (new Q 1))")),
+    ?assertEqual(<<"2.5M">>, pr("(BigDecimal. \"2.5\")")),
+    [?assertMatch({'clojure.lang.ExceptionInfo', _, _}, catch_error(S))
+     || S <- ["(StringBuilder. \"a\")", "(java.util.ArrayList.)", "(java.util.Date.)"]].
 
 catch_error(Src) ->
     try ev(Src) of V -> {no_error, V}

@@ -26,9 +26,9 @@ plain(X) ->
 clojure_test_test() ->
     setup(),
     ev("(require '[clojure.test :as t :refer [deftest is are testing use-fixtures]])"),
-    ev("(def log (atom []))"),
-    ev("(use-fixtures :once (fn [f] (swap! log conj :once) (f)))"),
-    ev("(use-fixtures :each (fn [f] (swap! log conj :each) (f)))"),
+    ev("(def log (clj2_ref/cell []))"),
+    ev("(use-fixtures :once (fn [f] (clj2_ref/swap log conj (list :once)) (f)))"),
+    ev("(use-fixtures :each (fn [f] (clj2_ref/swap log conj (list :each)) (f)))"),
     ev("(deftest t-arith"
        "  (testing \"common\""
        "    (are [in ex] (= ex (abs in)) -1 1 1 1)"
@@ -43,9 +43,9 @@ clojure_test_test() ->
     ev("(deftest t-two (is (= 1 1)))"),
     %% a test is a var whose :test metadata runs it, and the var calls test-var
     ?assertEqual(true, ev("(fn? (:test (meta (var t-arith))))")),
-    ev("(def summary (atom nil))"),
+    ev("(def summary (clj2_ref/cell nil))"),
     Out = ev("(with-out-str (binding [t/*test-out* *out*]"
-             "  (reset! summary (t/run-tests 't.stdlib))))"),
+             "  (clj2_ref/reset summary (t/run-tests 't.stdlib))))"),
     ?assertEqual([2, 8, 2, 1], plain(ev("[(:test @summary) (:pass @summary) (:fail @summary) (:error @summary)]"))),
     ?assertEqual(false, ev("(t/successful? @summary)")),
     ?assertEqual([':once', ':each', ':each'], plain(ev("@log"))),
@@ -55,15 +55,15 @@ clojure_test_test() ->
     ?assert(binary:match(Out, <<"Ran 2 tests containing 11 assertions.">>) =/= nomatch),
     %% a redefined test replaces its registry entry: still 2 tests
     ev("(deftest t-two (is (= 2 2)))"),
-    ev("(with-out-str (binding [t/*test-out* *out*] (reset! summary (t/run-tests 't.stdlib))))"),
+    ev("(with-out-str (binding [t/*test-out* *out*] (clj2_ref/reset summary (t/run-tests 't.stdlib))))"),
     ?assertEqual(2, ev("(:test @summary)")),
     %% test-var on one var, and an assert-expr extension (the suite's p/thrown?)
     ev("(defmethod t/assert-expr 'my-thrown? [msg form]"
        "  `(try ~@(rest form) (t/do-report {:type :fail :message ~msg :expected '~form :actual nil})"
        "        (catch Throwable e# (t/do-report {:type :pass :message ~msg :expected '~form :actual e#}) e#)))"),
     ev("(deftest t-ext (is (my-thrown? (/ 1 0))) (is (my-thrown? 1)))"),
-    ev("(with-out-str (binding [t/*test-out* *out* t/*report-counters* (atom t/*initial-report-counters*)]"
-       "  (t/test-var (var t-ext)) (reset! summary @t/*report-counters*)))"),
+    ev("(with-out-str (binding [t/*test-out* *out* t/*report-counters* (clj2_ref/cell t/*initial-report-counters*)]"
+       "  (t/test-var (var t-ext)) (clj2_ref/reset summary @t/*report-counters*)))"),
     ?assertEqual([1, 1, 1], plain(ev("[(:test @summary) (:pass @summary) (:fail @summary)]"))).
 
 walk_template_set_test() ->
@@ -104,13 +104,13 @@ reflection_test() ->
     ?assertEqual(40, ev("(do (intern 't.stdlib 'ivf (fn [x] (* x 10))) (ivf 4))")),
     ?assertEqual([false, true], plain(ev("[(bound? (intern 't.stdlib 'unb)) (bound? (var pub))]"))),
     ?assertEqual(nil, ev("(find-var 't.stdlib/nope)")),
-    ?assertError({'clojure.lang.ExceptionInfo', _, #{':data' := {map, _, #{':type' := ':IllegalArgumentException'}}}},
+    ?assertError({'clojure.lang.ExceptionInfo', _, #{':data' := #{':type' := ':IllegalArgumentException'}}},
                  ev("(find-var 'unqualified)")),
     ?assertEqual(nil, ev("(do (ns-unmap 't.stdlib 'pub) (resolve 'pub))")),
     ?assertEqual(nil, ev("(do (create-ns 'gone.ns) (remove-ns 'gone.ns) (find-ns 'gone.ns))")),
     ?assertEqual(<<"A">>, ev("((requiring-resolve 'clojure.string/upper-case) \"a\")")),
     ?assertError({'clojure.lang.ExceptionInfo', _, _}, ev("(requiring-resolve 'unqualified)")),
-    ?assertError({'clojure.lang.ExceptionInfo', _, #{':data' := {map, _, #{':type' := ':NullPointerException'}}}},
+    ?assertError({'clojure.lang.ExceptionInfo', _, #{':data' := #{':type' := ':NullPointerException'}}},
                  ev("(resolve nil)")),
     %% a compiled namespace registers its ns form's aliases and refers
     ok = file:write_file("/tmp/clj2_stdlib_tests_reg.clj",
@@ -128,7 +128,7 @@ unsupported_literals_test() ->
     ?assertEqual(<<"1.5M">>, ev("(pr-str 1.5M)")),            % a BigDecimal now (clojerl2-037)
     ?assertEqual(<<"No reader function for tag foo">>,
                  ev("(try #foo \"2010-11-12\" (catch Throwable e (ex-message e)))")),
-    ?assertEqual(1289520000000, ev("(inst-ms #inst \"2010-11-12\")")),   % #inst is a Date (clojerl2-039)
+    ?assertEqual(1289520000000, ev("(inst-ms #inst \"2010-11-12\")")),   % #inst is Erlang time: milliseconds (clojerl2-053)
     ?assertEqual(<<"##NaN 4.0M #foo \"x\"">>, ev("(pr-str '##NaN '4.0M '#foo \"x\")")),
     ?assertEqual(':one', ev("(case 1 ##Inf :inf 4.0M :bd 1 :one :d)")),
     ?assertEqual(':d', ev("(case 4 ##Inf :inf ##-Inf :ninf :d)")),
@@ -170,12 +170,12 @@ refer_test() ->
     ?assertEqual(9, ev("(load-string \"(ns t.rf6 (:use [t.rf-src])) helper\")")),
     ?assertEqual(nil, ev("(load-string \"(ns t.rf7) (refer 't.rf-src) (resolve 'hid)\")")),
     ?assertEqual(9, ev("(load-string \"(ns t.rf8) (refer 't.rf-src :rename '{helper h}) h\")")),
-    ?assertEqual([<<"IllegalAccessError">>, <<"nope does not exist">>],
+    ?assertEqual([<<"java.lang.IllegalAccessError">>, <<"nope does not exist">>],
                  plain(ev("(load-string \"(ns t.rf9) (try (refer 't.rf-src :only '[nope]) :ok"
-                          "  (catch Throwable e [(.getSimpleName (class e)) (ex-message e)]))\")"))),
-    ?assertEqual([<<"IllegalAccessError">>, <<"hid is not public">>],
+                          "  (catch Throwable e [(str (class e)) (ex-message e)]))\")"))),
+    ?assertEqual([<<"java.lang.IllegalAccessError">>, <<"hid is not public">>],
                  plain(ev("(load-string \"(ns t.rf10) (try (refer 't.rf-src :only '[hid]) :ok"
-                          "  (catch Throwable e [(.getSimpleName (class e)) (ex-message e)]))\")"))),
+                          "  (catch Throwable e [(str (class e)) (ex-message e)]))\")"))),
     ?assertEqual(<<"nope2 does not exist">>,
                  ev("(try (require '[clojure.string :refer [nope2]]) :ok (catch Throwable e (ex-message e)))")),
     %% ns-unmap takes away an implicit clojure.core refer too
@@ -207,7 +207,7 @@ read_and_macro_meta_test() ->
 %% nested_def/3)
 nested_def_test() ->
     setup(),
-    ev("(let [c (atom 0)] (defn nd-counter [] (swap! c inc)))"),
+    ev("(let [c (clj2_ref/cell 0)] (defn nd-counter [] (clj2_ref/swap c inc nil)))"),
     ?assertEqual([1, 2], plain(ev("[(nd-counter) (nd-counter)]"))),
     ?assertEqual(true, ev("(var? (def nd-v 2))")),
     ?assertEqual(2, ev("nd-v")),
@@ -235,7 +235,7 @@ nested_def_test() ->
     ?assertEqual(<<"the doc">>, ev("(:doc (meta #'nd-doc))")),
     %% in a namespace file, also after a compile-time segment (defmacro)
     ok = file:write_file("/tmp/clj2_nested_def_ns.clj",
-                         <<"(ns t.nested-file) (let [c (atom 10)] (defn tick [] (swap! c inc)))"
+                         <<"(ns t.nested-file) (let [c (clj2_ref/cell 10)] (defn tick [] (clj2_ref/swap c inc nil)))"
                            " (defmacro m [] 1) (when (= 1 (m)) (def flag :set)) (dotimes [i 2] (def last-i i))">>),
     ev("(load-file \"/tmp/clj2_nested_def_ns.clj\")"),
     ?assertEqual([11, ':set', 1], plain(ev("[(t.nested-file/tick) t.nested-file/flag t.nested-file/last-i]"))),
@@ -271,12 +271,12 @@ cts_sweep_test() ->
     ev("(defmacro ctsw [& body] `(do ~@body))"),
     ev("(ctsw (def ^:dynamic *cts-x* :unset) (defn ^:dynamic *cts-f* [x] (inc x)))"),
     ?assertEqual([':set', 0], plain(ev("[(binding [*cts-x* :set] *cts-x*) (binding [*cts-f* dec] (*cts-f* 1))]"))),
-    ?assertEqual([':v', ':v', false, true, ':t', ':t'],
+    ?assertEqual([':v', ':v', false, ':t', ':t'],
                  plain(ev("(let [f (fn [x] (case x [:vec :kws] :v :d))]"
-                          " [(f '(:vec :kws)) (f [:vec :kws]) ((some-fn even?) 1) (contains? (int-array [0 1]) 1)"
+                          " [(f '(:vec :kws)) (f [:vec :kws]) ((some-fn even?) 1)"
                           "  (try (contains? '(1 2) 0) (catch IllegalArgumentException _ :t))"
                           "  (try (shuffle nil) (catch Exception _ :t))])"))),
-    ?assertEqual({map, nil, #{':foo' => true}}, ev("(let [x 1] (meta ^:foo [x]))")).
+    ?assertEqual(#{':foo' => true}, ev("(let [x 1] (meta ^:foo [x]))")).
 
 %% clojerl2-042 follow-up: type and extension forms inside expressions,
 %% mutable deftype fields
@@ -309,28 +309,16 @@ pending_sweep_test() ->
                  plain(ev("[(let [v (with-local-vars [x nil] x)] (alter-var-root v (constantly 1)) [(deref v) (with-bindings {v 2} (deref v)) (deref v)])"
                           " (with-local-vars [x 1] [(thread-bound? x) (bound? x)])"
                           " (string? (:doc (meta #'map))) (identical? > (var-get #'>))]"))),
-    ?assertEqual([':uoe', [2, 3, 4], <<"0x000000ff">>, <<"0x1.0p1">>, [{map, nil, #{':m' => 1}}, true, true], {map, nil, #{':b' => 2}}],
+    ?assertEqual([':uoe', [2, 3, 4], <<"0x000000ff">>, <<"0x1.0p1">>, [true, true], #{':b' => 2}],
                  plain(ev("[(try (count (eduction (map inc) [1 2 3])) (catch UnsupportedOperationException _ :uoe)) (vec (eduction (map inc) [1 2 3]))"
                           " (format \"%#010x\" 255) (format \"%.1a\" 1.9999)"
-                          " (let [a (atom 1 :meta {:m 1})] [(meta a) (map? (->SwPt 1 2)) (coll? (->SwPt 1 2))])"
+                          " [(map? (->SwPt 1 2)) (coll? (->SwPt 1 2))]"
                           " (.-__extmap (assoc (->SwPt 1 2) :b 2))]"))).
 
-%% clojerl2-041: host types - Keyword methods, Murmur3, charsets, Thread,
-%% Executors, Iterator, interface tags on deftype/defrecord, ISeq deftypes
+%% clojerl2-041: host types - interface tags on deftype/defrecord, ISeq
+%% deftypes (Java classes' statics and methods were removed in 053)
 host_types_test() ->
     setup(),
-    ?assertEqual([x, <<"y">>, <<"x">>, 1871679806, -1640530378],
-                 plain(ev("[(.sym :x) (.getName :x/y) (.getNamespace :x/y) (clojure.lang.Murmur3/hashLong 42) (clojure.lang.Util/hashCombine 17 42)]"))),
-    ?assertEqual([<<"\x{e9}"/utf8>>, [97, 16#FFFD, 16#FFFD, 98], [-23], ':ue'],
-                 plain(ev("[(String. (byte-array [233]) \"windows-1252\") (mapv int (String. (byte-array [97 -64 -81 98]) \"UTF-8\"))"
-                          " (vec (.getBytes (String. (byte-array [-61 -87]) \"UTF-8\") \"windows-1252\"))"
-                          " (try (String. (byte-array [1]) \"NOPE\") (catch java.io.UnsupportedEncodingException _ :ue))]"))),
-    ?assertEqual([1, [3, [1, 2]], true],
-                 plain(ev("(do (def ^:dynamic *ht* 1)"
-                          " (binding [*ht* 2] (let [r (atom nil) t (Thread. (fn [] (reset! r *ht*)))] (.start t) (.join t)"
-                          " [@r (let [ex (java.util.concurrent.Executors/newFixedThreadPool 2) fs (.invokeAll ex [(fn [] 1) (fn [] 2)])]"
-                          "      [(.invokeAny ex [(fn [] (throw (ex-info \"x\" {}))) (fn [] 3)]) (mapv (fn [f] (.get f)) fs)])"
-                          "  (try (.next (.iterator [])) (catch java.util.NoSuchElementException _ true))])))"))),
     ev("(defprotocol HtP (htp [x]))"),
     ev("(extend-protocol HtP clojure.lang.IReduceInit (htp [x] :ireduce))"),
     ev("(deftype HtT [] clojure.lang.IReduceInit (reduce [_ f init] init))"),
@@ -368,14 +356,15 @@ stdlib_namespaces_test() ->
                           " (edn/read-string {:eof :end} \"\")"
                           " (try (edn/read-string \"a@b\") (catch RuntimeException e (ex-message e)))"
                           " (try (edn/read-string \"#foo 1\") (catch RuntimeException e (ex-message e)))]"))),
-    ?assertEqual([5, <<"long overflow">>], plain(ev("[(long (m/hypot 3 4)) (try (m/add-exact Long/MAX_VALUE 1) (catch ArithmeticException e (ex-message e)))]"))),
+    ?assertEqual([5, <<"long overflow">>], plain(ev("[(long (m/hypot 3 4)) (try (m/add-exact 9223372036854775807 1) (catch ArithmeticException e (ex-message e)))]"))),
     ?assertEqual(<<"{:aaaa 1111111111,\n :bbbb 2222222222,\n :cccc 3333333333,\n :dddd 4444444444,\n :eeee 5555555555,\n :ffff 66666666666}\n">>,
                  ev("(with-out-str (pp/pprint {:aaaa 1111111111 :bbbb 2222222222 :cccc 3333333333 :dddd 4444444444 :eeee 5555555555 :ffff 66666666666}))")),
     ?assertEqual([<<"3.14">>, <<"1, 2, 3">>, <<"1,234,567">>],
                  plain(ev("[(pp/cl-format nil \"~,2f\" 3.14159) (pp/cl-format nil \"~{~a~^, ~}\" [1 2 3]) (pp/cl-format nil \"~:d\" 1234567)]"))),
     ?assertEqual([<<"[1 2 ...]">>, <<"[:a [:b #]]">>], plain(ev("[(binding [*print-length* 2] (pr-str [1 2 3])) (binding [*print-level* 2] (pr-str [:a [:b [:c]]]))]"))),
     ?assertEqual(true, ev("(clojure.string/includes? (with-out-str (clojure.repl/doc when)) \"Macro\")")),
-    ?assertEqual(<<"#inst \"2020-06-01T08:00:00.000-00:00\"">>, ev("(pr-str #inst \"2020-06-01T10:00:00+02:00\")")).
+    ?assertEqual(1590998400000, ev("#inst \"2020-06-01T10:00:00+02:00\"")),
+    ?assertEqual(true, ev("(inst? #inst \"2020-06-01\")")).
 
 %% clojerl2-038: compiler forms
 compiler_forms_test() ->
@@ -414,9 +403,7 @@ jvm_exception_classes_test() ->
                           " (try (bit-and \"a\" 1) (catch IllegalArgumentException _ :iae))"
                           " (try (nth \"abc\" 5) (catch StringIndexOutOfBoundsException _ :sioobe))"
                           " (try (nth #{1} 0) (catch UnsupportedOperationException _ :uoe))"
-                          " (try (name nil) (catch NullPointerException _ :npe))]"))),
-    ?assertEqual(<<"For input string: \"zz\" under radix 16">>,
-                 ev("(try (Long/parseLong \"zz\" 16) (catch NumberFormatException e (ex-message e)))")).
+                          " (try (name nil) (catch NullPointerException _ :npe))]"))).
 
 core_argument_checks_test() ->
     setup(),
@@ -454,7 +441,7 @@ lazy_sequence_test() ->
     %% nothing runs until the seq is walked, so the xform's state belongs
     %% to the process that walks it (JVM: the first element is realized at
     %% the call; :pending/laziness)
-    ?assertEqual(0, ev("(let [a (atom 0)] (sequence (map (fn [x] (swap! a inc) x)) (range 5)) @a)")).
+    ?assertEqual(0, ev("(let [a (clj2_ref/cell 0)] (sequence (map (fn [x] (clj2_ref/swap a inc nil) x)) (range 5)) @a)")).
 
 vars_while_namespace_loads_test() ->
     setup(),
@@ -476,14 +463,13 @@ nested_redefinition_is_a_table_write_test() ->
     ?assert(Us < 1000000),
     ?assertEqual(0, ev("(rw-held)")),                       % the value taken before stays the old fn
     %% a process sitting in the old code does not stop later changes
-    ev("(def rw-p (promise))"),
-    ev("(defn rw-slow [] (deref rw-p) :old-done)"),
-    ev("(def rw-fut (future (rw-slow)))"),
+    ev("(defn rw-slow [] (clj2_proc/receive_any) :old-done)"),
+    Waiter = ev("(let [me (erlang/self)] (erlang/spawn (fn [] (erlang/send me (rw-slow)))))"),
     timer:sleep(50),
     ev("(defn rw-h [n] (def rw-slow (fn [] n)) (rw-slow))"),
     ?assertEqual([1, 2, 3], plain(ev("[(rw-h 1) (rw-h 2) (rw-h 3)]"))),
-    ev("(deliver rw-p 1)"),
-    ?assertEqual(':old-done', ev("(deref rw-fut 1000 :timeout)")),
+    Waiter ! go,
+    ?assertEqual(':old-done', receive Done -> Done after 1000 -> timeout end),
     %% a top-level def after that is an assignment too
     ev("(defn rw-slow [] :top)"),
     ?assertEqual(':top', ev("(rw-slow)")).
@@ -517,10 +503,10 @@ var_root_changes_test() ->
     ?assertEqual([':real', 1], plain(ev("(try (with-redefs [t.wr32/query (fn [x] (throw (ex-info \"x\" {})))]"
                                         " (t.wr32/handle)) (catch :default e (t.wr32/query 1)))"))),
     %% the redefinition reaches another process (it is the root)
-    ?assertEqual([':m', ':m'], plain(ev("(with-redefs [t.wr32/query (fn [_] :m)] [(t.wr32/query 0) @(future (t.wr32/query 0))])"))),
+    ?assertEqual([':m', ':m'], plain(ev("(with-redefs [t.wr32/query (fn [_] :m)] [(t.wr32/query 0) (let [me (erlang/self)] (erlang/spawn (fn [] (erlang/send me (t.wr32/query 0)))) (clj2_proc/receive_any 1000 :timeout))])"))),
     %% watches see every root change, a validator gates it
-    ev("(def wv 1) (def wv-log (atom []))"),
-    ev("(add-watch (var wv) :w (fn [k r o n] (swap! wv-log conj [o n])))"),
+    ev("(def wv 1) (def wv-log (clj2_ref/cell []))"),
+    ev("(add-watch (var wv) :w (fn [k r o n] (clj2_ref/swap wv-log conj (list [o n]))))"),
     ev("(alter-var-root (var wv) inc)"),
     ev("(def wv 5)"),
     ?assertEqual([[1, 2], [2, 5]], plain(ev("@wv-log"))),
