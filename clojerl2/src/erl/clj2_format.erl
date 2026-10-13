@@ -29,11 +29,15 @@ run([$% | R], Args, Next, Last) ->
     {Spec, Rest} = parse(R),
     case Spec of
         #{conv := $%} -> [justify(Spec, "%") | run(Rest, Args, Next, Last)];
+        #{conv := $n, width := W} when W =/= none ->
+            raise(<<"IllegalFormatWidthException">>, integer_to_list(W));
         #{conv := $n} -> [$\n | run(Rest, Args, Next, Last)];
         _ ->
             {I, Next1} = case Spec of
                              #{index := prev} when Last =:= none -> fail(missing, "%<");
                              #{index := prev} -> {Last, Next};
+                             #{index := 0} -> raise(<<"IllegalFormatArgumentIndexException">>,
+                                                    "Illegal format argument index = 0");
                              #{index := N} when is_integer(N) -> {N, Next};
                              _ -> {Next, Next + 1}
                          end,
@@ -123,7 +127,8 @@ convert(S = #{conv := $d}, A) ->
         _ -> wrong_kind(S1, A)
     end;
 convert(S = #{conv := C}, A) when C =:= $o; C =:= $x; C =:= $X ->
-    no_flags(S, " ,"),
+    %% + ( and space are for BigInteger only on the JVM; a long refuses them
+    no_flags(S, " ,+("),
     S1 = no_prec(S),
     case A of
         nil -> justify(S1, "null");
@@ -135,7 +140,7 @@ convert(S = #{conv := C}, A) when C =:= $o; C =:= $x; C =:= $X ->
                       {true, $o} -> "0";
                       {true, _} -> "0x"
                   end,
-            upper(C, number(S1, I < 0, Alt ++ Digits));
+            upper(C, number(S1, I < 0, Digits, Alt));
         _ -> wrong_kind(S1, A)
     end;
 convert(S = #{conv := C}, A) when C =:= $e; C =:= $E ->
@@ -153,7 +158,9 @@ convert(S = #{conv := C}, A) when C =:= $a; C =:= $A ->
     no_flags(S, ",("),
     case A of
         nil -> justify(S, "null");
-        X when is_float(X) -> upper(C, number(S, sign_bit(X), hexfloat(abs(X), maps:get(prec, S))));
+        X when is_float(X) ->
+            "0x" ++ Body = hexfloat(abs(X), maps:get(prec, S)),
+            upper(C, number(S, sign_bit(X), Body, "0x"));
         _ -> wrong_kind(S, A)
     end;
 convert(S = #{conv := C}, _) when C =:= $t; C =:= $T ->
@@ -186,6 +193,24 @@ sign_bit(X) -> X < 0.0 orelse <<X/float>> =:= <<-0.0/float>>.
 %% sign, grouping, zero padding, justification
 
 %% Body: the digits of the magnitude; Neg: is the value negative
+%% Alt: the # prefix (0x, 0), ahead of any zero padding
+number(S, Neg, Body, Alt) ->
+    {Pre, Post} = case {Neg, has(S, $(), has(S, $+), has(S, $\s)} of
+                      {true, true, _, _} -> {"(", ")"};
+                      {true, false, _, _} -> {"-", ""};
+                      {false, _, true, _} -> {"+", ""};
+                      {false, _, _, true} -> {" ", ""};
+                      _ -> {"", ""}
+                  end,
+    case has(S, $0) of
+        true ->
+            W = maps:get(width, S),
+            W =:= none andalso fail(missing_width, spec_text(S)),
+            Fill = W - length(Pre) - length(Alt) - length(Body) - length(Post),
+            Pre ++ Alt ++ lists:duplicate(max(0, Fill), $0) ++ Body ++ Post;
+        false -> justify(S, Pre ++ Alt ++ Body ++ Post)
+    end.
+
 number(S, Neg, Body) ->
     {Pre, Post} = case {Neg, has(S, $(), has(S, $+), has(S, $\s)} of
                       {true, true, _, _} -> {"(", ")"};
@@ -332,6 +357,29 @@ frac(F) -> [$. | F].
 %% %a: hexadecimal floating point, as Double.toHexString
 
 hexfloat(+0.0, _) -> "0x0.0p0";
+%% with a precision of 1..12 the significand rounds half to even (a carry
+%% raises the exponent) and a subnormal is normalized, as Formatter does
+hexfloat(X, Prec) when is_integer(Prec), Prec < 13 ->
+    <<0:1, BE:11, M:52>> = <<X/float>>,
+    {Sig, E} = case BE of
+                   0 -> K = bit_len(M) - 1, {M bsl (52 - K), K - 1074};
+                   _ -> {(1 bsl 52) bor M, BE - 1023}
+               end,
+    P = max(Prec, 1),
+    Drop = 52 - 4 * P,
+    Q0 = Sig bsr Drop,
+    R = Sig band ((1 bsl Drop) - 1),
+    Half = 1 bsl (Drop - 1),
+    Q = case R > Half orelse (R =:= Half andalso Q0 band 1 =:= 1) of
+            true -> Q0 + 1;
+            false -> Q0
+        end,
+    {Q1, E1} = case Q >= (2 bsl (4 * P)) of
+                   true -> {Q bsr 1, E + 1};
+                   false -> {Q, E}
+               end,
+    Frac = pad_left(string:lowercase(integer_to_list(Q1 band ((1 bsl (4 * P)) - 1), 16)), P),
+    "0x1." ++ Frac ++ "p" ++ integer_to_list(E1);
 hexfloat(X, Prec) ->
     <<0:1, BE:11, M:52>> = <<X/float>>,
     {Lead, E} = case BE of
@@ -344,6 +392,9 @@ hexfloat(X, Prec) ->
                         _ -> round_hex(Lead, Hex, max(Prec, 1))
                     end,
     "0x" ++ Lead1 ++ "." ++ Frac ++ "p" ++ integer_to_list(E).
+
+bit_len(0) -> 0;
+bit_len(N) -> 1 + bit_len(N bsr 1).
 
 round_hex(Lead, Hex, P) when P >= 13 -> {Lead, pad_right(Hex, P)};
 round_hex(Lead, Hex, P) ->

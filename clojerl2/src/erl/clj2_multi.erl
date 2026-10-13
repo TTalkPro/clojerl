@@ -133,6 +133,9 @@ no_method({Ns, Name}, DV) ->
 
 add_method(MF = {multifn, _, Key}, DV, Fun) ->
     true = ets:insert(?TAB, {{method, Key, DV}, Fun}),
+    %% the printer consults print-method once a method of the user's exists
+    Key =:= {'clojure.core', 'print-method'} andalso DV =/= ':default'
+        andalso persistent_term:put({clj2_print, methods}, true),
     bump(Key),
     MF.
 

@@ -11,7 +11,7 @@
 %%%-------------------------------------------------------------------
 -module(clj2_print).
 
--export([pr_str/1, print_str/1, float_str/1]).
+-export([pr_str/1, print_str/1, float_str/1, write_builtin/2]).
 
 %% pr/2 mixes UTF-8 binaries with code-point lists (io_lib output):
 %% only unicode:characters_to_binary/1 joins those correctly. A string
@@ -32,11 +32,14 @@ with_limits(F) ->
         undefined ->
             Len = dyn('*print-length*'), Level = dyn('*print-level*'),
             NsMaps = dyn('*print-namespace-maps*') =:= true,
-            case Len =:= nil andalso Level =:= nil andalso not NsMaps of
+            %% *print-meta*: a value's metadata printed before it, ^{..}
+            Meta = dyn('*print-meta*') =:= true,
+            case Len =:= nil andalso Level =:= nil andalso not NsMaps andalso not Meta of
                 true -> F();
                 false ->
                     put(?CTX, {Len, Level, NsMaps, 0}),
-                    try F() after erase(?CTX) end
+                    Meta andalso put(clj2_print_meta, true),
+                    try F() after erase(?CTX), erase(clj2_print_meta) end
             end;
         _ -> F()
     end.
@@ -97,58 +100,111 @@ chars(P) ->
         _ -> iolist_to_binary(P)
     end.
 
-%% R: readably (pr) or not (print)
-pr(nil, _) -> <<"nil">>;
-pr(true, _) -> <<"true">>;
-pr(false, _) -> <<"false">>;
-pr(A, _) when is_atom(A) -> atom_to_binary(A);               % symbols, keywords
+%% R: readably (pr) or not (print). A print-method of the user's for
+%% the value's type prints it (nested values too), else the built-in way.
+pr(X, R) ->
+    case persistent_term:get({clj2_print, methods}, false) andalso user_method(X) of
+        {ok, F} ->
+            W = clj2_io:string_writer(),
+            try clj2_rt:invoke(F, [X, W]), clj2_io:contents(W)
+            after clj2_io:close(W)
+            end;
+        _ when R ->
+            case get(clj2_print_meta) =:= true andalso clj2_rt:meta(X) of
+                M when M =/= false, M =/= nil -> [$^, pr1(M, R), $\s, pr1(X, R)];
+                _ -> pr1(X, R)
+            end;
+        _ -> pr1(X, R)
+    end.
+
+user_method(X) ->
+    MF = {multifn, nil, {'clojure.core', 'print-method'}},
+    case clj2_multi:get_method(MF, clj2_class:type_of(X)) of
+        nil -> none;
+        F ->
+            case clj2_multi:get_method(MF, ':default') of
+                F -> none;
+                _ -> {ok, F}
+            end
+    end.
+
+%% @doc print-method's :default method: the built-in printer, to writer W
+write_builtin(X, W) ->
+    clj2_io:write(W, chars(pr1(X, true))),
+    nil.
+pr1(nil, _) -> <<"nil">>;
+pr1(true, _) -> <<"true">>;
+pr1(false, _) -> <<"false">>;
+pr1(A, _) when is_atom(A) -> atom_to_binary(A);               % symbols, keywords
 %% beyond a long, a BigInt: printed with its N (str leaves it off)
-pr(I, _) when is_integer(I), (I > 16#7FFFFFFFFFFFFFFF orelse I < -16#8000000000000000) ->
+pr1(I, _) when is_integer(I), (I > 16#7FFFFFFFFFFFFFFF orelse I < -16#8000000000000000) ->
     [integer_to_binary(I), $N];
-pr(I, _) when is_integer(I) -> integer_to_binary(I);
-pr(F, _) when is_float(F) -> float_str(F);
-pr(B, true) when is_binary(B) -> [$", escape(B), $"];
-pr(B, false) when is_binary(B) -> B;
-pr({ratio, N, D}, _) -> [integer_to_binary(N), $/, integer_to_binary(D)];
-pr({decimal, _, _} = D, _) -> [clj2_decimal:to_string(D), $M];        % print keeps the M too
-pr([], _) -> <<"()">>;
-pr(L, R) when is_list(L) -> seq_str(L, R);
-pr({lazy_seq, _, _} = L, R) -> seq_str(L, R);
-pr({vector, _, T}, R) when is_tuple(T) -> coll($[, $], " ", tuple_to_list(T), fun(X) -> pr(X, R) end);
-pr({map, _, M}, R) when is_map(M) -> map_str(M, R);
+pr1(I, _) when is_integer(I) -> integer_to_binary(I);
+pr1(F, _) when is_float(F) -> float_str(F);
+pr1(B, true) when is_binary(B) -> [$", escape(B), $"];
+pr1(B, false) when is_binary(B) -> B;
+pr1({ratio, N, D}, _) -> [integer_to_binary(N), $/, integer_to_binary(D)];
+pr1({decimal, _, _} = D, _) -> [clj2_decimal:to_string(D), $M];        % print keeps the M too
+pr1([], _) -> <<"()">>;
+pr1(L, R) when is_list(L) -> seq_str(L, R);
+pr1({lazy_seq, _, _} = L, R) -> seq_str(L, R);
+pr1({vector, _, T}, R) when is_tuple(T) -> coll($[, $], " ", tuple_to_list(T), fun(X) -> pr(X, R) end);
+pr1({map, _, M}, R) when is_map(M) -> map_str(M, R);
 %% sorted ones print in their order
-pr({sorted_map, _, {_, _, _}} = S, R) ->
+pr1({sorted_map, _, {_, _, _}} = S, R) ->
     entries_str([{K, V} || {vector, _, {K, V}} <- clj2_sorted:to_list(S)], R);
-pr({sorted_set, _, {_, _, _}} = S, R) ->
+pr1({sorted_set, _, {_, _, _}} = S, R) ->
     coll(<<"#{">>, $}, " ", clj2_sorted:to_list(S), fun(X) -> pr(X, R) end);
-pr({set, _, M}, R) when is_map(M) -> coll(<<"#{">>, $}, " ", lists:sort(maps:keys(M)), fun(X) -> pr(X, R) end);
-pr({delay, _, _}, _) -> <<"#object[clojure.lang.Delay]">>;
-pr({multifn, _, {Ns, Name}}, _) ->
+pr1({set, _, M}, R) when is_map(M) -> coll(<<"#{">>, $}, " ", lists:sort(maps:keys(M)), fun(X) -> pr(X, R) end);
+pr1({delay, _, _}, _) -> <<"#object[clojure.lang.Delay]">>;
+pr1({multifn, _, {Ns, Name}}, _) ->
     [<<"#object[clojure.lang.MultiFn ">>, atom_to_binary(Ns), $/, atom_to_binary(Name), $]];
-pr({regex, _, Src}, _) when is_binary(Src) -> [<<"#\"">>, Src, $"];
-pr({uuid, _, S}, _) when is_binary(S) -> [<<"#uuid \"">>, S, $"];
-pr({var, _, {Ns, Name}}, _) when is_atom(Ns), is_atom(Name) ->
+pr1({regex, _, Src}, _) when is_binary(Src) -> [<<"#\"">>, Src, $"];
+pr1({uuid, _, S}, _) when is_binary(S) -> [<<"#uuid \"">>, S, $"];
+pr1({var, _, {Ns, Name}}, _) when is_atom(Ns), is_atom(Name) ->
     [<<"#'">>, atom_to_binary(Ns), $/, atom_to_binary(Name)];
-pr({clj2_fn, _, _}, _) -> <<"#object[clojure.lang.AFunction]">>;
+pr1({clj2_fn, _, _}, _) -> <<"#object[clojure.lang.AFunction]">>;
 %% literals the runtime has no value for, as they were read
-pr({tagged, [], T, nil}, _) when T =:= 'NaN'; T =:= 'Inf'; T =:= '-Inf' -> [<<"##">>, atom_to_binary(T)];
-pr({tagged, [], Tag, F}, R) when is_atom(Tag) -> [$#, atom_to_binary(Tag), $\s, pr(F, R)];
-pr({bigdec, [], B}, _) when is_binary(B) -> [B, $M];
-pr({fnmeta, _, F}, R) -> pr(F, R);
-pr({'java.util.Date', _, Ms} = D, _) when is_integer(Ms) -> [<<"#inst \"">>, clj2_inst:to_string(D), $"];
-pr({tagged_literal, _, #{':tag' := T, ':form' := F}}, R) -> [$#, pr(T, R), $\s, pr(F, R)];
-pr({reader_conditional, _, #{':form' := F, ':splicing?' := S}}, R) ->
+pr1({tagged, [], T, nil}, _) when T =:= 'NaN'; T =:= 'Inf'; T =:= '-Inf' -> [<<"##">>, atom_to_binary(T)];
+pr1({tagged, [], Tag, F}, R) when is_atom(Tag) -> [$#, atom_to_binary(Tag), $\s, pr(F, R)];
+pr1({bigdec, [], B}, _) when is_binary(B) -> [B, $M];
+pr1({fnmeta, _, F}, R) -> pr(F, R);
+pr1({'java.util.Date', _, Ms} = D, _) when is_integer(Ms) -> [<<"#inst \"">>, clj2_inst:to_string(D), $"];
+pr1({tagged_literal, _, #{':tag' := T, ':form' := F}}, R) -> [$#, pr(T, R), $\s, pr(F, R)];
+pr1({reader_conditional, _, #{':form' := F, ':splicing?' := S}}, R) ->
     [case S of true -> <<"#?@">>; false -> <<"#?">> end, pr(F, R)];
-pr(F, _) when is_function(F) -> [<<"#object[">>, io_lib:format("~tp", [F]), $]];
-pr({Tag, _, _} = X, R) when Tag =:= atom; Tag =:= volatile; Tag =:= agent;
+pr1(F, _) when is_function(F) -> [<<"#object[">>, io_lib:format("~tp", [F]), $]];
+pr1({Tag, _, _} = X, R) when Tag =:= atom; Tag =:= volatile; Tag =:= agent;
                              Tag =:= promise; Tag =:= future ->
     [<<"#object[">>, ref_class(Tag), $\s, pr(ref_status(X), R), $]];
-pr({Tag, _, M}, R) when is_atom(Tag), is_map(M) ->           % record
+%% a Throwable prints as #error {:cause .. :via [{:type .. :message ..}] ..}
+pr1({'clojure.lang.ExceptionInfo', _, _} = E, R) ->
+    Class = clj2_class:exception_class(E),
+    Msg = clj2_rt:ex_message(E),
+    Data = clj2_rt:ex_data(E),
+    Via = clj2_coll:hash_map_kv([':type', Class, ':message', Msg] ++
+                                    case Data of nil -> []; _ -> [':data', Data] end),
+    Fields = [':cause', Msg] ++ case Data of nil -> []; _ -> [':data', Data] end
+        ++ [':via', clj2_coll:vector([Via]), ':trace', clj2_coll:vector([])],
+    [<<"#error ">>, entries(Fields, R)];
+pr1({'clojure.lang.Var$Unbound', _, {Ns, Name}}, _) ->
+    [<<"Unbound: #'">>, atom_to_binary(Ns), $/, atom_to_binary(Name)];
+pr1({Tag, _, M}, R) when is_atom(Tag), is_map(M) ->           % record
     [$#, atom_to_binary(Tag), map_str(M, R)];
-pr({Tag, _, T}, _) when is_atom(Tag), is_tuple(T) ->         % deftype
-    [<<"#object[">>, atom_to_binary(Tag), $]];
-pr(P, _) when is_pid(P) -> [<<"#object[pid ">>, pid_to_list(P), $]];
-pr(X, _) -> io_lib:format("~tp", [X]).
+%% a deftype: a sequential one (ISeq, an eduction ...) prints as its seq
+pr1({Tag, _, T} = X, R) when is_atom(Tag), is_tuple(T) ->      % deftype
+    case clj2_proto:is_type_value(X) andalso clj2_class:is_instance('clojure.lang.Sequential', X) of
+        true -> case clj2_coll:seq(X) of nil -> <<"()">>; S -> seq_str(S, R) end;
+        false -> [<<"#object[">>, atom_to_binary(Tag), $]]
+    end;
+pr1(P, _) when is_pid(P) -> [<<"#object[pid ">>, pid_to_list(P), $]];
+pr1(X, _) -> io_lib:format("~tp", [X]).
+
+%% an ordered map literal's text from key/value pairs (#error's fields)
+entries(KVs, R) -> [${, lists:join(", ", kv_strs(KVs, R)), $}].
+
+kv_strs([K, V | Rest], R) -> [[pr(K, R), $\s, pr(V, R)] | kv_strs(Rest, R)];
+kv_strs([], _) -> [].
 
 %% reference types print as on the JVM, less the identity hash
 ref_class(atom) -> <<"clojure.lang.Atom">>;

@@ -515,7 +515,7 @@ merge_meta(_Old, New) -> New.
 %% Canonical form: a map literal becomes a real Erlang map with binary
 %% keys; any other metadata value is stored verbatim.
 %% The metadata value contract (JVM Clojure's): `^:a' -> `#{':a' =>
-%% true}', `^sym' -> `#{tag => sym}', `^"s"' -> `#{tag => <<"s">>}',
+%% true}', `^sym' -> `#{':tag' => sym}', `^"s"' -> `#{':tag' => <<"s">>}',
 %% `^{:a 1}' -> the map itself (keys stripped, keywords stay ':a').
 %% All values are stripped of location wrappers.
 meta_value(MetaForm) ->
@@ -525,10 +525,10 @@ meta_value(MetaForm) ->
         K when is_atom(K) ->
             case atom_to_binary(K, utf8) of
                 <<":", _/binary>> -> #{K => true};
-                _ -> #{tag => K}
+                _ -> #{':tag' => K}
             end;
         Other ->
-            #{tag => Other}
+            #{':tag' => Other}
     end.
 
 %%--------------------------------------------------------------------

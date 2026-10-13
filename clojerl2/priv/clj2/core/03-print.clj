@@ -31,6 +31,34 @@
 
 (defn read-line [] (clj2_io/read_line))
 
+(defn line-seq
+  "The lines of text from rdr as a lazy sequence of strings."
+  [rdr]
+  (when-let [line (clj2_io/read_line rdr)]
+    (cons line (lazy-seq (line-seq rdr)))))
+
+(defn read
+  "Reads the next object from stream (default *in*)."
+  ([] (clj2_io/read_form *in* true nil false))
+  ([stream] (clj2_io/read_form stream true nil false))
+  ([opts stream]
+   (if (contains? opts :eof)
+     (clj2_io/read_form stream false (:eof opts) false)
+     (clj2_io/read_form stream true nil false)))
+  ([stream eof-error? eof-value] (clj2_io/read_form stream eof-error? eof-value false))
+  ([stream eof-error? eof-value recursive?] (clj2_io/read_form stream eof-error? eof-value false)))
+
+(defn read+string
+  "Like read, and also returns the string read, as [form text]."
+  ([] (clj2_io/read_form *in* true nil true))
+  ([stream] (clj2_io/read_form stream true nil true))
+  ([stream eof-error? eof-value] (clj2_io/read_form stream eof-error? eof-value true))
+  ([stream eof-error? eof-value recursive?] (clj2_io/read_form stream eof-error? eof-value true))
+  ([opts stream]
+   (if (contains? opts :eof)
+     (clj2_io/read_form stream false (:eof opts) true)
+     (clj2_io/read_form stream true nil true))))
+
 (defmacro with-in-str [s & body]
   `(clj2_io/with_in_str ~s (fn [] ~@body)))
 
@@ -52,3 +80,10 @@
               (when (= ns (namespace k)) (recur ns entries (assoc lm strip v)))
               (recur (namespace k) entries (assoc lm strip v)))))
         [ns (apply conj (empty m) lm)]))))
+
+;; print-method: the printer consults it for a value whose type has a
+;; method of the user's (clj2_print); :default is the built-in printer
+(def print-method (clj2_multi/new 'clojure.core 'print-method (fn [x writer] (clj2_class/type_of x)) :default nil))
+(defmethod print-method :default [x writer] (clj2_print/write_builtin x writer))
+(def print-dup (clj2_multi/new 'clojure.core 'print-dup (fn [x writer] (clj2_class/type_of x)) :default nil))
+(defmethod print-dup :default [x writer] (print-method x writer))

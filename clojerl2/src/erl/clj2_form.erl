@@ -16,9 +16,10 @@
          tag_value/2, record_tag/1, resolve_tags/1]).
 
 %% @doc Reader form → runtime value (positions stripped).
-to_data({clj2_loc, _, _, Inner, Meta}) when is_map(Meta), map_size(Meta) > 0, is_tuple(Inner),
-                                           (element(1, Inner) =:= vector orelse element(1, Inner) =:= map
-                                            orelse element(1, Inner) =:= set) ->
+to_data({clj2_loc, _, _, Inner, Meta}) when is_map(Meta), map_size(Meta) > 0,
+                                           (is_list(Inner) orelse is_tuple(Inner) andalso
+                                            (element(1, Inner) =:= vector orelse element(1, Inner) =:= map
+                                             orelse element(1, Inner) =:= set)) ->
     clj2_rt:with_meta(to_data(Inner), clj2_coll:hash_map_kv(lists:append([[K, V] || {K, V} <- maps:to_list(Meta)])));
 to_data(W) when ?CLJ2_IS_LOC(W) -> to_data(?CLJ2_LOC_FORM(W));
 to_data(L) when is_list(L) -> [to_data(X) || X <- L];
