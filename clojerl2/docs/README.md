@@ -7,6 +7,7 @@ clojerl2 是跑在 BEAM(Erlang/OTP)上的 Clojure 方言:每个命名空间编�
 | [getting-started.md](getting-started.md) | 安装、REPL、运行脚本和程序 |
 | [erlang-interop.md](erlang-interop.md) | 调用 Erlang/OTP、值的对应关系、进程与消息、从 Erlang 调用 Clojure |
 | [rebar3.md](rebar3.md) | rebar3 项目、插件命令、编译缓存 |
+| [embedding.md](embedding.md) | 在 Erlang 应用里嵌入:运行时加载与热替换、数据约定、版本化加载、性能 |
 | [differences.md](differences.md) | 与 JVM Clojure 的全部已登记差异,以及替代写法 |
 
 ## 现状(2026-10)
@@ -38,4 +39,4 @@ clojerl2 还在开发中。下面是诚实的现状,不是路线图。
 
 **clojure-test-suite**:[jank-lang/clojure-test-suite](https://github.com/jank-lang/clojure-test-suite)(`vendor/clojure-test-suite`,子模块)全量跑在 CI 里(`make cts`),247 个命名空间,断言通过 5816 / 失败 187 / 错误 371,逐命名空间的失败数登记在 `test/cts-known-failures.txt`,变好变坏都会让 CI 变红。
 
-**与 JVM 有意不同的**:见 [differences.md](differences.md)。共 33 条,每条都有替代写法。
+**与 JVM 有意不同的**:见 [differences.md](differences.md)。共 34 条,每条都有替代写法。

@@ -6,7 +6,7 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **实测佐证**:`test/clj2_divergence_evidence_tests.erl` 为每一条准备一个测试。如果哪天行为变了,测试就会失败,登记表必须跟着更新。CI 还会检查本文是否覆盖了每一条。
 - **corpus 门控**:corpus 里因这些差异而与 JVM 结果不同的条目,都标注了对应的差异编号(`make certify`)。
 
-下面共 33 条。每条依次是:JVM 上的行为 → clojerl2 上的行为 → 替代写法。
+下面共 34 条。每条依次是:JVM 上的行为 → clojerl2 上的行为 → 替代写法。
 
 另外有很多功能是**还没做**,不属于有意的差异,例如 atom、多方法。那些列在 [README](README.md#现状2026-10)。
 
@@ -209,6 +209,13 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **clojerl2**:sorted 集合是自己的平衡树,调用比较器的次数不同(通常更少)。顺序、查找和相等都一样。
 - **替代写法**:比较器不要有副作用,不要统计它被调用的次数。
 - 依据:designs/03 §1.3。
+
+### `:collections/list-index-get` `get` 也能按下标取列表
+
+- **JVM**:`(get '(:a :b) 1)` 为 nil,列表不是关联集合。
+- **clojerl2**:`get`(因而 `get-in`)对列表也接受整数下标,`(get '(:a :b) 1)` 是 `:b`。嵌入的宿主交给 Clojure 代码的 JSON 里,数组是 Erlang 列表,规则里读它的写法就是 `(get-in body ["messages" 0 "content"])`(见 designs/10)。
+- **替代写法**:也要在 JVM 上跑的代码用 `(nth coll i nil)`,或先 `vec`。
+- 依据:designs/10 §2。
 
 ### `:collections/exact-keys` map 的键按项精确比较
 
