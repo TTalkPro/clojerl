@@ -82,6 +82,7 @@ clojerl2:基于 nanopass 的 Clojure on ERTS 全新实现。设计文档见 [des
 | [clojerl2-037](tasks/clojerl2-037-bigdecimal.md) | BigDecimal | 035 | 已完成 |
 | [clojerl2-038](tasks/clojerl2-038-compiler-forms.md) | 编译器尚不接受的形式 | 033 | 已完成 |
 | [clojerl2-039](tasks/clojerl2-039-stdlib-namespaces.md) | 其余标准库命名空间 | 038 | 已完成 |
+| [clojerl2-040](tasks/clojerl2-040-reader.md) | reader 尚不接受的写法 | 039 | 已完成 |
 
 ## 关键路径
 

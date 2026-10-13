@@ -20,6 +20,7 @@ clojerl2 还在开发中。下面是诚实的现状,不是路线图。
 - `refer`/`refer-clojure`/`use`,`ns` 的 `(:refer-clojure :exclude/:only/:rename ...)` 与 `(:use ...)`,`require` 的 `:rename`;不存在或私有的名字按 JVM 抛 `IllegalAccessError`;私有 var 与私有宏在别的命名空间里被拒绝,`(var ns/私有)` 仍可取到;
 - reader 条件 `#?`/`#?@`(特性 `:clje` 与 `:default`),`.cljc` 文件可直接 `require`;
 - 标准库命名空间:`clojure.string`、`clojure.set`、`clojure.walk`、`clojure.template`、`clojure.test`(`deftest`/`is`/`are`/`run-tests` ……,见 [getting-started.md](getting-started.md))、`clojure.edn`(`read-string` 的 `:readers`/`:default`/`:eof`,按 EDN 严格校验)、`clojure.math`、`clojure.pprint`(`pprint`/`cl-format`)、`clojure.repl`(`doc`/`source`/`dir`/`apropos`);
+- reader:数字分组下划线(`1_000_000`)、记录字面量 `#ns.Rec{...}`/`#ns.Rec[...]`、`#=`、`*data-readers*`/`*default-data-reader-fn*`、`read-string` 的 `:features`/`:eof`,读错误的消息与异常类型同 JVM;
 - `#inst` 字面量(`java.util.Date`,`inst-ms`)与 `*print-length*`/`*print-level*`/`*print-namespace-maps*`;
 - 引用类型:atom、volatile、agent、future、promise、`binding`/`bound-fn`(ref/STM 有意不提供);
 - var 的运行时改值:表达式里的 `def`、同一文件里重复的顶层 `def`、`alter-var-root`、`with-redefs`/`with-redefs-fn`(包括别的命名空间里的 var)、var 的 watch 与 validator、对动态 var 的 `set!`、`locking`;clojure.core 的 fn 不能改值(见 differences.md);
@@ -28,8 +29,7 @@ clojerl2 还在开发中。下面是诚实的现状,不是路线图。
 - BigDecimal:`1.5M` 字面量、算术、`with-precision`、`bigdec`、`format` 与常用的 `java.math.BigDecimal` 方法;
 - 字符串是 UTF-8,中文可直接使用。
 
-**还没有的**(括号里是 corpus 中因此失败的条目数,见 [corpus 基线](../notes/corpus-baseline.md);corpus 通过 4152 / 4841):
-- reader 尚不接受的写法或读错误信息不同:部分数字语法、转义等(100)
+**还没有的**(括号里是 corpus 中因此失败的条目数,见 [corpus 基线](../notes/corpus-baseline.md);corpus 通过 4183 / 4841):
 - 编译器尚不接受的形式:`defrecord`/`extend-protocol` 写在表达式里、对字段的 `set!` 等(2 + 5)
 - 其余命名空间与 var 操作:`read`/`read+string`、一个文件里多个 `ns` 形式、`intern` 带元数据等(31)
 - 部分宿主类型与方法,例如从字节数组构造 `String`、字符集、JVM 接口分派(54)
@@ -39,4 +39,4 @@ clojerl2 还在开发中。下面是诚实的现状,不是路线图。
 
 **clojure-test-suite**:[jank-lang/clojure-test-suite](https://github.com/jank-lang/clojure-test-suite)(`vendor/clojure-test-suite`,子模块)全量跑在 CI 里(`make cts`),247 个命名空间,断言通过 5733 / 失败 243 / 错误 388,逐命名空间的失败数登记在 `test/cts-known-failures.txt`,变好变坏都会让 CI 变红。
 
-**与 JVM 有意不同的**:见 [differences.md](differences.md)。共 31 条,每条都有替代写法。
+**与 JVM 有意不同的**:见 [differences.md](differences.md)。共 32 条,每条都有替代写法。

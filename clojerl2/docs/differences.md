@@ -6,7 +6,7 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **实测佐证**:`test/clj2_divergence_evidence_tests.erl` 为每一条准备一个测试。如果哪天行为变了,测试就会失败,登记表必须跟着更新。CI 还会检查本文是否覆盖了每一条。
 - **corpus 门控**:corpus 里因这些差异而与 JVM 结果不同的条目,都标注了对应的差异编号(`make certify`)。
 
-下面共 31 条。每条依次是:JVM 上的行为 → clojerl2 上的行为 → 替代写法。
+下面共 32 条。每条依次是:JVM 上的行为 → clojerl2 上的行为 → 替代写法。
 
 另外有很多功能是**还没做**,不属于有意的差异,例如 atom、多方法、正则。那些列在 [README](README.md#现状2026-10)。
 
@@ -239,6 +239,13 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 - **clojerl2**:没有 JVM。互操作语法落到宿主垫片(`clj2_jvm`),实现了 java.lang、java.util、clojure.lang 里常用的成员(`Integer/parseInt`、`Math`、String 方法、异常构造器、`StringBuilder`、Var/Symbol/Keyword 成员……)。其他类不可用:java.io 的文件、流、reader 和 URL,java.net,java.text 与 java.time/Calendar(因此 `format` 的 `%t`),带种子的 `java.util.Random`,具名字符集,Thread 对象。用到时抛 IllegalArgumentException(no matching method)。
 - **替代写法**:用 Clojure 函数(`slurp`、`spit`、`clojure.string`、不带 `%t` 的 `format`、`rand`),或直接调 Erlang 模块:`file`、`filename`、`io`、`calendar`、`unicode`、`rand`、`erlang:system_time`(`(file/read_file path)`、`(calendar/universal_time)` ……)。
 - 依据:designs/09 §3。
+
+### `:reader/platform-feature` reader 条件的平台特性是 `:clje`
+
+- **JVM**:`#?(:clj 1 :cljs 2)` 读作 1。
+- **clojerl2**:平台特性是 `:clje`(与 clojerl 1.0 相同),不是 `:clj`。`#?(:clj a :clje b)` 读作 b,只有 `:clj`/`:cljs` 分支的 `#?` 什么都不读出。`.cljc` 库的 `:clj` 分支是 JVM 代码(Java 类与互操作),这里跳过而不是编译它们。
+- **替代写法**:给 BEAM 代码写 `:clje` 分支或 `:default` 分支;读别的平台写的数据时,用 `(read-string {:read-cond :allow :features #{:clj}} s)` 加上特性。
+- 依据:designs/01 §1.1(沿用 clojerl 1.0 的 reader 特性)。
 
 ## 惰性序列
 
