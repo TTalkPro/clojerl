@@ -111,12 +111,12 @@ hierarchy_stamp(#{hierarchy := nil}) ->
 hierarchy_stamp(#{hierarchy := H}) -> stamp(H).
 
 stamp({var, _, _} = V) -> stamp(clj2_ref:deref(V));
-stamp({atom, _, _} = A) -> {clj2_ref:version(A), stamp(clj2_ref:deref(A))};
+stamp({cell, _, _} = A) -> {clj2_ref:version(A), stamp(clj2_ref:deref(A))};
 stamp(H) -> erlang:phash2(H).
 
 %% @doc A :hierarchy option's hierarchy map (vars and atoms dereferenced)
 hierarchy_value({var, _, _} = V) -> hierarchy_value(clj2_ref:deref(V));
-hierarchy_value({atom, _, _} = A) -> hierarchy_value(clj2_ref:deref(A));
+hierarchy_value({cell, _, _} = A) -> hierarchy_value(clj2_ref:deref(A));
 hierarchy_value(H) -> H.
 
 no_method({Ns, Name}, DV) ->

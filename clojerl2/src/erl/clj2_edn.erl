@@ -45,7 +45,7 @@ read_string(_, X) ->
 %% a read form as the EDN value
 value({clj2_loc, _, _, Inner, Meta}, Opts) when is_map(Meta), map_size(Meta) > 0 ->
     V = value(Inner, Opts),
-    case is_tuple(V) andalso lists:member(element(1, V), [vector, map, set]) orelse is_list(V) of
+    case is_map(V) orelse is_tuple(V) andalso lists:member(element(1, V), [vector, map, set]) orelse is_list(V) of
         true -> clj2_rt:with_meta(V, clj2_coll:hash_map_kv(lists:append([[meta_key(K), value(X, Opts)]
                                                                           || {K, X} <- maps:to_list(Meta)])));
         false -> V

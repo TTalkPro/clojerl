@@ -213,7 +213,7 @@ put_var(Ns, Name, Info) when is_atom(Ns), is_atom(Name), is_map(Info) ->
 %% VarInfo as `meta', over what the registry knows)
 set_var_meta({var, _, {Ns, Name}}, M) ->
     {ok, #{vars := #{Name := I}}} = info(Ns),
-    Meta = element(3, M),
+    Meta = clj2_coll:raw_map(M),
     %% :macro in the metadata makes the var a macro from now on, as on
     %% the JVM (the compiler reads `macro')
     I1 = case maps:find(':macro', Meta) of

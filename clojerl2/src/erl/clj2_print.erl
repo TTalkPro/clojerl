@@ -171,13 +171,11 @@ pr1({tagged, [], T, nil}, _) when T =:= 'NaN'; T =:= 'Inf'; T =:= '-Inf' -> [<<"
 pr1({tagged, [], Tag, F}, R) when is_atom(Tag) -> [$#, atom_to_binary(Tag), $\s, pr(F, R)];
 pr1({bigdec, [], B}, _) when is_binary(B) -> [B, $M];
 pr1({fnmeta, _, F}, R) -> pr(F, R);
-pr1({'java.util.Date', _, Ms} = D, _) when is_integer(Ms) -> [<<"#inst \"">>, clj2_inst:to_string(D), $"];
 pr1({tagged_literal, _, #{':tag' := T, ':form' := F}}, R) -> [$#, pr(T, R), $\s, pr(F, R)];
 pr1({reader_conditional, _, #{':form' := F, ':splicing?' := S}}, R) ->
     [case S of true -> <<"#?@">>; false -> <<"#?">> end, pr(F, R)];
 pr1(F, _) when is_function(F) -> [<<"#object[">>, io_lib:format("~tp", [F]), $]];
-pr1({Tag, _, _} = X, R) when Tag =:= atom; Tag =:= volatile; Tag =:= agent;
-                             Tag =:= promise; Tag =:= future ->
+pr1({Tag, _, _} = X, R) when Tag =:= volatile; Tag =:= future ->
     [<<"#object[">>, ref_class(Tag), $\s, pr(ref_status(X), R), $]];
 %% a Throwable prints as #error {:cause .. :via [{:type .. :message ..}] ..}
 pr1({'clojure.lang.ExceptionInfo', _, _} = E, R) ->
@@ -209,25 +207,17 @@ kv_strs([K, V | Rest], R) -> [[pr(K, R), $\s, pr(V, R)] | kv_strs(Rest, R)];
 kv_strs([], _) -> [].
 
 %% reference types print as on the JVM, less the identity hash
-ref_class(atom) -> <<"clojure.lang.Atom">>;
 ref_class(volatile) -> <<"clojure.lang.Volatile">>;
-ref_class(agent) -> <<"clojure.lang.Agent">>;
-ref_class(promise) -> <<"clojure.core$promise$reify">>;
 ref_class(future) -> <<"clojure.core$future_call$reify">>.
 
 ref_status(X) ->
     {Status, Val} =
         try
             case X of
-                {T, _, _} when T =:= promise; T =:= future ->
+                {future, _, _} ->
                     case clj2_ref:is_realized(X) of
                         true -> {':ready', clj2_ref:deref(X)};
                         false -> {':pending', nil}
-                    end;
-                {agent, _, _} ->
-                    case clj2_ref:agent_error(X) of
-                        nil -> {':ready', clj2_ref:deref(X)};
-                        E -> {':failed', E}
                     end;
                 _ -> {':ready', clj2_ref:deref(X)}
             end

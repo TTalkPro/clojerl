@@ -50,12 +50,12 @@ to_data(X) when is_atom(X); is_number(X); is_binary(X) -> X;
 to_data({ratio, _, _} = X) -> X;
 to_data({vector, _, T} = X) when is_tuple(T) -> X;           % already a value
 to_data({map, _, M} = X) when is_map(M) -> X;
+to_data(M) when is_map(M) -> M;
 to_data({set, _, M} = X) when is_map(M) -> X;
 to_data({var, [], X}) -> [var, to_data(X)];                 % #'x is (var x)
 to_data({regex, [], Src}) -> {regex, nil, Src};              % a pattern value
 to_data({tagged, [], uuid, S}) when is_binary(S) -> clj2_string:uuid(S);
 to_data({tagged, [], inst, S}) when is_binary(S) -> clj2_inst:parse(S);
-to_data({'java.util.Date', _, _} = X) -> X;
 %% ##NaN, 1.5M, #inst ...: kept as they are read; evaluated, they raise
 %% (clj2_p_parse), and as a case constant they match nothing
 to_data({tagged, [], Tag, F}) when is_atom(Tag), Tag =/= 'NaN', Tag =/= 'Inf', Tag =/= '-Inf' ->
@@ -78,7 +78,7 @@ tag_value(Tag, V) ->
         F when F =/= false, F =/= nil -> clj2_rt:invoke(F, [V]);
         _ ->
             case record_tag(Tag) of
-                {ok, Map, _} when is_tuple(V), element(1, V) =:= map -> clj2_rt:invoke(Map, [V]);
+                {ok, Map, _} when is_map(V); is_tuple(V), element(1, V) =:= map -> clj2_rt:invoke(Map, [V]);
                 {ok, _, Pos} -> clj2_rt:invoke(Pos, clj2_coll:to_list(V));
                 none ->
                     case dyn('*default-data-reader-fn*') of
@@ -96,6 +96,7 @@ resolve_tags({tagged, [], Tag, V}) when Tag =/= 'NaN', Tag =/= 'Inf', Tag =/= '-
 resolve_tags(L) when is_list(L) -> [resolve_tags(X) || X <- L];
 resolve_tags({vector, _, T} = V) when is_tuple(T) ->
     clj2_coll:vector([resolve_tags(X) || X <- clj2_coll:vec_to_list(V)]);
+resolve_tags(M) when is_map(M) -> resolve_tags({map, nil, M});
 resolve_tags({map, _, M}) when is_map(M) ->
     clj2_coll:hash_map_kv(lists:append([[resolve_tags(K), resolve_tags(V)] || {K, V} <- maps:to_list(M)]));
 resolve_tags({set, _, M}) when is_map(M) -> clj2_coll:hash_set([resolve_tags(X) || X <- maps:keys(M)]);
@@ -139,8 +140,9 @@ from_value({lazy_seq, _, _} = L) -> [from_value(X) || X <- clj2_coll:to_list(L)]
 %% (a collection keeps its metadata: ^:foo [x] through a macro)
 from_value({vector, Meta, T} = V) when is_tuple(T) ->
     keep_meta(clj2_coll:vector([from_value(X) || X <- clj2_coll:vec_to_list(V)]), Meta);
-from_value({map, Meta, M}) when is_map(M) ->
-    keep_meta(clj2_coll:hash_map_kv(lists:append([[from_value(K), from_value(V)] || {K, V} <- maps:to_list(M)])), Meta);
+from_value({map, Meta, M}) when is_map(M) -> clj2_coll:mk_map(Meta, from_value(M));
+from_value(M) when is_map(M) ->
+    maps:from_list([{from_value(K), from_value(V)} || {K, V} <- maps:to_list(M)]);
 from_value({set, Meta, M}) when is_map(M) ->
     keep_meta(clj2_coll:hash_set([from_value(X) || X <- maps:keys(M)]), Meta);
 from_value(X) -> X.
@@ -168,6 +170,7 @@ vector_items(_) -> false.
 
 map_pairs({map, [], Pairs}) when is_list(Pairs) -> Pairs;
 map_pairs({map, _, M}) when is_map(M) -> maps:to_list(M);
+map_pairs(M) when is_map(M) -> maps:to_list(M);
 map_pairs(_) -> false.
 
 set_items({set, [], Items}) when is_list(Items) -> Items;

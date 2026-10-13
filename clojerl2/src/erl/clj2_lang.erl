@@ -64,8 +64,15 @@ spec(l0) ->
                   list   => [{list, expr}],                    %% an Erlang list of values
                   throw  => [expr],
                   'try'  => [expr, {list, 'catch'}, {opt, expr}],
-                  'case' => [expr, {list, cclause}, {opt, expr}]},  %% case*: test, clauses, default?
+                  'case' => [expr, {list, cclause}, {opt, expr}],  %% case*: test, clauses, default?
+                  %% receive: clauses, after-timeout?, after-body? (an
+                  %% Erlang selective receive; clj2_p_parse:receive_form/3)
+                  'receive' => [{list, rclause}, {opt, expr}, {opt, expr}]},
             cclause => #{cclause => [value, expr]},                %% constants (a list), result
+            %% pattern (data: {pvar, I} | wild | {plit, V} | {ptuple, Ps} |
+            %% {pmap, [{K, P}]} | {ppin, J}), the variables it binds (I-th),
+            %% the expressions it matches the value of (~x, J-th), body
+            rclause => #{rclause => [value, {list, sym}, {list, expr}, expr]},
             binding => #{bind   => [sym, expr]},
             clause  => #{clause => [{list, sym}, {opt, sym}, expr]},   %% fixed, rest?, body
             'catch' => #{'catch' => [class, sym, expr]}}};
@@ -84,6 +91,7 @@ spec(l1) ->
                    fn       => [{opt, uid}, {list, clause}]},
              binding => #{bind => [uid, expr]},
              clause  => #{clause => [{list, uid}, {opt, uid}, expr]},
+             rclause => #{rclause => [value, {list, uid}, {list, expr}, expr]},
              'catch' => #{'catch' => [class, uid, expr]}}}};
 
 %% L2 — loop*/recur gone: every fn clause has a name (an Erlang named
@@ -135,7 +143,9 @@ spec(l5) ->
                    call_var  => [atom, atom, {list, triv}],
                    self_call => [uid, {list, triv}],
                    list      => [{list, triv}],
-                   throw     => [triv]}}}};
+                   throw     => [triv],
+                   'receive' => [{list, rclause}, {opt, triv}, {opt, expr}]},
+             rclause => #{rclause => [value, {list, uid}, {list, triv}, expr]}}}};
 
 %% Labs — one node per absform construct (designs/02 §2). Every
 %% Clojure-level decision is made by lower-labs; emit only serializes.
@@ -179,6 +189,8 @@ spec(labs) ->
                   eif      => [{list, eclause}],
                   etry     => [{list, e}, {list, eclause}, {list, e}],
                   etuple   => [{list, e}],
+                  ereceive => [{list, eclause}, {opt, e}, {list, e}],  %% clauses, after T?, after body
+                  emapp    => [{list, eassoc}],                %% a map pattern (K := P)
                   emap     => [{list, eassoc}],
                   elist    => [{list, e}],
                   eop      => [atom, {list, e}]}}};

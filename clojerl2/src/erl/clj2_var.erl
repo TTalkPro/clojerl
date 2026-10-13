@@ -25,6 +25,7 @@
         , frame/0
         , with_frame/2
         , bound_fn/1
+        , is_bound/1
         , delete_roots/1
         , push_frame/1
         , pop_frame/0
@@ -130,8 +131,22 @@ with_frame(Frame, F) ->
 
 %% @doc (bound-fn* f): f, called with the bindings in effect now, in
 %% whatever process calls it. A variadic fn value of any arity.
-bound_fn(F) ->
+%% a fn of one fixed arity stays an Erlang fun of that arity, so that the
+%% result can be handed to Erlang (erlang:spawn(BoundFn), a callback)
+bound_fn(F) when is_function(F) ->
     Frame = frame(),
+    W = fun(Args) -> with_frame(Frame, fun() -> erlang:apply(F, Args) end) end,
+    case erlang:fun_info(F, arity) of
+        {arity, 0} -> fun() -> W([]) end;
+        {arity, 1} -> fun(A) -> W([A]) end;
+        {arity, 2} -> fun(A, B) -> W([A, B]) end;
+        {arity, 3} -> fun(A, B, C) -> W([A, B, C]) end;
+        {arity, 4} -> fun(A, B, C, D) -> W([A, B, C, D]) end;
+        _ -> bound_fn_any(F, Frame)
+    end;
+bound_fn(F) -> bound_fn_any(F, frame()).
+
+bound_fn_any(F, Frame) ->
     {clj2_fn, #{}, {0, fun(Rest) ->
                                Args = case Rest of
                                           nil -> [];
@@ -222,3 +237,12 @@ thread_bindings() ->
 
 delete_roots(M) ->
     ets:match_delete(?TAB, {{M, '_'}, '_'}).
+
+%% @doc (bound? v): v has a root or a binding in this process
+is_bound({local_var, _, _} = L) -> clj2_ref:local_bound(L);
+is_bound(V) ->
+    try clj2_ref:deref(V) of
+        {'clojure.lang.Var$Unbound', _, _} -> false;
+        _ -> true
+    catch error:{clj2_unbound_var, _, _} -> false
+    end.

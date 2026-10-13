@@ -43,12 +43,11 @@ write(W, Chars) ->
                   nil -> false;
                   Hook -> clj2_rt:invoke(Hook, [S]) =:= true
               end,
-    %% a writer value: the hook, its own -write (clojure.pprint's writers),
-    %% else .write
+    %% a writer value: the hook, else its own -write (clojure.pprint's writers)
     Handled orelse
         case clj2_proto:type_method(W, '-write', [S]) of
             {ok, _} -> true;
-            error -> clj2_jvm:method(W, write, [S])
+            error -> erlang:error(clj2_rt:ex_info(<<"not a writer">>, clj2_coll:hash_map_kv([':type', ':IllegalArgumentException']), nil))
         end,
     nil.
 
