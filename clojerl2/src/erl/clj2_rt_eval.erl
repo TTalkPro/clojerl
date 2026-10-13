@@ -123,6 +123,7 @@ macroexpand(Form) ->
 require(Args) ->
     Cur = current_ns(),
     {Aliases, Refers} = load_specs(Args, Cur),
+    check_aliases(Cur, Aliases),
     case Aliases =:= #{} andalso Refers =:= #{} of
         true -> ok;
         false -> clj2_ns:put_ctx(Cur, Aliases, Refers)
@@ -153,6 +154,25 @@ load_specs(Args, Cur) ->
                        end,
               {maps:merge(AAcc, Aliases), maps:merge(RAcc, Refers)}
       end, {#{}, #{}}, Specs).
+
+%% an alias already naming another namespace is the JVM's
+%% IllegalStateException
+check_aliases(Cur, Aliases) ->
+    Old = case clj2_ns:info(Cur) of
+              {ok, I} -> maps:get(aliases, I, #{});
+              error -> #{}
+          end,
+    maps:foreach(
+      fun(A, Ns) ->
+              case Old of
+                  #{A := Other} when Other =/= Ns ->
+                      erlang:error(clj2_rt:ex_info(
+                                     iolist_to_binary(["Alias ", atom_to_binary(A), " already exists in namespace ",
+                                                       atom_to_binary(Cur), ", aliasing ", atom_to_binary(Other)]),
+                                     clj2_coll:hash_map_kv([':type', ':IllegalStateException']), nil));
+                  _ -> ok
+              end
+      end, Aliases).
 
 libspec(Ns) when is_atom(Ns) -> {Ns, #{}};
 libspec(Spec) ->
@@ -331,13 +351,24 @@ vars_of(Ns, Pred) ->
         error -> []
     end.
 
+%% the interns: not the name a deftype/defrecord's class goes by (a const
+%% beside its ->Name factory), which ns-map lists as on the JVM
+interns_of(Ns, Pred) ->
+    Vars = case clj2_ns:info(Ns) of
+               {ok, #{vars := Vs}} -> Vs;
+               error -> #{}
+           end,
+    [P || {N, _} = P <- vars_of(Ns, Pred),
+          not (maps:get(kind, maps:get(N, Vars), none) =:= const
+               andalso is_map_key(list_to_atom("->" ++ atom_to_list(N)), Vars))].
+
 sym_map(Pairs) -> clj2_coll:hash_map_kv(lists:append([[K, V] || {K, V} <- Pairs])).
 
 %% @doc (ns-publics ns): symbol → var of the public vars
-ns_publics(Ns) -> sym_map(vars_of(Ns, fun(I) -> not maps:get(private, I, false) end)).
+ns_publics(Ns) -> sym_map(interns_of(Ns, fun(I) -> not maps:get(private, I, false) end)).
 
 %% @doc (ns-interns ns): symbol → var of every var
-ns_interns(Ns) -> sym_map(vars_of(Ns, fun(_) -> true end)).
+ns_interns(Ns) -> sym_map(interns_of(Ns, fun(_) -> true end)).
 
 %% @doc (ns-aliases ns): alias symbol → namespace symbol
 ns_aliases(Ns) -> sym_map(maps:to_list(ctx(Ns, aliases))).

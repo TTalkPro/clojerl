@@ -33,7 +33,7 @@
 -export([future_call/1, future_cancel/1, is_future_done/1, is_future_cancelled/1]).
 -export([agent/2, send/3, await/2, agent_error/1, restart_agent/3,
          set_error_handler/2, error_handler/1, set_error_mode/2, error_mode/1]).
--export([local_var/1]).
+-export([local_var/1, local_bound/1, ref_meta/1, reset_ref_meta/2]).
 -export([deref/1, deref/3, is_realized/1, type_of/1, version/1]).
 
 -define(ATOM, clj2_atom).
@@ -57,11 +57,33 @@ atom(Init) -> {atom, nil, {make_ref(), Init}}.
 
 %% Opts: the (atom x :validator f) options, as a Clojure map or nil
 atom(Init, Opts) ->
+    Meta = clj2_coll:get(Opts, ':meta'),
+    Meta =:= nil orelse clj2_coll:is_any_map(Meta) orelse
+        erlang:error(clj2_rt:ex_info(iolist_to_binary(["class ", atom_to_binary(clj2_class:class_of(Meta)),
+                                                       " cannot be cast to class clojure.lang.IPersistentMap"]),
+                                     clj2_coll:hash_map_kv([':type', ':ClassCastException']), nil)),
     A = atom(Init),
     case clj2_coll:get(Opts, ':validator') of
-        nil -> A;
-        V -> set_validator(A, V), A
+        nil -> ok;
+        V -> validate(V, Init), set_validator(A, V)
+    end,
+    Meta =:= nil orelse reset_ref_meta(A, Meta),
+    A.
+
+%% @doc An atom's or agent's metadata (alter-meta!/reset-meta!): kept in
+%% the atom table under {meta, Key}
+ref_meta(R) ->
+    case ets:lookup(?ATOM, {meta, ref_key(R)}) of
+        [{_, M}] -> M;
+        [] -> nil
     end.
+
+reset_ref_meta(R, M) ->
+    true = ets:insert(?ATOM, {{meta, ref_key(R)}, M}),
+    M.
+
+ref_key({atom, _, {Key, _}}) -> Key;
+ref_key({agent, _, {Key, _}}) -> Key.
 
 current({atom, _, {Key, Init}}) ->
     case ets:lookup(?ATOM, Key) of
@@ -153,7 +175,7 @@ validate(F, V) ->
     case clj2_rt:invoke(F, [V]) of
         R when R =:= false; R =:= nil ->
             erlang:error(clj2_rt:ex_info(<<"Invalid reference state">>,
-                                         clj2_coll:hash_map_kv([':value', V]), nil));
+                                         clj2_coll:hash_map_kv([':type', ':IllegalStateException', ':value', V]), nil));
         _ -> ok
     end.
 
@@ -393,7 +415,7 @@ deref(G = {agent, _, _}) -> maps:get(state, agent_row(G));
 deref({promise, _, Key}) -> {ok, V} = await_row(Key, infinity, none), V;
 deref({future, _, {Key, Pid}}) -> {ok, R} = await_row(Key, infinity, Pid), future_result(R);
 deref({var, _, {Ns, Name}}) -> var_value(Ns, Name);
-deref({local_var, _, Cell}) -> deref(Cell);                    % with-local-vars
+deref({local_var, _, _} = L) -> local_deref(L);                 % with-local-vars
 deref({clj2_reduced, X}) -> X;
 deref(X) -> clj2_lazy:deref(X).                              % delay
 
@@ -410,9 +432,12 @@ deref({future, _, {Key, Pid}}, Ms, TimeoutVal) ->
     end;
 deref(X, _, _) -> deref(X).
 
+%% an unbound var's value is a clojure.lang.Var$Unbound, as on the JVM
 var_value(Ns, Name) ->
     {ok, #{module := M, vars := #{Name := Info}}} = clj2_ns:info(Ns),
-    clj2_rt:var_value(maps:get(module, Info, M), Name, Info).
+    try clj2_rt:var_value(maps:get(module, Info, M), Name, Info)
+    catch error:{clj2_unbound_var, _, _} -> {'clojure.lang.Var$Unbound', nil, {Ns, Name}}
+    end.
 
 is_realized({promise, _, Key}) -> ets:member(?PROMISE, Key);
 is_realized({future, _, {Key, _}}) -> ets:member(?PROMISE, Key);
@@ -422,8 +447,25 @@ is_realized(X) -> clj2_lazy:is_realized(X).
 type_of({Tag, _, _}) when Tag =:= atom; Tag =:= volatile; Tag =:= agent; Tag =:= promise; Tag =:= future -> Tag;
 type_of(_) -> none.
 
-%% @doc A with-local-vars var: a cell var-get/var-set/deref use
-local_var(V) -> {local_var, nil, atom(V)}.
+%% @doc A with-local-vars var: {local_var, nil, {Key, RootCell}}. Its root
+%% starts unbound; with-local-vars binds it in this process for its body
+%% (clj2_var bindings under {local_var, Key}), as the JVM's Var.create +
+%% pushThreadBindings
+local_var(_Init) -> {local_var, nil, {make_ref(), atom('$clj2_unbound')}}.
+
+local_deref({local_var, _, {Key, Cell}}) ->
+    case get({clj2_dyn, {local_var, Key}, local}) of
+        [V | _] -> V;
+        _ ->
+            case deref(Cell) of
+                '$clj2_unbound' -> erlang:error({clj2_unbound_var, local_var, Key});
+                V -> V
+            end
+    end.
+
+local_bound({local_var, _, {Key, Cell}}) ->
+    is_list(get({clj2_dyn, {local_var, Key}, local})) andalso get({clj2_dyn, {local_var, Key}, local}) =/= []
+        orelse deref(Cell) =/= '$clj2_unbound'.
 
 %% @doc An atom's version: it changes with every write (cache stamps).
 version(A = {atom, _, _}) -> element(1, current(A)).

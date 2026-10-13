@@ -98,6 +98,7 @@ with_bindings(Pairs, F) ->
     after [pop_binding(M, N) || {M, N, _} <- lists:reverse(Bs)]
     end.
 
+pairs([{local_var, _, {Key, _}}, V | Rest]) -> [{{local_var, Key}, local, V} | pairs(Rest)];
 pairs([{var, _, {Ns, Name}}, V | Rest]) ->
     [{dynamic_module(Ns, Name), Name, V} | pairs(Rest)];
 pairs([]) -> [].
@@ -158,7 +159,12 @@ pop_frame() ->
     end.
 
 %% @doc (var-set v x): a with-local-vars var, or a dynamic var's binding
-var_set({local_var, _, Cell}, X) -> clj2_ref:reset(Cell, X);
+var_set({local_var, _, {Key, _}}, X) ->
+    case get({clj2_dyn, {local_var, Key}, local}) of
+        [_ | _] -> set_binding({local_var, Key}, local, X), X;
+        _ -> erlang:error(clj2_rt:ex_info(<<"Can't change/establish root binding of: local var with set">>,
+                                          clj2_coll:hash_map_kv([':type', ':IllegalStateException']), nil))
+    end;
 var_set({var, _, {Ns, Name}}, X) ->
     {ok, #{module := NsMod, vars := #{Name := I}}} = clj2_ns:info(Ns),
     M = maps:get(module, I, NsMod),
@@ -194,6 +200,11 @@ is_thread_bound({var, _, {Ns, Name}}) ->
                 [_ | _] -> true;
                 _ -> false
             end;
+        _ -> false
+    end;
+is_thread_bound({local_var, _, {Key, _}}) ->
+    case get({clj2_dyn, {local_var, Key}, local}) of
+        [_ | _] -> true;
         _ -> false
     end;
 is_thread_bound(_) -> false.

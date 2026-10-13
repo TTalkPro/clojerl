@@ -17,8 +17,9 @@
 -export([set_write_hook/1]).
 
 -export([out/0, write/1, write/2, read_line/0, read_line/1]).
--export([with_out_str/1, with_in_str/2, string_writer/0, contents/1, string_reader/1, close/1]).
+-export([with_out_str/1, with_in_str/2, string_writer/0, is_string_writer/1, contents/1, string_reader/1, close/1]).
 -export([slurp/2, spit/3]).
+-export([read_form/4]).
 
 %% the device a dynamic var holds (before clojure.core is loaded: the
 %% standard devices)
@@ -95,7 +96,13 @@ with_in_str(S, Thunk) ->
     end.
 
 %% @doc A device that collects what is written to it; contents/1 reads it.
-string_writer() -> spawn(fun() -> writer([]) end).
+string_writer() ->
+    W = spawn(fun() -> writer([]) end),
+    put({clj2_string_writer, W}, true),
+    W.
+
+%% @doc Made by string_writer/0 in this process (its .toString is its text)
+is_string_writer(W) -> get({clj2_string_writer, W}) =:= true.
 
 contents(W) ->
     Ref = monitor(process, W),
@@ -142,6 +149,16 @@ reader(Rest) ->
         close -> ok
     end.
 
+%% (read) on a string reader: one form, read here so that the rest
+%% stays unread (read-line after read sees what follows the form)
+get_request(clj2_read_form, Rest) ->
+    case clj2_reader:read(Rest) of
+        {ok, Form, _, After} ->
+            Text = binary:part(Rest, 0, byte_size(Rest) - byte_size(After)),
+            {{form, Form, Text}, After};
+        {eof, _} -> {eof, <<>>};
+        {error, _, Msg} -> {{error, Msg}, <<>>}
+    end;
 get_request(_, <<>>) -> {eof, <<>>};
 get_request({get_line, _Enc, _Prompt}, Rest) ->
     case binary:split(Rest, <<"\n">>) of
@@ -154,6 +171,62 @@ get_request({get_chars, _Enc, _Prompt, N}, Rest) ->
 get_request({setopts, _}, Rest) -> {ok, Rest};
 get_request(getopts, Rest) -> {[{binary, true}, {encoding, unicode}], Rest};
 get_request(_, Rest) -> {{error, enotsup}, Rest}.
+
+%%====================================================================
+%% read / read+string
+%%====================================================================
+
+%% @doc (read stream eof-error? eof-value): the next form of the stream as
+%% data; WithText: [form text] as read+string gives it
+read_form(Dev0, EofError, EofValue, WithText) ->
+    Dev = case Dev0 of nil -> in(); _ -> Dev0 end,
+    R = case is_pid(Dev) andalso io_request(Dev, clj2_read_form) of
+            {error, enotsup} -> read_by_lines(Dev, <<>>);
+            false -> read_by_lines(Dev, <<>>);
+            Other -> Other
+        end,
+    case R of
+        {form, Form, Text} ->
+            V = clj2_p_parse:data_form(Form, clj2_rt_eval:current_ns()),
+            case WithText of
+                true -> clj2_coll:vector([V, string:trim(Text, leading)]);
+                false -> V
+            end;
+        eof when EofError =:= false orelse EofError =:= nil ->
+            case WithText of
+                true -> clj2_coll:vector([EofValue, <<>>]);
+                false -> EofValue
+            end;
+        eof -> erlang:error(clj2_rt:ex_info(<<"EOF while reading">>,
+                                            clj2_coll:hash_map_kv([':type', ':RuntimeException']), nil));
+        {error, Msg} -> erlang:error(clj2_rt:ex_info(Msg, clj2_coll:hash_map_kv([':type', ':RuntimeException']), nil))
+    end.
+
+io_request(Dev, Req) ->
+    Ref = monitor(process, Dev),
+    Dev ! {io_request, self(), Ref, Req},
+    receive
+        {io_reply, Ref, Reply} -> demonitor(Ref, [flush]), Reply;
+        {'DOWN', Ref, _, _, _} -> eof
+    end.
+
+%% another device (standard_io ...): lines until they hold a whole form
+read_by_lines(Dev, Acc) ->
+    case io:get_line(Dev, '') of
+        Eof when Eof =:= eof; element(1, Eof) =:= error ->
+            case clj2_reader:read(Acc) of
+                {ok, Form, _, _} -> {form, Form, Acc};
+                _ -> eof
+            end;
+        Data ->
+            Acc1 = <<Acc/binary, (unicode:characters_to_binary(Data))/binary>>,
+            case clj2_reader:read(Acc1) of
+                {ok, Form, _, After} -> {form, Form, binary:part(Acc1, 0, byte_size(Acc1) - byte_size(After))};
+                {eof, _} -> read_by_lines(Dev, Acc1);
+                {error, _, <<"EOF", _/binary>>} -> read_by_lines(Dev, Acc1);
+                {error, _, Msg} -> {error, Msg}
+            end
+    end.
 
 %%====================================================================
 %% files
