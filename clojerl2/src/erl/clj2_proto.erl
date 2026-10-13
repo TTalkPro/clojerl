@@ -32,7 +32,7 @@
         , impl_module/2
         , impl/2
         , dispatch/4
-        , loaded/3
+        , loaded/3, loaded/4
         , satisfies/2
         , is_type_value/1
         , record/3
@@ -40,6 +40,7 @@
         , record_fields/1
         , extend_fns/3
         , extenders/1
+        , declared_interfaces/1
         ]).
 
 -define(TAB, clj2_proto).
@@ -185,7 +186,8 @@ extend_tag(TypeVal) ->
 %% @doc (extenders P): the types with an impl of P, as classes
 extenders(ProtoVal) ->
     Protocol = clj2_coll:get(ProtoVal, ':name'),
-    [class_of_tag(Tag) || {{P, Tag}, {ok, _}} <- ets:tab2list(?TAB), P =:= Protocol].
+    [class_of_tag(Tag) || {{P, Tag}, {ok, _}} <- ets:tab2list(?TAB), P =:= Protocol,
+                          not ets:member(?TAB, {inline, P, Tag})].
 
 %% a class value (or nil) as extend-type would name it → its dispatch tag
 tag_of_class(nil) -> nil;
@@ -230,6 +232,8 @@ find_impl(Protocol, This) ->
         error ->
             case via_class(Protocol, Tag, This) of
                 {ok, _} = Ok -> Ok;
+                %% nil is no Object: only an impl for nil takes it
+                error when This =:= nil -> error;
                 error -> impl(Protocol, default)
             end
     end.
@@ -261,13 +265,43 @@ loaded(Protocol, Tag, Mod) ->
     true = ets:match_delete(?TAB, {{via, Protocol, '_'}, '_'}),      % class lookups may change
     ok.
 
+%% @doc An inline impl (deftype/defrecord's own methods): dispatched like
+%% any, but not an extender
+loaded(Protocol, Tag, Mod, inline) ->
+    clj2_ns:ensure_started(),
+    true = ets:insert(?TAB, {{inline, Protocol, Tag}, true}),
+    loaded(Protocol, Tag, Mod).
+
 satisfies(Protocol, X) -> find_impl(Protocol, X) =/= error.
+
+%% @doc The JVM interfaces a deftype/defrecord Tag declares (it has an
+%% impl under the interface's name): supers of the type
+declared_interfaces(Tag) ->
+    try
+        load_impls(Tag),
+        [P || {{P, T}, {ok, _}} <- ets:tab2list(?TAB), T =:= Tag, clj2_class:is_class(P)]
+    catch error:badarg -> []
+    end.
+
+%% a type's impl modules on the code path (`<P>__<Tag>') not loaded yet
+%% (a library's types: they load on first dispatch), loaded once
+load_impls(Tag) ->
+    case ets:member(?TAB, {impls_loaded, Tag}) of
+        true -> ok;
+        false ->
+            Suffix = "__" ++ atom_to_list(Tag),
+            [code:ensure_loaded(list_to_atom(M)) || {M, _, false} <- code:all_available(),
+                                                    lists:suffix(Suffix, M)],
+            ets:insert(?TAB, {{impls_loaded, Tag}, true}),
+            ok
+    end.
 
 %% @doc (.m x args) on a deftype or defrecord: the method m of a protocol
 %% (or interface) its type implements, as a JVM class's method is
 %% {ok, Result} | error
 type_method(X, Method, Args) ->
     Tag = type_tag(X),
+    is_atom(Tag) andalso lists:member($., atom_to_list(Tag)) andalso load_impls(Tag),
     Arity = length(Args) + 1,
     Impls = [I || {{_P, T}, {ok, I}} <- ets:tab2list(?TAB), T =:= Tag],
     call_first(Impls, Method, Arity, [X | Args]).

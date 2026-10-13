@@ -22,7 +22,7 @@
         , hash_set/1
         , vec_to_list/1
         , is_vector/1
-        , is_hash_map/1
+        , is_hash_map/1, is_record/1
         , is_hash_set/1
         , is_any_map/1
         , is_any_set/1
@@ -91,7 +91,42 @@ to_list({set, _, M}) -> maps:keys(M);
 to_list({map, _, M}) -> [vector([K, V]) || {K, V} <- maps:to_list(M)];
 to_list({Tag, _, M}) when is_atom(Tag), is_map(M) -> [vector([K, V]) || {K, V} <- maps:to_list(M)];
 to_list({array, _, _} = A) -> clj2_array:to_list(A);
+to_list({Tag, _, _} = X) when is_atom(Tag) ->
+    case type_seq(X) of
+        {ok, S} -> to_list(S);
+        error -> erlang:error({clj2_not_seqable, X})
+    end;
 to_list(X) -> erlang:error({clj2_not_seqable, X}).
+
+%% a deftype implementing clojure.lang.ISeq (its first and next) or
+%% Seqable (its seq) as a seq: {ok, Seq} | error
+type_seq({Tag, _, _} = X) ->
+    case clj2_proto:is_type_value(X) of
+        false -> error;
+        true ->
+            case clj2_proto:impl('clojure.lang.ISeq', Tag) of
+                {ok, _} -> {ok, iseq_walk(X)};
+                error ->
+                    case clj2_proto:impl('clojure.lang.Seqable', Tag) of
+                        {ok, _} -> {ok, seq(element(2, clj2_proto:type_method(X, seq, [])))};
+                        error -> error
+                    end
+            end
+    end.
+
+iseq_walk(X) ->
+    {ok, F} = clj2_proto:type_method(X, first, []),
+    [F | clj2_lazy:lazy_seq(fun() ->
+                                    case clj2_proto:type_method(X, next, []) of
+                                        {ok, nil} -> nil;
+                                        {ok, {Tag, _, _} = N} when is_atom(Tag) ->
+                                            case type_seq(N) of
+                                                {ok, S} -> S;
+                                                error -> seq(N)
+                                            end;
+                                        {ok, N} -> seq(N)
+                                    end
+                            end)].
 
 %% @doc Concatenate seqables into a list (syntax-quote's `~@').
 concat(Parts) -> lists:append([to_list(P) || P <- Parts]).
@@ -111,6 +146,12 @@ concat_step([P | Ps]) ->
 
 is_hash_map({map, _, M}) when is_map(M) -> true;
 is_hash_map(_) -> false.
+
+%% @doc A defrecord value (map? and record? are true of it)
+is_record({Tag, _, M}) when is_atom(Tag), is_map(M), Tag =/= map, Tag =/= set,
+                            Tag =/= 'clojure.lang.ExceptionInfo', Tag =/= tagged_literal,
+                            Tag =/= reader_conditional -> true;
+is_record(_) -> false.
 
 is_hash_set({set, _, M}) when is_map(M) -> true;
 is_hash_set(_) -> false.
@@ -145,6 +186,11 @@ seq(nil) -> nil;
 seq([]) -> nil;
 seq([_ | _] = L) -> L;
 seq({lazy_seq, _, _} = L) -> clj2_lazy:seq(L);
+seq({Tag, _, T} = X) when is_atom(Tag), is_tuple(T), Tag =/= vector ->
+    case type_seq(X) of
+        {ok, S} -> seq(S);
+        error -> case to_list(X) of [] -> nil; L -> L end
+    end;
 seq({'clojure.lang.ExceptionInfo', _, _}) ->
     erlang:error(clj2_rt:ex_info(<<"Don't know how to create ISeq from: clojure.lang.ExceptionInfo">>,
                                  hash_map_kv([':type', ':IllegalArgumentException']), nil));
@@ -179,6 +225,17 @@ count({set, _, M}) -> map_size(M);
 count(B) when is_binary(B) -> string:length(B);
 count({Tag, _, M}) when is_atom(Tag), is_map(M) -> map_size(M);
 count({array, _, _} = A) -> clj2_array:length(A);
+%% a deftype: its count method (Counted, IPersistentCollection ...), else
+%% the length of its seq
+count({Tag, _, _} = X) when is_atom(Tag) ->
+    case clj2_proto:is_type_value(X) andalso clj2_proto:type_method(X, count, []) of
+        {ok, N} -> N;
+        _ ->
+            case type_seq(X) of
+                {ok, S} -> length(to_list(S));
+                error -> erlang:error({clj2_not_countable, X})
+            end
+    end;
 count(X) -> erlang:error({clj2_not_countable, X}).
 
 nth(nil, nil) -> erlang:error({clj2_index_out_of_bounds, nil});
@@ -411,6 +468,9 @@ equals_value(A, B) ->
 is_sequential(L) when is_list(L) -> true;
 is_sequential({lazy_seq, _, _}) -> true;
 is_sequential({vector, _, T}) when is_tuple(T) -> true;
+%% a deftype that is Sequential (an eduction, an ISeq type)
+is_sequential({Tag, _, T} = X) when is_atom(Tag), is_tuple(T) ->
+    clj2_proto:is_type_value(X) andalso clj2_class:is_instance('clojure.lang.Sequential', X);
 is_sequential(_) -> false.
 
 seq_equals([], []) -> true;

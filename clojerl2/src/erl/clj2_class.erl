@@ -67,6 +67,9 @@ class_of({transient, _, {vector, _, _}}) -> 'clojure.lang.PersistentVector$Trans
 class_of({transient, _, {map, _, _}}) -> 'clojure.lang.PersistentHashMap$TransientHashMap';
 class_of({transient, _, _}) -> 'clojure.lang.PersistentHashSet$TransientHashSet';
 class_of({'clojure.lang.ExceptionInfo', _, _} = E) -> exception_class(E);
+class_of({Host, nil, _}) when Host =:= 'java.lang.Thread'; Host =:= 'java.util.Iterator';
+                              Host =:= 'java.util.concurrent.ExecutorService';
+                              Host =:= 'java.util.concurrent.FutureTask' -> Host;
 class_of({Tag, _, M}) when is_atom(Tag), is_map(M) -> Tag;                % a record
 class_of({Tag, _, T}) when is_atom(Tag), is_tuple(T) -> Tag;              % a deftype
 class_of(_) -> 'java.lang.Object'.
@@ -103,10 +106,10 @@ direct(C) ->
         #{C := Ss} -> Ss;
         _ ->
             case record_or_type(C) of
-                record -> ['clojure.lang.IRecord', 'clojure.lang.IPersistentMap', 'clojure.lang.IHashEq',
+                record -> clj2_proto:declared_interfaces(C) ++ ['clojure.lang.IRecord', 'clojure.lang.IPersistentMap', 'clojure.lang.IHashEq',
                            'clojure.lang.IObj', 'clojure.lang.ILookup', 'clojure.lang.IKeywordLookup',
                            'java.util.Map', 'java.io.Serializable', 'java.lang.Object'];
-                deftype -> ['clojure.lang.IType', 'java.lang.Object'];
+                deftype -> clj2_proto:declared_interfaces(C) ++ ['clojure.lang.IType', 'java.lang.Object'];
                 none -> case C of 'java.lang.Object' -> []; _ -> ['java.lang.Object'] end
             end
     end.
@@ -257,6 +260,7 @@ exception_class({clj2_index_out_of_bounds, nil}) -> 'java.lang.NullPointerExcept
 exception_class({clj2_index_out_of_bounds, _}) -> 'java.lang.IndexOutOfBoundsException';
 exception_class(R) when element(1, R) =:= clj2_string_index_out_of_bounds -> 'java.lang.StringIndexOutOfBoundsException';
 exception_class({clj2_cannot_compare, _, _}) -> 'java.lang.ClassCastException';
+exception_class({clj2_not_derefable, nil}) -> 'java.lang.NullPointerException';
 exception_class({clj2_not_derefable, _}) -> 'java.lang.ClassCastException';
 exception_class({clj2_not_pending, _}) -> 'java.lang.ClassCastException';
 exception_class({clj2_not_seqable, _}) -> 'java.lang.IllegalArgumentException';

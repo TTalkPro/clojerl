@@ -553,3 +553,8 @@
 {interface, <<"java.util.SortedSet">>}.
 {interface, <<"java.util.concurrent.Callable">>}.
 {interface, <<"java.util.regex.MatchResult">>}.
+%% clojerl2-041: classes with static members only (clj2_jvm)
+{class, <<"clojure.lang.RT">>, []}.
+{class, <<"clojure.lang.Murmur3">>, []}.
+{class, <<"clojure.lang.Util">>, []}.
+{class, <<"java.util.concurrent.Executors">>, []}.
