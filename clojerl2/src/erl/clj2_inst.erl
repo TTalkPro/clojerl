@@ -1,11 +1,12 @@
 %%%-------------------------------------------------------------------
-%%% @doc clj2_inst — #inst values (clojerl2-039): a java.util.Date as
-%%% `{'java.util.Date', nil, Millis}', milliseconds since the epoch (UTC).
+%%% @doc clj2_inst — #inst values (clojerl2-039, 053): Erlang time,
+%%% an integer of milliseconds since the epoch (UTC), as
+%%% erlang:system_time(millisecond) gives it.
 %%%
 %%% #inst "..." reads RFC 3339 as clojure.instant does:
 %%% yyyy[-MM[-dd[THH[:mm[:ss[.fraction]]]]]][Z|(+|-)hh:mm], each field
 %%% checked (a February 29 that is not a leap day, hour 24 ... throw).
-%%% It prints as the JVM prints a Date: #inst "yyyy-MM-ddTHH:mm:ss.SSS-00:00".
+%%% to_string/1 writes yyyy-MM-ddTHH:mm:ss.SSS-00:00 (it prints as the integer).
 %%%-------------------------------------------------------------------
 -module(clj2_inst).
 
@@ -13,14 +14,14 @@
 
 -define(EPOCH, 62167219200).          % calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}})
 
-is_inst({'java.util.Date', _, Ms}) when is_integer(Ms) -> true;
+is_inst(Ms) when is_integer(Ms) -> true;
 is_inst(_) -> false.
 
-from_millis(Ms) when is_integer(Ms) -> {'java.util.Date', nil, Ms}.
-millis({'java.util.Date', _, Ms}) -> Ms.
+from_millis(Ms) when is_integer(Ms) -> Ms.
+millis(Ms) when is_integer(Ms) -> Ms.
 now() -> from_millis(erlang:system_time(millisecond)).
 
-%% @doc #inst "2020-01-01T00:00:00Z" → a Date
+%% @doc #inst "2020-01-01T00:00:00Z" → 1577836800000
 parse(S) when is_binary(S) ->
     Re = "^([0-9]{4})(?:-([0-9]{2})(?:-([0-9]{2})(?:[Tt]([0-9]{2})(?::([0-9]{2})(?::([0-9]{2})(?:[.]([0-9]+))?)?)?)?)?)?"
          "(?:([Zz])|([-+])([0-9]{2}):([0-9]{2}))?$",
@@ -61,8 +62,8 @@ bad(S) ->
     erlang:error(clj2_rt:ex_info(<<"Unrecognized date/time syntax: ", S/binary>>,
                                  clj2_coll:hash_map_kv([':type', ':RuntimeException']), nil)).
 
-%% @doc yyyy-MM-ddTHH:mm:ss.SSS-00:00, as #inst prints a Date
-to_string({'java.util.Date', _, Ms}) ->
+%% @doc yyyy-MM-ddTHH:mm:ss.SSS-00:00, of an instant
+to_string(Ms) when is_integer(Ms) ->
     Secs = Ms div 1000, Rem = Ms rem 1000,
     {S1, R1} = case Rem < 0 of true -> {Secs - 1, Rem + 1000}; false -> {Secs, Rem} end,
     {{Y, Mo, D}, {H, Mi, Se}} = calendar:gregorian_seconds_to_datetime(S1 + ?EPOCH),
