@@ -87,6 +87,17 @@ clojerl2:基于 nanopass 的 Clojure on ERTS 全新实现。设计文档见 [des
 | [clojerl2-042](tasks/clojerl2-042-pending-sweep.md) | 其余待办类别 | 041 | 已完成 |
 | [clojerl2-043](tasks/clojerl2-043-cts-sweep.md) | clojure-test-suite 清理 | 042 | 已完成 |
 
+## M7 — 嵌入式 DSL 与规则引擎(designs/10)
+
+| 任务 | 标题 | 依赖 | 状态 |
+|---|---|---|---|
+| [clojerl2-044](tasks/clojerl2-044-embedding-api.md) | 嵌入 API:`clj2:load/call/eval/unload`,结构化错误 | 043 | 已完成 |
+| [clojerl2-045](tasks/clojerl2-045-erlang-maps.md) | Erlang 原生 map 作为 Clojure 集合 | 044 | 已完成 |
+| [clojerl2-046](tasks/clojerl2-046-data-conversion.md) | 数据转换 `from_erl`/`to_erl` | 045 | 已完成 |
+| [clojerl2-047](tasks/clojerl2-047-versioned-reload.md) | 版本化热替换与回收 | 044 | 已完成 |
+| [clojerl2-048](tasks/clojerl2-048-benchmarks.md) | 性能基准:调用开销、map 操作、热替换 | 045, 047 | 已完成 |
+| [clojerl2-049](tasks/clojerl2-049-embedding-docs.md) | 嵌入文档与规则引擎示例 | 044–048 | 已完成 |
+
 ## 关键路径
 
 ```
