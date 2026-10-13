@@ -138,9 +138,7 @@ exceptions__erlang_classes_test() ->
     ?assertEqual(':arith', ev("(try (/ 1 0) (catch ArithmeticException e :arith))")),
     ?assertEqual(':exit', ev("(try (try (erlang/exit :bye) (catch RuntimeException e :rt)) (catch :exit e :exit))")),
     ?assertError({clj2_compile, _, {syntax, {bad_catch_class, 'NoSuchClassAnywhere'}}},
-                 ev("(try 1 (catch NoSuchClassAnywhere e 2))")),
-    %% a future's exception comes back as itself, not wrapped
-    ?assertEqual(<<"inner">>, ev("(try @(future (throw (ex-info \"inner\" {}))) (catch Exception e (ex-message e)))")).
+                 ev("(try 1 (catch NoSuchClassAnywhere e 2))")).
 
 %% JVM: extend-type takes classes and interfaces; reify exists.
 protocols__type_designators_test() ->
@@ -190,7 +188,7 @@ in_ns(Ns, F) ->
     clj2_rt_eval:in_ns(Ns),
     try F() after clj2_rt_eval:restore_ns(Saved) end.
 
-%% JVM: binding conveyance to future/agent threads; root changes are
+%% JVM: binding conveyance to other threads with bound-fn; root changes are
 %% global. clojerl2: a dynamic binding is this process's only.
 dynamic__per_process_bindings_test() ->
     setup_ns(),
@@ -200,36 +198,35 @@ dynamic__per_process_bindings_test() ->
                                 receive {ns, Other} -> ?assertEqual(user, Other) end
                         end).
 
-%% JVM: refs and dosync work.
-refs__no_stm_test() ->
+%% JVM: atom, volatile!, agent, future, promise and ref exist.
+state__erlang_concurrency_test() ->
     setup_ns(),
-    ?assertError({'clojure.lang.ExceptionInfo', _, #{':message' := <<"dosync: ", _/binary>>}},
-                 ev("(dosync 1)")),
-    ?assertError({'clojure.lang.ExceptionInfo', _, _}, ev("(ref 1)")).
+    [?assertEqual(nil, ev("(resolve '" ++ S ++ ")"))
+     || S <- ["atom", "swap!", "volatile!", "vswap!", "agent", "send", "future", "promise", "deliver", "ref", "dosync"]],
+    %% concurrency is Erlang's: a process, with the bindings bound-fn carries
+    ev("(def ^:dynamic *ec* 1)"),
+    ?assertEqual(2, ev("(binding [*ec* 2] (let [me (erlang/self)] (erlang/spawn (bound-fn [] (erlang/send me *ec*))) (clj2_proc/receive_any 1000 :timeout)))")).
 
-%% JVM: an unreachable atom is garbage collected.
+%% JVM: #inst is a java.util.Date.
+host__inst_millis_test() ->
+    setup_ns(),
+    ?assertEqual(1577836800000, ev("#inst \"2020-01-01T00:00:00Z\"")),
+    ?assertEqual(true, ev("(inst? 42)")).
+
+%% JVM: an unreachable mutable value (a memoize cache) is garbage collected.
 state__explicit_lifetime_test() ->
     setup_ns(),
     Before = ets:info(clj2_atom, size),
     Self = self(),
-    spawn(fun() -> ev("(swap! (atom 0) inc)"), Self ! done end),
+    spawn(fun() -> ev("(let [f (memoize inc)] (f 7))"), Self ! done end),
     receive done -> ok end,
     erlang:garbage_collect(),
-    ?assertEqual(Before + 1, ets:info(clj2_atom, size)),       % the row outlives every reference
-    V = ev("(volatile! 1)"),
-    spawn(fun() -> Self ! {other, catch clj2_ref:deref(V)} end),
-    receive {other, R} -> ?assertMatch({'EXIT', {{clj2_volatile_of_another_process, _}, _}}, R) end.
+    ?assertEqual(Before + 1, ets:info(clj2_atom, size)).       % the row outlives every reference
 
-%% JVM: shutdown-agents makes later sends throw.
-agents__process_per_agent_test() ->
-    setup_ns(),
-    ?assertEqual(2, ev("(let [g (agent 1)] (shutdown-agents) (send g inc) (await g) @g)")).
-
-%% JVM: identical? and compare-and-set! compare object identity.
+%% JVM: identical? compares object identity.
 values__no_identity_test() ->
     setup_ns(),
-    ?assertEqual(true, ev("(identical? [1 2] (vector 1 2))")),
-    ?assertEqual(true, ev("(compare-and-set! (atom [1]) [1] [2])")).
+    ?assertEqual(true, ev("(identical? [1 2] (vector 1 2))")).
 
 %% JVM: a transient used after persistent! throws IllegalAccessError.
 transients__wrapped_test() ->
@@ -253,7 +250,7 @@ collections__list_index_get_test() ->
 regex__erlang_semantics_test() ->
     setup_ns(),
     ?assertEqual(nil, ev("(re-find #\"\\ca\" \"!\")")),
-    ?assertEqual(true, ev("(boolean (re-find #\"\\x01\" (String. (byte-array [1]))))")).
+    ?assertEqual(true, ev("(boolean (re-find #\"\\x01\" \"\\u0001\"))")).
 
 %% JVM: the platform feature is :clj.
 reader__platform_feature_test() ->
@@ -264,9 +261,9 @@ reader__platform_feature_test() ->
 
 host__jvm_classes_test() ->
     setup_ns(),
-    %% JVM: a java.io.File
-    ?assertMatch({'clojure.lang.ExceptionInfo', _, _},
-                 catch_error("(java.io.File. \"/tmp\")")).
+    %% JVM: a java.io.File, Math's square root, a long
+    [?assertMatch({'clojure.lang.ExceptionInfo', _, _}, catch_error(S))
+     || S <- ["(java.io.File. \"/tmp\")", "(Math/sqrt 4)", "Long/MAX_VALUE"]].
 
 seqs__class_model_test() ->
     setup_ns(),
@@ -284,7 +281,7 @@ collections__map_entry_vectors_test() ->
 %% JVM: 12301 comparator calls (PersistentTreeMap, red-black).
 sorted__comparator_calls_test() ->
     setup_ns(),
-    N = ev("(let [c (atom 0) cmp (fn [a b] (swap! c inc) (compare a b))]"
+    N = ev("(let [c (clj2_ref/cell 0) cmp (fn [a b] (clj2_ref/swap c inc nil) (compare a b))]"
            " (into (sorted-map-by cmp) (map (fn [i] [i i]) (range 1024))) @c)"),
     ?assert(N =/= 12301).
 

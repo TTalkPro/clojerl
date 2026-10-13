@@ -110,23 +110,19 @@
   :alternative "Use (ns-name *ns*) or *ns* where a name is needed; code that called Namespace methods needs the clj2 fns instead."}
  {:id :dynamic/per-process-bindings
   :area :namespaces
-  :reason "Dynamic bindings live in the process dictionary. future, agent actions and bound-fn carry the caller's bindings along, as on the JVM; any other process (erlang/spawn, an Erlang callback) starts with none and sees the roots. The current namespace and *1/*2/*3/*e at the REPL are bindings too."
+  :reason "Dynamic bindings live in the process dictionary. bound-fn carries the caller's bindings along (also into a process started with it), as on the JVM; any other process (erlang/spawn, an Erlang callback) starts with none and sees the roots. The current namespace and *1/*2/*3/*e at the REPL are bindings too."
   :design "designs/03 §3"
   :alternative "Wrap a fn handed to erlang/spawn or to Erlang code in bound-fn, or pass the values explicitly as arguments or in messages."}
- {:id :refs/no-stm
+ {:id :state/erlang-concurrency
   :area :state
-  :reason "Refs and STM are not provided: ref, dosync, sync, alter, commute, ref-set and ensure raise an ex-info saying so. BEAM has no multi-object transactional memory, and a fake one would lie about isolation."
-  :design "designs/03 §5.2"
-  :alternative "Keep state that changes together in one value: one atom holding a map (swap! updates it atomically), or one agent / gen_server that owns it and is updated by message."} {:id :state/explicit-lifetime
+  :reason "Clojure's concurrency and reference types are not provided: atom, volatile, agent, future, promise and ref/STM (atom, swap!, reset!, compare-and-set!, volatile!, vswap!, agent, send, await, future, promise, deliver, ref, dosync, alter ...). State and concurrency on BEAM are Erlang processes and messages (designs/10). What stays from Clojure is vars: dynamic bindings, bound-fn (conveys them into a process it starts), with-local-vars, var watches and validators; pmap and pcalls still run in parallel processes."
+  :design "designs/10 §2"
+  :alternative "A process's own state: a local loop/recur value or the process's own loop state. Concurrency: erlang/spawn (with bound-fn to carry dynamic bindings), erlang/send and receive; shared state: a process (gen_server) updated by message; a counter or cache: an ets table through Erlang interop."} {:id :state/explicit-lifetime
   :area :state
-  :reason "Mutable cells are not reclaimed when they become garbage (BEAM has no finalizers or weak references): an atom that has been written keeps its ETS row, a promise or future its result row, and an agent its process, until the VM stops. An atom that is only read costs nothing. A volatile lives in the process dictionary of the process that made it, until that process exits, and cannot be read from another process."
+  :reason "The runtime's own mutable cells (Java arrays, StringBuilders, deftype mutable fields, memoize caches) keep an ETS row until the VM stops once written: BEAM has no finalizers or weak references, so nothing learns that the value became garbage."
   :design "designs/03 §5.2"
-  :alternative "Create long-lived atoms and agents once (def them) rather than per call in a long-running process; keep per-request scratch state in local bindings, loop/recur state or the process's own state, and give short-lived work its own process."}
- {:id :agents/process-per-agent
-  :area :state
-  :reason "Each agent is a process that runs its actions in arrival order. send and send-off share that one queue (there are no thread pools); a send made inside an action is dispatched at once rather than held until the action succeeds; shutdown-agents does nothing."
-  :design "designs/03 §5.2"
-  :alternative "Nothing to change for ordinary use; do not rely on sends from a failing action being dropped, nor on shutdown-agents to stop agents."} {:id :values/no-identity
+  :alternative "Create long-lived arrays, builders and memoized fns once (def them) rather than per call in a long-running process; keep per-request scratch state in local bindings or loop/recur values."}
+ {:id :values/no-identity
   :area :state
   :reason "BEAM values have no object identity: identical? is exact equality (=:=), so two equal vectors, maps or large numbers are identical?, and compare-and-set! swaps when the current value equals the expected one (JVM: when it is the same object)."
   :design "designs/03 §1.1, §5.2"
@@ -158,9 +154,13 @@
   :design "designs/03 §1.3"
   :alternative "Do not rely on map order (Clojure does not promise it for hash maps either): sort the entries, keep an ordered vector of keys beside the map, or use a sorted-map when order matters."} {:id :host/jvm-classes
   :area :interop
-  :reason "There is no JVM: interop syntax reaches host shims (clj2_jvm) that implement the commonly used members of java.lang, java.util and clojure.lang (Integer/parseInt, Math, String methods, exception constructors, StringBuilder, Var/Symbol/Keyword ...). Other classes are not available: java.io files, streams, readers and URLs, java.net, java.text and java.time/Calendar (and so format's %t), seeded java.util.Random, named charsets, Thread objects. Using one raises IllegalArgumentException (no matching method). A class is its name, a symbol: (class \"\") is the symbol java.lang.String, so str of a class is \"java.lang.String\" (JVM: \"class java.lang.String\")."
+  :reason "There is no JVM, and Java classes are not provided (clojerl2-053): Clojure functions and Erlang modules do their work. The interop syntax stays for what clojerl2 has itself: deftype/defrecord values (their protocol methods and fields, (Rec. ...), __extmap/__meta), exceptions ((Exception. msg), (.getMessage e), catch by class), BigDecimal (BigDecimal., its methods, MathContext, RoundingMode), io devices as writers (.write/.append/.flush, for print-method) and toString/equals/hashCode of any value. Java classes' statics, fields and methods (String, Math, Long/MAX_VALUE, Character, System, Thread, Executors, StringBuilder, ArrayList, Iterator, UUID, Random, charsets, URLEncoder, Keyword/Symbol/Var/RT/Murmur3 members) and Java arrays (long-array, aget, into-array ...) raise IllegalArgumentException (no matching method) or do not resolve. A class is its name, a symbol: (class \"\") is the symbol java.lang.String, so str of a class is \"java.lang.String\" (JVM: \"class java.lang.String\")."
   :design "designs/09 §3"
-  :alternative "Use the Clojure functions (slurp, spit, clojure.string, format without %t, rand) or the Erlang modules directly: file, filename, io, calendar, unicode, rand, erlang:system_time ((file/read_file path), (calendar/universal_time) ...)."} {:id :regex/erlang-semantics
+  :alternative "Use the Clojure functions (clojure.string, clojure.math, parse-long, slurp, spit, format, rand) or the Erlang modules directly: math, string, binary, lists, file, io, calendar, unicode, rand, erlang:system_time ((math/sqrt 2.0), (binary/part s 0 3), (erlang/spawn f) ...); vectors and lists instead of arrays."} {:id :host/inst-millis
+  :area :interop
+  :reason "#inst reads to Erlang time, an integer of milliseconds since the epoch (UTC), as erlang:system_time(millisecond) gives it, not a java.util.Date: it prints as that integer, and Inst (inst?, inst-ms) is extended to integers, so (inst? 42) is true and (inst-ms 42) is 42."
+  :design "designs/10 §4"
+  :alternative "Keep instants as integers of milliseconds; format them with calendar:system_time_to_rfc3339 ((calendar/system_time_to_rfc3339 ms (list [:unit :millisecond]))), read them with #inst or calendar:rfc3339_to_system_time."} {:id :regex/erlang-semantics
   :area :strings
   :reason "Regular expressions are Erlang's re (PCRE2), not java.util.regex (a project decision): the syntax both share (classes, groups, named groups, lookaround, \\p{..}, inline flags) behaves the same, but Java-only constructs and quirks follow PCRE: character-class intersection [a&&b] is not supported, \\cX is PCRE's control escape (\\ca is \\u0001, not Java's xor-64 of the raw char), (?x) does not reach inside an escape's braces or a quantifier bound, look-behind length rules and error messages are PCRE's."
   :design "designs/03 §7"
