@@ -32,10 +32,10 @@ clojerl2 还在开发中。下面是诚实的现状,不是路线图。
 - BigDecimal:`1.5M` 字面量、算术、`with-precision`、`bigdec`、`format` 与常用的 `java.math.BigDecimal` 方法;
 - 字符串是 UTF-8,中文可直接使用。
 
-**还没有的**(括号里是 corpus 中因此失败的条目数,见 [corpus 基线](../notes/corpus-baseline.md);corpus 通过 4320 / 4841):
+**还没有的**(括号里是 corpus 中因此失败的条目数,见 [corpus 基线](../notes/corpus-baseline.md);corpus 通过 4318 / 4841):
 - 一个文件作为一个单元编译、之后才运行带来的时序差别:宏在编译期读不到同一文件里 var 的运行时元数据、宏展开出的 `do` 里前面的 `def` 在 `~@` 实现之前还没执行(1 + 1)
 - 另有 14 条是 corpus 生成环境的问题(期望值来自 jolt 特有的写法、JVM 上没有导入的类或重生成时超时),不是功能缺失
 
-**clojure-test-suite**:[jank-lang/clojure-test-suite](https://github.com/jank-lang/clojure-test-suite)(`vendor/clojure-test-suite`,子模块)全量跑在 CI 里(`make cts`),247 个命名空间,断言通过 5743 / 失败 233 / 错误 388,逐命名空间的失败数登记在 `test/cts-known-failures.txt`,变好变坏都会让 CI 变红。
+**clojure-test-suite**:[jank-lang/clojure-test-suite](https://github.com/jank-lang/clojure-test-suite)(`vendor/clojure-test-suite`,子模块)全量跑在 CI 里(`make cts`),247 个命名空间,断言通过 5816 / 失败 187 / 错误 371,逐命名空间的失败数登记在 `test/cts-known-failures.txt`,变好变坏都会让 CI 变红。
 
 **与 JVM 有意不同的**:见 [differences.md](differences.md)。共 33 条,每条都有替代写法。

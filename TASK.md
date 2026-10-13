@@ -85,6 +85,7 @@ clojerl2:基于 nanopass 的 Clojure on ERTS 全新实现。设计文档见 [des
 | [clojerl2-040](tasks/clojerl2-040-reader.md) | reader 尚不接受的写法 | 039 | 已完成 |
 | [clojerl2-041](tasks/clojerl2-041-host-types.md) | 宿主类型与方法 | 040 | 已完成 |
 | [clojerl2-042](tasks/clojerl2-042-pending-sweep.md) | 其余待办类别 | 041 | 已完成 |
+| [clojerl2-043](tasks/clojerl2-043-cts-sweep.md) | clojure-test-suite 清理 | 042 | 已完成 |
 
 ## 关键路径
 
