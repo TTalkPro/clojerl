@@ -12,7 +12,8 @@
 
 -include("clojerl2.hrl").
 
--export([to_data/1, from_value/1, vector_items/1, map_pairs/1, set_items/1]).
+-export([to_data/1, from_value/1, vector_items/1, map_pairs/1, set_items/1, no_dup/1,
+         tag_value/2, record_tag/1, resolve_tags/1]).
 
 %% @doc Reader form → runtime value (positions stripped).
 to_data({clj2_loc, _, _, Inner, Meta}) when is_map(Meta), map_size(Meta) > 0, is_tuple(Inner),
@@ -43,11 +44,70 @@ to_data({tagged, [], inst, S}) when is_binary(S) -> clj2_inst:parse(S);
 to_data({'java.util.Date', _, _} = X) -> X;
 %% ##NaN, 1.5M, #inst ...: kept as they are read; evaluated, they raise
 %% (clj2_p_parse), and as a case constant they match nothing
+to_data({tagged, [], Tag, F}) when is_atom(Tag), Tag =/= 'NaN', Tag =/= 'Inf', Tag =/= '-Inf' ->
+    tag_value(Tag, to_data(F));
 to_data({tagged, [], Tag, F}) when is_atom(Tag) -> {tagged, [], Tag, to_data(F)};
+%% #=(...): evaluated when it is read
+to_data({read_eval, [], F}) -> read_eval(to_data(F));
 to_data({bigdec, [], B}) when is_binary(B) -> clj2_decimal:parse(B);
 to_data({decimal, _, _} = X) -> X;
 to_data({Tag, _, B} = X) when (Tag =:= regex orelse Tag =:= uuid), is_binary(B) -> X;
 to_data(X) -> erlang:error({clj2_form, {no_data_form, element(1, X)}}).
+
+%% @doc A tagged literal's value, as the JVM reader finds a reader
+%% function for the tag: *data-readers*, then a record class
+%% (#ns.Rec{..} / #ns.Rec[..]), then *default-data-reader-fn*; none: the
+%% tagged form is kept (evaluated, it raises: clj2_rt:unsupported_tag/1).
+tag_value(Tag, V) ->
+    Readers = dyn('*data-readers*'),
+    case Readers =/= nil andalso clj2_coll:get(Readers, Tag) of
+        F when F =/= false, F =/= nil -> clj2_rt:invoke(F, [V]);
+        _ ->
+            case record_tag(Tag) of
+                {ok, Map, _} when is_tuple(V), element(1, V) =:= map -> clj2_rt:invoke(Map, [V]);
+                {ok, _, Pos} -> clj2_rt:invoke(Pos, clj2_coll:to_list(V));
+                none ->
+                    case dyn('*default-data-reader-fn*') of
+                        nil -> {tagged, [], Tag, V};
+                        F -> clj2_rt:invoke(F, [Tag, V])
+                    end
+            end
+    end.
+
+%% @doc Tagged literals left in a quoted value (a record literal whose
+%% defrecord had not run when it was compiled), resolved now, nested
+%% ones first.
+resolve_tags({tagged, [], Tag, V}) when Tag =/= 'NaN', Tag =/= 'Inf', Tag =/= '-Inf' ->
+    tag_value(Tag, resolve_tags(V));
+resolve_tags(L) when is_list(L) -> [resolve_tags(X) || X <- L];
+resolve_tags({vector, _, T} = V) when is_tuple(T) ->
+    clj2_coll:vector([resolve_tags(X) || X <- clj2_coll:vec_to_list(V)]);
+resolve_tags({map, _, M}) when is_map(M) ->
+    clj2_coll:hash_map_kv(lists:append([[resolve_tags(K), resolve_tags(V)] || {K, V} <- maps:to_list(M)]));
+resolve_tags({set, _, M}) when is_map(M) -> clj2_coll:hash_set([resolve_tags(X) || X <- maps:keys(M)]);
+resolve_tags(X) -> X.
+
+%% @doc ns.Rec → the record's map->Rec and ->Rec fns, if it is one
+record_tag(Tag) ->
+    Name = atom_to_binary(Tag),
+    case string:split(Name, <<".">>, trailing) of
+        [Ns, Rec] when Ns =/= <<>>, Rec =/= <<>> ->
+            NsA = binary_to_atom(Ns),
+            try {ok, clj2_ref:deref(clj2_rt:var(NsA, binary_to_atom(<<"map->", Rec/binary>>))),
+                 clj2_ref:deref(clj2_rt:var(NsA, binary_to_atom(<<"->", Rec/binary>>)))}
+            catch _:_ -> none
+            end;
+        _ -> none
+    end.
+
+read_eval(F) ->
+    case dyn('*read-eval*') of
+        false -> erlang:error(clj2_rt:ex_info(<<"EvalReader not allowed when *read-eval* is false.">>,
+                                              clj2_coll:hash_map_kv([':type', ':RuntimeException']), nil));
+        _ -> clj2_rt_eval:eval(F)
+    end.
+
+dyn(Name) -> try clj2_var:deref('clojure.core', Name) catch _:_ -> nil end.
 
 %% a literal's keys are distinct, as the JVM reader demands
 no_dup([]) -> ok;

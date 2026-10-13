@@ -463,10 +463,27 @@ form({tagged, [], T, nil}, A, E) when T =:= 'NaN'; T =:= 'Inf'; T =:= '-Inf' ->
 form({bigdec, [], B}, A, _E) when is_binary(B) ->
     {const, A, clj2_decimal:parse(B)};
 form({decimal, U, S} = D, A, _E) when is_integer(U), is_integer(S) -> {const, A, D};   % from a macro
-%% any other tagged literal (#inst ...): no reader function for the tag;
-%% raises when evaluated (the JVM reader rejects the file)
-form({tagged, [], Tag, _}, A, E) when is_atom(Tag) ->
-    form(['clj2_rt/unsupported_tag', [quote, Tag]], A, E);
+%% #=(...): evaluated now, as the JVM reader does
+form({read_eval, [], F}, A, _E) -> {const, A, clj2_form:to_data({read_eval, [], F})};
+%% any other tagged literal: a record literal (#ns.Rec{..}, data: its
+%% values are not evaluated) is a constant; a *data-readers* fn's result
+%% is code; no reader function for the tag raises when evaluated (the
+%% JVM reader rejects the file)
+form({tagged, [], Tag, _} = T, A, E) when is_atom(Tag) ->
+    case clj2_form:record_tag(Tag) of
+        {ok, _, _} -> {const, A, clj2_form:to_data(T)};
+        none ->
+            case clj2_form:to_data(T) of
+                %% ns.Rec not defined yet (a defrecord in the same
+                %% top-level form): the record is made when this runs
+                {tagged, [], Tag, _} = D when is_tuple(D) ->
+                    case binary:match(atom_to_binary(Tag), <<".">>) of
+                        nomatch -> form(['clj2_rt/unsupported_tag', [quote, Tag]], A, E);
+                        _ -> form(['clj2_form/resolve_tags', [quote, T]], A, E)
+                    end;
+                V -> form(clj2_form:from_value(V), A, E)
+            end
+    end;
 form({Unq, [], _}, A, _E) when Unq =:= unquote; Unq =:= unquote_splicing ->
     syntax(A, unquote_outside_syntax_quote);
 form(X, A, E) ->
@@ -475,6 +492,8 @@ form(X, A, E) ->
         {_, Pairs, _} when Pairs =/= false ->
             coll(hash_map_kv, lists:append([[K, V] || {K, V} <- Pairs]), X, A, E);
         {_, _, Items} when Items =/= false -> coll(hash_set, Items, X, A, E);
+        %% a record value (a record literal that a macro got as data)
+        _ when tuple_size(X) =:= 3, is_atom(element(1, X)), is_map(element(3, X)) -> {const, A, X};
         _ -> unsupported(A, {literal, element(1, X)})
     end.
 
@@ -713,6 +732,9 @@ form_data({map, [], Pairs}, A, E) when is_list(Pairs) ->
     clj2_coll:hash_map_kv(lists:append([[form_data(K, A, E), form_data(V, A, E)] || {K, V} <- Pairs]));
 form_data({set, [], Items}, A, E) when is_list(Items) ->
     clj2_coll:hash_set([form_data(X, A, E) || X <- Items]);
+form_data({tagged, [], Tag, F}, A, E) when Tag =/= inst, Tag =/= uuid, F =/= nil ->
+    clj2_form:tag_value(Tag, form_data(F, A, E));
+form_data({read_eval, [], F}, A, E) -> clj2_form:to_data({read_eval, [], form_data(F, A, E)});
 form_data(X, _A, _E) -> clj2_form:to_data(X).
 
 %% a quoted form as data: a syntax-quote or unquote inside it reads as the

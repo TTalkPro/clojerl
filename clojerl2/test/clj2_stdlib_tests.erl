@@ -261,6 +261,26 @@ nested_redefinition_and_name_meta_test() ->
                  plain(ev("[(:private (meta #'nm-p1)) (:doc (meta #'nm-p2)) (:private (meta #'nm-p3)) (:private (meta #'nm-p4))]"))).
 
 
+%% clojerl2-040: reader - digit separators, JVM read errors, read-string
+%% opts, data readers, record literals, #=
+reader_forms_test() ->
+    setup(),
+    ?assertEqual([1000000, 65535, 42, 1007, 10.55, 3000, 255],
+                 plain(ev("[1_000_000 0xFF_FF 0_52 36rR_Z 1_0.5_5 3_000N 0xFFN]"))),
+    ?assertEqual([<<"Invalid number: 1_">>, <<"Unmatched delimiter: }">>, ':nfe', ':dup', ':ise'],
+                 plain(ev("[(try (read-string \"1_\") (catch Exception e (ex-message e)))"
+                          " (try (read-string \"[1 2}\") (catch Exception e (ex-message e)))"
+                          " (try (read-string \"1a\") (catch NumberFormatException _ :nfe))"
+                          " (try (read-string \"#{1 1}\") (catch IllegalArgumentException _ :dup))"
+                          " (try (read-string \"#(%0)\") (catch IllegalStateException _ :ise))]"))),
+    ?assertEqual([1, ':end', <<"garbage!">>, 3, [foo, 42]],
+                 plain(ev("[(read-string {:features #{:clj}} \"#?(:clj 1 :cljs 2)\") (read-string {:eof :end} \" \")"
+                          " (str (read-string \"garbage!@\")) (read-string \"#=(+ 1 2)\")"
+                          " (binding [*default-data-reader-fn* (fn [t v] [t v])] (read-string \"#foo 42\"))]"))),
+    ev("(defrecord RdPt [x y])"),
+    ?assertEqual([[quote, x], 1, <<"a">>],
+                 plain(ev("(let [x 5] [(:x #t.stdlib.RdPt{:x 'x}) (:y #t.stdlib.RdPt[0 1]) (:x (read-string \"#t.stdlib.RdPt[\\\"a\\\" 2]\"))])"))).
+
 %% clojerl2-039: clojure.edn, clojure.math, clojure.pprint, clojure.repl,
 %% #inst, *print-length*/*print-level*
 stdlib_namespaces_test() ->
