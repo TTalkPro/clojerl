@@ -65,6 +65,14 @@ expr({'try', _, Body, Catches, Fin}, Scope, L, Seen) ->
         nil -> Seen2;
         _ -> expr(Fin, Scope, L, Seen2)
     end;
+%% receive*: a clause's pattern variables are in scope in its body
+expr({'receive', _, Clauses, T, After}, Scope, L, Seen) ->
+    Seen1 = lists:foldl(fun({rclause, CA, _, Us, Pins, Body}, Sn) ->
+                                Sn1 = exprs(Pins, Scope, L, Sn),
+                                Sn2 = lists:foldl(fun(U, S) -> bind(CA, U, S) end, Sn1, Us),
+                                expr(Body, maps:merge(Scope, maps:from_keys(Us, true)), L, Sn2)
+                        end, Seen, Clauses),
+    exprs([X || X <- [T, After], X =/= nil], Scope, L, Seen1);
 expr(Node, Scope, L, Seen) ->
     exprs([C || {_, C} <- clj2_np:children(L, Node)], Scope, L, Seen).
 

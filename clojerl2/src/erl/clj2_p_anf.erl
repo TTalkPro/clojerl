@@ -45,6 +45,22 @@ expr({'case', A, X, Clauses, Default}, L, St) ->
                   end,
         {{'case', A, X1, Cs, D}, S2}
     end);
+%% receive*: pins and the timeout become trivs, evaluated before the receive
+expr({'receive', A, Clauses, T, After}, L, St) ->
+    Pins = lists:append([Ps || {rclause, _, _, _, Ps, _} <- Clauses]),
+    Ts = case T of nil -> []; _ -> [T] end,
+    with_trivs(A, Pins ++ Ts, St, L, fun(Trivs, S) ->
+        {PinTrivs, TTriv} = lists:split(length(Pins), Trivs),
+        {Clauses1, _, S1} =
+            lists:foldl(fun({rclause, CA, Pat, Us, Ps, Body}, {Acc, Rest, Sx}) ->
+                                {Mine, Rest1} = lists:split(length(Ps), Rest),
+                                {Body1, Sx1} = expr(Body, L, Sx),
+                                {[{rclause, CA, Pat, Us, Mine, Body1} | Acc], Rest1, Sx1}
+                        end, {[], PinTrivs, S}, Clauses),
+        T1 = case TTriv of [X] -> X; [] -> nil end,
+        {After1, S2} = case After of nil -> {nil, S1}; _ -> expr(After, L, S1) end,
+        {{'receive', A, lists:reverse(Clauses1), T1, After1}, S2}
+    end);
 expr({invoke, A, {fn, _, _, _} = F, Args}, L, St) ->
     {F1, St1} = expr(F, L, St),
     with_trivs(A, Args, St1, L, fun(As, S) -> {{invoke, A, F1, As}, S} end);

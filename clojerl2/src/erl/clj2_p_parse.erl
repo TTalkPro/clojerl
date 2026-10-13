@@ -586,6 +586,7 @@ list_form('letfn*', _, [Bs | Body], _F, A, E) ->
     {letfn, A, Binds, body(Body, A, E1)};
 list_form(throw, _, [X], _F, A, E) -> {throw, A, form(X, A, E)};
 list_form('case*', _, [X | Rest], _F, A, E) -> case_form(X, Rest, A, E);
+list_form('receive*', _, Args, _F, A, E) -> receive_form(Args, A, E);
 list_form('try', _, Body, _F, A, E) -> try_form(Body, A, E);
 list_form(Special, _, Args, _F, A, _E) when Special =:= quote; Special =:= 'if';
                                             Special =:= throw; Special =:= 'let*';
@@ -1221,7 +1222,7 @@ deftype_form(Kind, [N, FieldsVec | Specs], A, E = #{ns := Ns}) ->
                                maps:is_key(':unsynchronized-mutable', name_meta(F))
                                orelse maps:is_key(':volatile-mutable', name_meta(F))],
     CtorVals = [case lists:member(F, Mutable) of
-                    true -> [qsym(clj2_ref, atom), F];
+                    true -> [qsym(clj2_ref, cell), F];
                     false -> F
                 end || F <- Fields],
     Kws = [list_to_atom(":" ++ atom_to_list(F)) || F <- Fields],
@@ -1256,6 +1257,88 @@ cons_chain(Xs) ->
 %%====================================================================
 %% case*
 %%====================================================================
+
+%%====================================================================
+%% receive*
+%%====================================================================
+
+%% (receive* pat expr pat expr ... (after ms expr ...)): an Erlang
+%% selective receive. A message no pattern matches stays in the mailbox.
+%% Patterns: a vector matches a tuple of that size, a map a map with
+%% those (literal) keys; a symbol binds (a fresh local), _ matches
+%% anything; keywords, numbers, strings, nil/true/false and 'quoted data
+%% match themselves; ~x matches the current value of x.
+receive_form(Args, A, E) ->
+    {Pairs, Timeout, After} =
+        case lists:reverse(Args) of
+            [Last | RevRest] ->
+                case unwrap(Last) of
+                    [H, Ms | Body] when ?CLJ2_IS_LOC(H) orelse is_atom(H) ->
+                        case unwrap(H) of
+                            'after' -> {lists:reverse(RevRest), form(Ms, A, E), body(Body, A, E)};
+                            _ -> {Args, nil, nil}
+                        end;
+                    _ -> {Args, nil, nil}
+                end;
+            [] -> {[], nil, nil}
+        end,
+    length(Pairs) rem 2 =:= 0 orelse syntax(A, {bad_special_form, 'receive*', length(Args)}),
+    Pairs =:= [] andalso Timeout =:= nil andalso syntax(A, {bad_special_form, 'receive*', 0}),
+    Clauses = [receive_clause(P, B, pos(P, A), E) || {P, B} <- pairs_of(Pairs)],
+    {'receive', A, Clauses, Timeout, After}.
+
+receive_clause(P, Body, A, E = #{locals := Ls}) ->
+    {Pat, {Syms, Pins}} = rpat(P, A, {[], []}, E),
+    Binders = lists:reverse(Syms),
+    E1 = E#{locals := maps:merge(Ls, maps:from_keys(Binders, true))},
+    {rclause, A, Pat, Binders, lists:reverse(Pins), form(Body, A, E1)}.
+
+%% → {Pattern, {Binders (reversed), Pins (reversed)}}
+rpat(W, A, Acc, E) when ?CLJ2_IS_LOC(W) -> rpat(?CLJ2_LOC_FORM(W), pos(W, A), Acc, E);
+rpat('_', _A, Acc, _E) -> {wild, Acc};
+rpat(S, A, {Syms, Pins}, _E) when is_atom(S), S =/= nil, S =/= true, S =/= false ->
+    case is_keyword(S) of
+        true -> {{plit, S}, {Syms, Pins}};
+        false ->
+            is_qualified(S) andalso syntax(A, {bad_binding_name, S}),
+            case index_of(S, lists:reverse(Syms)) of
+                0 -> {{pvar, length(Syms) + 1}, {[S | Syms], Pins}};
+                I -> {{pvar, I}, {Syms, Pins}}        % the same symbol twice: equal values
+            end
+    end;
+rpat(X, _A, Acc, _E) when is_atom(X); is_number(X); is_binary(X) -> {{plit, X}, Acc};
+rpat(L, A, {Syms, Pins} = Acc, E) when is_list(L) ->
+    case [unwrap(X) || X <- L] of
+        [quote, D] -> {{plit, clj2_form:to_data(D)}, Acc};
+        %% ~x through a macro: (clojure.core/unquote x)
+        [U, X] when U =:= 'clojure.core/unquote'; U =:= unquote ->
+            {{ppin, length(Pins) + 1}, {Syms, [form(X, A, E) | Pins]}};
+        _ -> syntax(A, {receive_pattern, list})
+    end;
+rpat({unquote, [], X}, A, {Syms, Pins}, E) ->
+    {{ppin, length(Pins) + 1}, {Syms, [form(X, A, E) | Pins]}};
+rpat(V, A, Acc, E) ->
+    case {clj2_form:vector_items(V), clj2_form:map_pairs(V)} of
+        {Items, _} when Items =/= false ->
+            {Ps, Acc1} = lists:mapfoldl(fun(I, Ac) -> rpat(I, A, Ac, E) end, Acc, Items),
+            {{ptuple, Ps}, Acc1};
+        {_, Pairs} when Pairs =/= false ->
+            {KPs, Acc1} = lists:mapfoldl(
+                            fun({K, P}, Ac) ->
+                                    Key = clj2_form:to_data(K),
+                                    (is_atom(Key) orelse is_number(Key) orelse is_binary(Key))
+                                        orelse syntax(A, {receive_pattern, map_key}),
+                                    {P1, Ac1} = rpat(P, A, Ac, E),
+                                    {{Key, P1}, Ac1}
+                            end, Acc, Pairs),
+            {{pmap, KPs}, Acc1};
+        _ -> syntax(A, {receive_pattern, element(1, V)})
+    end.
+
+index_of(X, L) -> index_of(X, L, 1).
+index_of(_, [], _) -> 0;
+index_of(X, [X | _], I) -> I;
+index_of(X, [_ | T], I) -> index_of(X, T, I + 1).
 
 case_form(X, Rest, A, E) ->
     {Pairs, Default} = case length(Rest) rem 2 of
@@ -1494,6 +1577,7 @@ kws(K, E) when is_atom(K) -> kw(K, E);
 kws(L, E) when is_list(L) -> [kws(X, E) || X <- L];
 kws({vector, M, T}, E) when is_tuple(T) -> {vector, M, list_to_tuple([kws(X, E) || X <- tuple_to_list(T)])};
 kws({map, M, Map}, E) when is_map(Map) -> {map, M, maps:from_list([{kws(K, E), kws(V, E)} || {K, V} <- maps:to_list(Map)])};
+kws(Map, E) when is_map(Map) -> maps:from_list([{kws(K, E), kws(V, E)} || {K, V} <- maps:to_list(Map)]);
 kws({set, M, Map}, E) when is_map(Map) -> {set, M, maps:from_list([{kws(K, E), nil} || K <- maps:keys(Map)])};
 kws(X, _) -> X.
 

@@ -21,7 +21,7 @@
 %%%-------------------------------------------------------------------
 -module(clj2_data).
 
--export([to_erl/1, to_erl/2, from_erl/1, from_erl/2, clj_opts/1]).
+-export([to_erl/1, to_erl/2, from_erl/1, from_erl/2, clj_opts/1, arg/1]).
 
 -spec to_erl(term()) -> term().
 to_erl(X) -> to_erl(X, #{}).
@@ -106,3 +106,44 @@ plain(A) when is_atom(A) ->
         false -> A
     end;
 plain(X) -> X.
+
+%% @doc An argument of a call into Erlang (compiled code wraps the
+%% arguments of `mod/fn' calls in it; designs/10): vectors become lists,
+%% a map with metadata the plain map, lazy seqs lists, deeply; keywords,
+%% strings and everything else stay as they are. A value with nothing to
+%% convert comes back as the same term (no copy).
+arg(X) when is_atom(X); is_number(X); is_binary(X); is_pid(X); is_function(X); is_reference(X) -> X;
+arg({vector, _, T} = V) when is_tuple(T) -> [arg(E) || E <- clj2_coll:vec_to_list(V)];
+arg({map, _, M}) when is_map(M) -> arg(M);
+arg({lazy_seq, _, _} = L) -> [arg(E) || E <- clj2_coll:to_list(L)];
+arg(M) when is_map(M) ->
+    case maps:fold(fun(K, V, Acc) -> Acc orelse needs(K) orelse needs(V) end, false, M) of
+        false -> M;
+        true -> maps:from_list([{arg(K), arg(V)} || {K, V} <- maps:to_list(M)])
+    end;
+arg(L) when is_list(L) ->
+    case needs(L) of
+        false -> L;
+        true -> arg_list(L)
+    end;
+arg(T) when is_tuple(T) ->
+    case lists:any(fun needs/1, tuple_to_list(T)) of
+        false -> T;
+        true -> list_to_tuple([arg(E) || E <- tuple_to_list(T)])
+    end;
+arg(X) -> X.
+
+%% a list with a lazy tail (apply's rest) is realized
+arg_list([H | T]) when is_list(T) -> [arg(H) | arg_list(T)];
+arg_list([]) -> [];
+arg_list([H | T]) -> [arg(H) | arg_list(clj2_coll:to_list(T))].
+
+needs(X) when is_atom(X); is_number(X); is_binary(X); is_pid(X); is_function(X); is_reference(X) -> false;
+needs({vector, _, T}) when is_tuple(T) -> true;
+needs({map, _, M}) when is_map(M) -> true;
+needs({lazy_seq, _, _}) -> true;
+needs(M) when is_map(M) -> maps:fold(fun(K, V, Acc) -> Acc orelse needs(K) orelse needs(V) end, false, M);
+needs([H | T]) -> needs(H) orelse not is_list(T) orelse needs(T);
+needs([]) -> false;
+needs(T) when is_tuple(T) -> lists:any(fun needs/1, tuple_to_list(T));
+needs(_) -> false.

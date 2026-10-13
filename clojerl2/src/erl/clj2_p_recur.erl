@@ -38,6 +38,12 @@ expr({'case', _, X, Clauses, Default}, Target, Tail, L) ->
     [expr(R, Target, Tail, L) || {cclause, _, _, R} <- Clauses],
     Default =:= nil orelse expr(Default, Target, Tail, L),
     ok;
+expr({'receive', _, Clauses, T, After}, Target, Tail, L) ->
+    [[expr(P, Target, false, L) || P <- Pins] || {rclause, _, _, _, Pins, _} <- Clauses],
+    [expr(B, Target, Tail, L) || {rclause, _, _, _, _, B} <- Clauses],
+    T =:= nil orelse expr(T, Target, false, L),
+    After =:= nil orelse expr(After, Target, Tail, L),
+    ok;
 expr({do, _, Stmts, Ret}, Target, Tail, L) ->
     [expr(S, Target, false, L) || S <- Stmts],
     expr(Ret, Target, Tail, L);

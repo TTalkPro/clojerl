@@ -230,6 +230,32 @@ init_fun(Ns, M, Vars, Steps, A, Register, St) ->
            []},
     {{efunction, A, '__ns_init__', 0, [{eclause, A, [], [], [Try]}]}, St1}.
 
+%% a receive pattern (data) → its absform patterns: a vector matches a
+%% tuple, or a list of that length (a vector sent from Clojure code
+%% reaches Erlang as a list, designs/10); with more than 16 combinations
+%% only the tuple ones
+rpats(Pat, A, Us, Pins) ->
+    case alts(Pat, A, Us, Pins) of
+        Ps when length(Ps) =< 16 -> Ps;
+        _ -> [rpat(Pat, A, Us, Pins)]
+    end.
+
+alts({ptuple, Ps}, A, Us, Pins) ->
+    Combos = lists:foldr(fun(P, Acc) -> [[X | Rest] || X <- alts(P, A, Us, Pins), Rest <- Acc] end, [[]], Ps),
+    lists:append([[{etuple, A, C}, {elist, A, C}] || C <- Combos]);
+alts({pmap, KPs}, A, Us, Pins) ->
+    Combos = lists:foldr(fun({K, P}, Acc) -> [[{eassoc, A, {elit, A, K}, X} | Rest] || X <- alts(P, A, Us, Pins), Rest <- Acc] end,
+                         [[]], KPs),
+    [{emapp, A, C} || C <- Combos];
+alts(P, A, Us, Pins) -> [rpat(P, A, Us, Pins)].
+
+rpat(wild, A, _Us, _Pins) -> {ewild, A};
+rpat({pvar, I}, A, Us, _Pins) -> {evar, A, lists:nth(I, Us)};
+rpat({ppin, J}, _A, _Us, Pins) -> lists:nth(J, Pins);
+rpat({plit, V}, A, _Us, _Pins) -> {elit, A, V};
+rpat({ptuple, Ps}, A, Us, Pins) -> {etuple, A, [rpat(P, A, Us, Pins) || P <- Ps]};
+rpat({pmap, KPs}, A, Us, Pins) -> {emapp, A, [{eassoc, A, {elit, A, K}, rpat(P, A, Us, Pins)} || {K, P} <- KPs]}.
+
 %%====================================================================
 %% Expressions
 %%====================================================================
@@ -245,6 +271,23 @@ expr({'if', A, T, Then, Else}, St) ->
               [{gop, A, '=:=', [TE, {elit, A, nil}]}]],
     {{eif, A, [{eclause, A, [], Falsey, [ElseE]},
                {eclause, A, [], [[{elit, A, true}]], [ThenE]}]}, St3};
+
+%% receive*: an Erlang receive; patterns from their data (receive_form)
+expr({'receive', A, Clauses, T, After}, St) ->
+    {Cs0, St1} = lists:mapfoldl(
+                  fun({rclause, CA, Pat, Us, Pins, Body}, S) ->
+                          {PinEs, S1} = lists:mapfoldl(fun expr/2, S, Pins),
+                          {BodyE, S2} = expr(Body, S1),
+                          {[{eclause, CA, [P], [], [BodyE]} || P <- rpats(Pat, CA, Us, PinEs)], S2}
+                  end, St, Clauses),
+    Cs = lists:append(Cs0),
+    case T of
+        nil -> {{ereceive, A, Cs, nil, []}, St1};
+        _ ->
+            {TE, St2} = expr(T, St1),
+            {AfterE, St3} = case After of nil -> {{elit, A, nil}, St2}; _ -> expr(After, St2) end,
+            {{ereceive, A, Cs, TE, [AfterE]}, St3}
+    end;
 
 expr({'case', A, X, Clauses, Default}, St) ->
     {XE, St1} = expr(X, St),

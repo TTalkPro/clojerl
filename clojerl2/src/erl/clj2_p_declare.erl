@@ -119,12 +119,7 @@ root_targets(L0, Tops) ->
            end,
     lists:foldl(
       fun(T, Acc) ->
-              clj2_np:fold(L0, fun({invoke, _, {sym, _, 'clj2_jvm/method'},
-                                    [Target, {const, _, M}, _]}, Acc1)
-                                     when M =:= bindRoot; M =:= alterRoot; M =:= unbindRoot ->
-                                       %% (.bindRoot #'x v), (.alterRoot #'x f args)
-                                       maps:merge(Acc1, Vars(Target));
-                                  ({invoke, _, {sym, _, S}, Args}, Acc1) ->
+              clj2_np:fold(L0, fun({invoke, _, {sym, _, S}, Args}, Acc1) ->
                                        case lists:member(S, Changers) of
                                            true -> lists:foldl(fun(X, A1) -> maps:merge(A1, Vars(X)) end,
                                                                Acc1, Args);

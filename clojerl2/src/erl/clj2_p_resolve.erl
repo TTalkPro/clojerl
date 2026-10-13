@@ -149,6 +149,20 @@ expr({'try', A, Body, Catches, Fin}, Env, L, St) ->
                       _ -> expr(Fin, Env, L, St2)
                   end,
     {{'try', A, Body1, Catches1, Fin1}, St3};
+%% receive*: a clause's pattern variables are fresh locals of its body;
+%% its pins (~x), the timeout and the after body are of the outer scope
+expr({'receive', A, Clauses, T, After}, Env, L, St) ->
+    {Clauses1, St1} =
+        lists:mapfoldl(fun({rclause, CA, Pat, Binders, Pins, Body}, Sx) ->
+                           {Pins1, Sx1} = lists:mapfoldl(fun(P, Sy) -> expr(P, Env, L, Sy) end, Sx, Pins),
+                           {Us, Sx2} = lists:mapfoldl(fun(B, Sy) -> fresh(B, Sy) end, Sx1, Binders),
+                           Env1 = maps:merge(Env, maps:from_list(lists:zip(Binders, Us))),
+                           {Body1, Sx3} = expr(Body, Env1, L, Sx2),
+                           {{rclause, CA, Pat, Us, Pins1, Body1}, Sx3}
+                       end, St, Clauses),
+    {T1, St2} = case T of nil -> {nil, St1}; _ -> expr(T, Env, L, St1) end,
+    {After1, St3} = case After of nil -> {nil, St2}; _ -> expr(After, Env, L, St2) end,
+    {{'receive', A, Clauses1, T1, After1}, St3};
 %% every other node: framework pass-through
 expr(Node, Env, L, St) ->
     clj2_np:mapfold(L, #{expr => fun(N, S) -> expr(N, Env, L, S) end}, Node, St).
@@ -275,13 +289,41 @@ invoke_global(A, S, H, Args, Env, L, St) ->
                 {{ok, C}, _} ->
                     %% (Class/method args): a host shim (clj2_jvm)
                     {{erl_call, A, clj2_jvm, static, [{const, A, C}, {const, A, F}, {list, A, Args1}]}, St1};
-                {error, _} -> {{erl_call, A, M, F, Args1}, St1}
+                {error, _} -> {{erl_call, A, M, F, to_erl_args(A, M, F, Args1, current_ns(St))}, St1}
             end;
         _ ->
             {H1, St1} = expr(H, Env, L, St),
             {Args1, St2} = exprs(Args, Env, L, St1),
             {{invoke, A, H1, Args1}, St2}
     end.
+
+%% A call into Erlang (designs/10): the arguments go through
+%% clj2_data:arg/1 (vectors become lists ...), except in the runtime's
+%% own modules and the standard library, and for Erlang's operators and
+%% is_* type tests (numbers and types: nothing to convert, and they sit
+%% in hot loops); a constant is converted now.
+to_erl_args(A, M, F, Args, Ns) ->
+    case is_runtime_module(M) orelse is_library_ns(Ns) orelse
+         (M =:= erlang andalso (lists:prefix("is_", atom_to_list(F)) orelse
+                                erl_internal:arith_op(F, length(Args)) orelse
+                                erl_internal:comp_op(F, length(Args)) orelse
+                                erl_internal:bool_op(F, length(Args)))) of
+        true -> Args;
+        false -> [to_erl_arg(A, X) || X <- Args]
+    end.
+
+to_erl_arg(_A, {const, CA, V}) -> {const, CA, clj2_data:arg(V)};
+to_erl_arg(A, X) -> {erl_call, A, clj2_data, arg, [X]}.
+
+%% clojure.core and the standard library call Erlang on Clojure values
+%% they mean as they are (lists:reverse of a list of vectors)
+is_library_ns(Ns) -> lists:prefix("clojure.", atom_to_list(Ns)).
+
+current_ns(#{scope := #{ns := Ns}}) -> Ns;
+current_ns(_) -> user.
+
+is_runtime_module(M) ->
+    lists:prefix("clj2_", atom_to_list(M)) orelse M =:= clj2.
 
 %% A symbol naming a class, as a value (a JVM class from clj2_class's
 %% graph, or a record/deftype of this scope: Name when ->Name is a var).
