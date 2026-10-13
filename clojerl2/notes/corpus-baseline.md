@@ -3,7 +3,7 @@
 语料:`test/corpus.edn`(jolt `test/chez/corpus.edn` @ 6c2685e,EPL-2.0;`:expected` 经 `make corpus-regen` 以 JVM Clojure 1.12.5 重新生成),只计 `:portability :common` 条目。
 生成:`make corpus`;门控:`make certify`(对照 `test/corpus-known-failures.edn`)。判定见 `src/erl/clj2_corpus.erl`。
 
-**通过 4152 / 4841(85.8%)**
+**通过 4183 / 4841(86.4%)**
 
 ## 按 core 分层
 
@@ -11,8 +11,8 @@
 
 | 层 | 通过 | 条目 | 通过率 |
 |---|---|---|---|
-| 00-kernel | 1728 | 1894 | 91% |
-| 01-core | 2174 | 2557 | 85% |
+| 00-kernel | 1743 | 1895 | 92% |
+| 01-core | 2190 | 2556 | 86% |
 | 02-protocols | 118 | 200 | 59% |
 | 03-print | 128 | 186 | 69% |
 | 04-repl | 4 | 4 | 100% |
@@ -24,7 +24,7 @@
 | conformance | 348 | 364 | 96% |
 | numbers | 285 | 339 | 84% |
 | seq | 275 | 276 | 100% |
-| reader | 172 | 211 | 82% |
+| reader | 194 | 211 | 92% |
 | predicates | 179 | 188 | 95% |
 | map | 164 | 182 | 90% |
 | regex | 143 | 150 | 95% |
@@ -63,8 +63,8 @@
 | vars | 25 | 31 | 81% |
 | state | 30 | 31 | 97% |
 | uuid | 30 | 30 | 100% |
-| records | 18 | 30 | 60% |
-| clojure.edn | 26 | 27 | 96% |
+| records | 22 | 30 | 73% |
+| clojure.edn | 27 | 27 | 100% |
 | printer | 25 | 26 | 96% |
 | charsets | 1 | 26 | 4% |
 | clojure.math | 17 | 25 | 68% |
@@ -118,13 +118,13 @@
 | time | 0 | 4 | 0% |
 | symbols | 4 | 4 | 100% |
 | reflect | 3 | 4 | 75% |
-| read-string | 3 | 4 | 75% |
+| read-string | 4 | 4 | 100% |
 | for | 2 | 4 | 50% |
 | fn | 4 | 4 | 100% |
 | dynamic vars | 4 | 4 | 100% |
 | defmacro | 2 | 4 | 50% |
-| clojure 1.12 | 3 | 4 | 75% |
-| tagged literals | 2 | 3 | 67% |
+| clojure 1.12 | 4 | 4 | 100% |
+| tagged literals | 3 | 3 | 100% |
 | string-model | 0 | 3 | 0% |
 | permissive | 2 | 3 | 67% |
 | munging | 3 | 3 | 100% |
@@ -135,7 +135,7 @@
 | analyze | 1 | 3 | 33% |
 | special forms | 2 | 2 | 100% |
 | record hasheq cache | 2 | 2 | 100% |
-| reader-model | 1 | 2 | 50% |
+| reader-model | 2 | 2 | 100% |
 | identical? lowering | 2 | 2 | 100% |
 | fn identity hash | 2 | 2 | 100% |
 | defprotocol | 2 | 2 | 100% |
@@ -165,9 +165,8 @@
 
 | cause | 条目 |
 |---|---|
-| `:pending/reader` | 100 |
+| `:number/beam-semantics` | 116 |
 | `:host/jvm-classes` | 81 |
-| `:number/beam-semantics` | 54 |
 | `:pending/host-types` | 54 |
 | `:seqs/class-model` | 45 |
 | `:refs/no-stm` | 38 |
@@ -181,10 +180,10 @@
 | `:protocols/type-designators` | 12 |
 | `:pending/regex-edge` | 12 |
 | `:symbol/no-metadata` | 12 |
+| `:char/integer` | 11 |
 | `:number/no-ratio-arithmetic` | 10 |
 | `:pending/laziness` | 9 |
 | `:pending/corpus-environment` | 8 |
-| `:char/integer` | 8 |
 | `:values/no-identity` | 8 |
 | `:pending/format-edge` | 8 |
 | `:macros/defmacro-form` | 6 |
@@ -195,25 +194,25 @@
 | `:pending/metadata` | 5 |
 | `:pending/special-forms` | 5 |
 | `:pending/strings-io` | 4 |
+| `:reader/platform-feature` | 4 |
 | `:transients/wrapped` | 4 |
 | `:fn/arity-at-compile-time` | 4 |
 | `:string/code-point-indexing` | 3 |
+| `:interop/erlang-module-calls` | 2 |
 | `:vars/core-direct-linked` | 2 |
+| `:pending/compiler` | 2 |
 | `:sorted/comparator-calls` | 2 |
 | `:vars/forward-references` | 2 |
-| `:pending/compiler` | 2 |
-| `:interop/erlang-module-calls` | 2 |
 | `:exceptions/erlang-classes` | 1 |
 
 ## 失败类别
 
 | 类别 | 条目 |
 |---|---|
-| wrong value | 313 |
-| threw (unexpected) | 258 |
+| wrong value | 303 |
+| threw (unexpected) | 248 |
 | compile: unresolved symbol | 69 |
-| expected a throw | 11 |
-| compile: read | 10 |
+| expected a throw | 10 |
 | compile: link | 7 |
 | compile: syntax | 5 |
 | compile: resolve | 5 |
