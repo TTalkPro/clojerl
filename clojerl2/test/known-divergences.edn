@@ -15,7 +15,7 @@
 ;; covers every id.
 [{:id :lazy-seq/per-process-realization
   :area :lazy
-  :reason "Lazy seqs and delays memoize in the process dictionary: another process walking the same lazy seq realizes it again. Values agree for pure thunks; a side-effecting thunk runs once per process. The ets memo switch (clj2_lazy:set_memo/1) realizes once across processes."
+  :reason "Lazy seqs and delays memoize in the process dictionary: another process walking the same lazy seq realizes it again. Values agree for pure thunks; a side-effecting thunk runs once per process. The ets memo switch (clj2_lazy:set_memo/1) realizes once across processes. For the same reason (sequence xf coll) realizes nothing until it is walked (the JVM realizes the first element at the call): the transducer's state (volatiles) belongs to the process that walks the seq."
   :design "designs/03 §5.3"
   :alternative "Keep side effects out of lazy seqs (use doseq/run! for effects), or realize the seq (doall, vec) before handing it to another process."}
  {:id :lazy-seq/bounded-memo

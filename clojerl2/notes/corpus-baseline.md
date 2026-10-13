@@ -3,7 +3,7 @@
 语料:`test/corpus.edn`(jolt `test/chez/corpus.edn` @ 6c2685e,EPL-2.0;`:expected` 经 `make corpus-regen` 以 JVM Clojure 1.12.5 重新生成),只计 `:portability :common` 条目。
 生成:`make corpus`;门控:`make certify`(对照 `test/corpus-known-failures.edn`)。判定见 `src/erl/clj2_corpus.erl`。
 
-**通过 4314 / 4841(89.1%)**
+**通过 4320 / 4841(89.2%)**
 
 ## 按 core 分层
 
@@ -11,10 +11,10 @@
 
 | 层 | 通过 | 条目 | 通过率 |
 |---|---|---|---|
-| 00-kernel | 1779 | 1895 | 94% |
-| 01-core | 2234 | 2539 | 88% |
-| 02-protocols | 136 | 211 | 64% |
-| 03-print | 161 | 192 | 84% |
+| 00-kernel | 1780 | 1895 | 94% |
+| 01-core | 2237 | 2539 | 88% |
+| 02-protocols | 137 | 211 | 65% |
+| 03-print | 162 | 192 | 84% |
 | 04-repl | 4 | 4 | 100% |
 
 ## 按 suite
@@ -30,7 +30,7 @@
 | regex | 143 | 150 | 95% |
 | format | 116 | 140 | 83% |
 | clojure.core | 135 | 135 | 100% |
-| untested | 114 | 120 | 95% |
+| untested | 115 | 120 | 96% |
 | macros | 109 | 119 | 92% |
 | io | 81 | 119 | 68% |
 | control | 101 | 102 | 99% |
@@ -50,7 +50,7 @@
 | lazy | 50 | 56 | 89% |
 | vector | 55 | 55 | 100% |
 | seq-type-model | 10 | 53 | 19% |
-| protocols | 41 | 51 | 80% |
+| protocols | 42 | 51 | 82% |
 | string | 48 | 49 | 98% |
 | truthiness | 47 | 47 | 100% |
 | transducers | 45 | 45 | 100% |
@@ -60,7 +60,7 @@
 | refs | 2 | 40 | 5% |
 | multimethods | 37 | 37 | 100% |
 | equality | 32 | 32 | 100% |
-| vars | 28 | 31 | 90% |
+| vars | 29 | 31 | 94% |
 | state | 30 | 31 | 97% |
 | uuid | 30 | 30 | 100% |
 | records | 25 | 30 | 83% |
@@ -70,7 +70,7 @@
 | clojure.math | 17 | 25 | 68% |
 | hierarchy | 24 | 24 | 100% |
 | defn | 20 | 24 | 83% |
-| syntax-quote | 16 | 22 | 73% |
+| syntax-quote | 17 | 22 | 77% |
 | sequences | 21 | 21 | 100% |
 | seqs | 21 | 21 | 100% |
 | strings | 20 | 20 | 100% |
@@ -91,10 +91,10 @@
 | print | 10 | 10 | 100% |
 | quoted-literal constants | 6 | 9 | 67% |
 | iref | 9 | 9 | 100% |
-| contracts | 7 | 9 | 78% |
+| contracts | 8 | 9 | 89% |
 | ISeq call forms | 9 | 9 | 100% |
 | murmur3 | 8 | 8 | 100% |
-| *ns* | 7 | 8 | 88% |
+| *ns* | 8 | 8 | 100% |
 | locking | 7 | 7 | 100% |
 | fn identity | 1 | 7 | 14% |
 | chunking-model | 0 | 7 | 0% |
@@ -167,13 +167,13 @@
 |---|---|
 | `:number/beam-semantics` | 119 |
 | `:host/jvm-classes` | 96 |
-| `:seqs/class-model` | 46 |
+| `:seqs/class-model` | 49 |
 | `:refs/no-stm` | 38 |
 | `:collections/map-order` | 36 |
 | `:lazy-seq/no-chunking` | 24 |
 | `:collections/exact-keys` | 22 |
-| `:pending/corpus-environment` | 17 |
 | `:symbol/no-metadata` | 14 |
+| `:pending/corpus-environment` | 14 |
 | `:regex/erlang-semantics` | 12 |
 | `:protocols/type-designators` | 12 |
 | `:char/integer` | 11 |
@@ -187,31 +187,29 @@
 | `:fn/arity-at-compile-time` | 4 |
 | `:string/code-point-indexing` | 3 |
 | `:dynamic/per-process-bindings` | 3 |
-| `:pending/metadata` | 3 |
-| `:pending/compiler` | 3 |
 | `:vars/forward-references` | 2 |
 | `:sorted/comparator-calls` | 2 |
 | `:vars/core-direct-linked` | 2 |
 | `:namespaces/symbols` | 2 |
 | `:interop/erlang-module-calls` | 2 |
-| `:pending/laziness` | 2 |
-| `:pending/special-forms` | 1 |
+| `:lazy-seq/per-process-realization` | 1 |
+| `:pending/laziness` | 1 |
 | `:exceptions/erlang-classes` | 1 |
+| `:pending/compiler` | 1 |
 
 ## 失败类别
 
 | 类别 | 条目 |
 |---|---|
-| wrong value | 257 |
+| wrong value | 255 |
 | threw (unexpected) | 197 |
-| compile: unresolved symbol | 42 |
+| compile: unresolved symbol | 41 |
 | expected a throw | 10 |
 | compile: link | 7 |
 | compile: resolve | 5 |
-| compile: syntax | 4 |
 | :expected does not evaluate | 3 |
+| compile: syntax | 2 |
 | timeout | 1 |
-| compile: unsupported special form set! | 1 |
 
 ## 最常见的未解析符号(缺失的 core 函数/宏的线索)
 
@@ -225,11 +223,10 @@
 | `StringWriter.` | 3 |
 | `__reader-features` | 3 |
 | `ref?` | 2 |
-| `corpus.e3887` | 1 |
 | `ref-history-count` | 1 |
 | `ns-imports` | 1 |
 | `file-seq` | 1 |
-| `bogus-head` | 1 |
 | `java.nio.file.attribute.FileAttribute` | 1 |
 | `InputStream` | 1 |
 | `java.net.URL.` | 1 |
+| `user` | 1 |
