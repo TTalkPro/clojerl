@@ -223,7 +223,12 @@
    (lazy-seq
      (let [s1 (seq c1) s2 (seq c2)]
        (when (and s1 s2)
-         (cons (first s1) (cons (first s2) (interleave (rest s1) (rest s2)))))))))
+         (cons (first s1) (cons (first s2) (interleave (rest s1) (rest s2))))))))
+  ([c1 c2 & colls]
+   (lazy-seq
+     (let [ss (map seq (conj colls c2 c1))]
+       (when (every? identity ss)
+         (concat (map first ss) (apply interleave (map rest ss))))))))
 
 (defn tree-seq [branch? children root]
   (let [walk (fn walk [node]
@@ -311,6 +316,9 @@
 (defn pop [coll]
   (cond (vector? coll) (clj2_coll/pop_vector coll)
         (nil? coll) nil
+        (or (map? coll) (set? coll) (string? coll) (number? coll) (keyword? coll))
+        (throw (ex-info (str "class " (clj2_class/class_of coll) " cannot be cast to class clojure.lang.IPersistentStack")
+                        {:type :ClassCastException}))
         (and (list? coll) (empty? coll))
         (throw (ex-info "Can't pop empty list" {:type :IllegalStateException}))
         :else (rest coll)))
@@ -388,10 +396,13 @@
 (defn get-in
   ([m ks] (reduce get m ks))
   ([m ks not-found]
-   (loop [m m ks (seq ks)]
-     (if ks
-       (if (contains? m (first ks)) (recur (get m (first ks)) (next ks)) not-found)
-       m))))
+   ;; get with a sentinel, as the JVM: a value that is not a map is a miss
+   (let [sentinel (clj2_rt/gensym "get_in__")]
+     (loop [m m ks (seq ks)]
+       (if ks
+         (let [v (get m (first ks) sentinel)]
+           (if (identical? v sentinel) not-found (recur v (next ks))))
+         m)))))
 
 (defn assoc-in [m [k & ks] v]
   (if ks
@@ -428,7 +439,13 @@
   ([f x y z] (fn [a b c & more] (apply f (if (nil? a) x a) (if (nil? b) y b) (if (nil? c) z c) more))))
 
 (defn every-pred [& ps] (fn [& xs] (every? (fn [p] (every? p xs)) ps)))
-(defn some-fn [& ps] (fn [& xs] (some (fn [p] (some p xs)) ps)))
+(defn some-fn
+  "A fn returning the first logical true value of any of ps over its args,
+  else false (it needs at least one predicate)."
+  [& ps]
+  (when (empty? ps)
+    (throw (ex-info "Wrong number of args (0) passed to: clojure.core/some-fn" {:type :ArityException})))
+  (fn [& xs] (or (some (fn [p] (some p xs)) ps) false)))
 
 ;;;; ------------------------------------------------------------------
 ;;;; Comparison, sorting, numbers
@@ -445,7 +462,9 @@
   ([keyfn cmp coll] (sort (fn [a b] (cmp (keyfn a) (keyfn b))) coll)))
 
 (defn shuffle [coll]
-  (when (or (string? coll) (not (or (nil? coll) (coll? coll))))
+  (when (nil? coll)
+    (throw (new NullPointerException "Cannot invoke \"java.util.Collection.toArray()\" because \"coll\" is null")))
+  (when (or (string? coll) (map? coll) (not (coll? coll)))
     (throw (new ClassCastException (str "class " (clj2_class/class_of coll)
                                         " cannot be cast to class java.util.Collection"))))
   (vec (map second (sort-by first (map (fn [x] [(rand/uniform) x]) coll)))))
@@ -486,7 +505,9 @@
 
 (defn subs
   ([s start] (clj2_rt/subs s start nil))
-  ([s start end] (clj2_rt/subs s start end)))
+  ([s start end]
+   (when (nil? end) (throw (new NullPointerException "subs: end is nil")))
+   (clj2_rt/subs s start end)))
 
 (defn format [fmt & args] (clj2_rt/format fmt args))
 
@@ -899,7 +920,12 @@
 
 (defn descendants
   ([tag] (descendants (deref global-hierarchy) tag))
-  ([h tag] (not-empty (get (get h :descendants) tag))))
+  ([h tag]
+   ;; a class's descendants would be every class that extends it: the JVM
+   ;; refuses to answer
+   (when (and (symbol? tag) (clj2_class/is_class tag))
+     (throw (ex-info "Can't get descendants of classes" {:type :UnsupportedOperationException})))
+   (not-empty (get (get h :descendants) tag))))
 
 (defn derive
   ([tag parent]

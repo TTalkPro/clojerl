@@ -282,7 +282,9 @@
               ([n x] (if (erlang/is_number n) (take (erlang/trunc n) (repeat x)) (clj2_rt/not_number n)))))
 (def repeatedly (fn* repeatedly ([f] (lazy-seq (cons (f) (repeatedly f)))) ([n f] (take n (repeatedly f)))))
 (def cycle (fn* cycle [coll]
-             (lazy-seq (let* [s (seq coll)] (if s (concat s (cycle s)) nil)))))
+             ;; the argument must be seqable now, as on the JVM
+             (let* [s0 (seq coll)]
+               (lazy-seq (let* [s (seq s0)] (if s (concat s (cycle s)) nil))))))
 (def range
   (fn* range
     ([] (iterate (fn* [i] (erlang/+ i 1)) 0))
@@ -588,7 +590,7 @@
          fdecl (if trail (lists/droplast (clj2_coll/to_list fdecl)) fdecl)
          attr (if trail (clj2_coll/conj (if attr attr {}) trail) attr)
          sigs (if (vector? (first fdecl)) (list (first fdecl)) (map first fdecl))
-         f (cons 'clojure.core/fn (cons name fdecl))]
+         f (cons 'clojure.core/fn (cons (clj2_form/plain_name name) fdecl))]
     (list 'def name (clj2_rt/defn_meta doc attr sigs) f)))
 
 ;; defn with :private true in its attr-map (symbols carry no metadata, so
@@ -612,6 +614,8 @@
         (if temp# (let [~form temp#] ~then) ~else)))))
 
 (defmacro when-let [bindings & body]
+  (if (not= (count bindings) 2)
+    (throw (clj2_rt/ex_info "when-let requires exactly 2 forms in binding vector" {:type :IllegalArgumentException} nil)))
   (let* [form (first bindings) tst (second bindings)]
     `(let* [temp# ~tst]
        (if temp# (let [~form temp#] ~@body) nil))))
