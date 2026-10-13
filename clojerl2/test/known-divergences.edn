@@ -144,7 +144,11 @@
   :reason "Sorted maps and sets are balanced trees of their own, not the JVM's red-black PersistentTreeMap: building or updating one calls the comparator a different number of times (fewer, typically). Order, lookup and equality are the same."
   :design "designs/03 §1.3"
   :alternative "Keep comparators free of side effects; do not count their calls."}
- {:id :collections/exact-keys
+ {:id :collections/list-index-get
+  :area :collections
+  :reason "get (and so get-in) takes an integer index into a list as it does into a vector: (get '(:a :b) 1) is :b (JVM: nil, a list is not associative). An embedding host hands Clojure code JSON whose arrays are Erlang lists, and (get-in body [\"messages\" 0 \"content\"]) is how a rule reads them (designs/10)."
+  :design "designs/10 §2"
+  :alternative "Code that must run on the JVM too: (nth coll i nil), or turn the list into a vector first (vec)."} {:id :collections/exact-keys
   :area :collections
   :reason "Hash maps and sets are Erlang maps keyed by the exact term: two keys that are = but differ in representation (a list and a vector with the same elements) or in metadata are different keys, so (get {[1 2] :a} '(1 2)) is nil and assoc of such a key adds an entry instead of replacing the stored one. Keys that are numbers, strings, keywords, symbols or collections of one kind behave as on the JVM. A key's metadata takes no part (^:foo [:a 1] and [:a 1] are the same key, as on the JVM): a collection key or set element is stored without its metadata, so the stored key is not identical? to a key that carried some."
   :design "designs/03 §1.3"

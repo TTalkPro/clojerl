@@ -243,6 +243,12 @@ collections__map_order_test() ->
     ?assertEqual(true, ev("(= (keys {:c 3 :a 1}) (keys {:a 1 :c 3}))")),
     ?assertEqual(true, ev("(= {:c 3 :a 1 :b 2} (array-map :a 1 :b 2 :c 3))")).
 
+%% JVM: get on a list is nil.
+collections__list_index_get_test() ->
+    setup_ns(),
+    ?assertEqual(b, ev("(get '(a b) 1)")),
+    ?assertEqual(<<"x">>, ev("(get-in {:m (list {:c \"x\"})} [:m 0 :c])")).
+
 %% JVM: [x&&] is x, \\ca matches "!" (xor 64).
 regex__erlang_semantics_test() ->
     setup_ns(),
