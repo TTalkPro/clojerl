@@ -243,6 +243,12 @@ collections__map_order_test() ->
     ?assertEqual(true, ev("(= (keys {:c 3 :a 1}) (keys {:a 1 :c 3}))")),
     ?assertEqual(true, ev("(= {:c 3 :a 1 :b 2} (array-map :a 1 :b 2 :c 3))")).
 
+%% JVM: [x&&] is x, \\ca matches "!" (xor 64).
+regex__erlang_semantics_test() ->
+    setup_ns(),
+    ?assertEqual(nil, ev("(re-find #\"\\ca\" \"!\")")),
+    ?assertEqual(true, ev("(boolean (re-find #\"\\x01\" (String. (byte-array [1]))))")).
+
 %% JVM: the platform feature is :clj.
 reader__platform_feature_test() ->
     setup_ns(),

@@ -261,6 +261,55 @@ nested_redefinition_and_name_meta_test() ->
                  plain(ev("[(:private (meta #'nm-p1)) (:doc (meta #'nm-p2)) (:private (meta #'nm-p3)) (:private (meta #'nm-p4))]"))).
 
 
+%% clojerl2-042: the remaining pending categories - read/read+string,
+%% for, cond->, definline, print-method, *print-meta*, #error, local vars,
+%% Var methods, JVM docstrings, eduction, format, atom options, records
+pending_sweep_test() ->
+    setup(),
+    ?assertEqual([[1, 2], [1, <<" rest">>], [42, <<"42">>], [0, 1, 2, 3, 4], [1, 3]],
+                 plain(ev("[(with-in-str \"1 2\" [(read) (read)]) (with-in-str \"1 rest\\nnext\" [(read) (read-line)])"
+                          " (with-in-str \"42 x\" (read+string))"
+                          " (for [x (range 10) :let [y (* x 2)] :while (< y 10)] x) (for [x (range 10) :when (odd? x) :while (< x 5)] x)]"))),
+    ev("(definline sw-sq [x] `(* ~x ~x))"),
+    ev("(defrecord SwPt [x y])"),
+    ev("(defmethod print-method SwPt [r w] (.write w (str \"<\" (:x r) \">\")))"),
+    ?assertEqual([9, <<"[<1>]">>, <<"^{:k 1} [1]">>, <<"clojure.lang.ExceptionInfo: boom {:a 1}">>, true],
+                 plain(ev("[(sw-sq 3) (pr-str [(->SwPt 1 2)]) (binding [*print-meta* true] (pr-str (with-meta [1] {:k 1})))"
+                          " (str (ex-info \"boom\" {:a 1})) (clojure.string/starts-with? (pr-str (ex-info \"x\" {})) \"#error\")]"))),
+    ev("(remove-method print-method SwPt)"),
+    ?assertEqual([[1, 2, 1], [true, true], true, true],
+                 plain(ev("[(let [v (with-local-vars [x nil] x)] (alter-var-root v (constantly 1)) [(deref v) (with-bindings {v 2} (deref v)) (deref v)])"
+                          " (with-local-vars [x 1] [(thread-bound? x) (bound? x)])"
+                          " (string? (:doc (meta #'map))) (identical? > (var-get #'>))]"))),
+    ?assertEqual([':uoe', [2, 3, 4], <<"0x000000ff">>, <<"0x1.0p1">>, [{map, nil, #{':m' => 1}}, true, true], {map, nil, #{':b' => 2}}],
+                 plain(ev("[(try (count (eduction (map inc) [1 2 3])) (catch UnsupportedOperationException _ :uoe)) (vec (eduction (map inc) [1 2 3]))"
+                          " (format \"%#010x\" 255) (format \"%.1a\" 1.9999)"
+                          " (let [a (atom 1 :meta {:m 1})] [(meta a) (map? (->SwPt 1 2)) (coll? (->SwPt 1 2))])"
+                          " (.-__extmap (assoc (->SwPt 1 2) :b 2))]"))).
+
+%% clojerl2-041: host types - Keyword methods, Murmur3, charsets, Thread,
+%% Executors, Iterator, interface tags on deftype/defrecord, ISeq deftypes
+host_types_test() ->
+    setup(),
+    ?assertEqual([x, <<"y">>, <<"x">>, 1871679806, -1640530378],
+                 plain(ev("[(.sym :x) (.getName :x/y) (.getNamespace :x/y) (clojure.lang.Murmur3/hashLong 42) (clojure.lang.Util/hashCombine 17 42)]"))),
+    ?assertEqual([<<"\x{e9}"/utf8>>, [97, 16#FFFD, 16#FFFD, 98], [-23], ':ue'],
+                 plain(ev("[(String. (byte-array [233]) \"windows-1252\") (mapv int (String. (byte-array [97 -64 -81 98]) \"UTF-8\"))"
+                          " (vec (.getBytes (String. (byte-array [-61 -87]) \"UTF-8\") \"windows-1252\"))"
+                          " (try (String. (byte-array [1]) \"NOPE\") (catch java.io.UnsupportedEncodingException _ :ue))]"))),
+    ?assertEqual([1, [3, [1, 2]], true],
+                 plain(ev("(do (def ^:dynamic *ht* 1)"
+                          " (binding [*ht* 2] (let [r (atom nil) t (Thread. (fn [] (reset! r *ht*)))] (.start t) (.join t)"
+                          " [@r (let [ex (java.util.concurrent.Executors/newFixedThreadPool 2) fs (.invokeAll ex [(fn [] 1) (fn [] 2)])]"
+                          "      [(.invokeAny ex [(fn [] (throw (ex-info \"x\" {}))) (fn [] 3)]) (mapv (fn [f] (.get f)) fs)])"
+                          "  (try (.next (.iterator [])) (catch java.util.NoSuchElementException _ true))])))"))),
+    ev("(defprotocol HtP (htp [x]))"),
+    ev("(extend-protocol HtP clojure.lang.IReduceInit (htp [x] :ireduce))"),
+    ev("(deftype HtT [] clojure.lang.IReduceInit (reduce [_ f init] init))"),
+    ev("(deftype HtSq [i] clojure.lang.ISeq (first [_] i) (next [_] (when (< i 3) (HtSq. (inc i)))) (seq [this] this))"),
+    ?assertEqual([':ireduce', true, [1, 2, 3], 3, 6],
+                 plain(ev("[(htp (->HtT)) (satisfies? clojure.lang.IReduceInit (->HtT)) (vec (HtSq. 1)) (count (HtSq. 1)) (reduce + (HtSq. 1))]"))).
+
 %% clojerl2-040: reader - digit separators, JVM read errors, read-string
 %% opts, data readers, record literals, #=
 reader_forms_test() ->
@@ -374,8 +423,9 @@ lazy_sequence_test() ->
                  plain(ev("[(take 3 (sequence (map inc) (range))) (take 2 (sequence (partition-all 2) (range)))"
                           " (first (eduction (map inc) (range))) (sequence (comp (filter odd?) (take 3)) (range 100))"
                           " (sequence (partition-all 3) [1 2 3 4 5])]"))),
-    %% nothing runs until the seq is walked (JVM: the first element is
-    %% realized at the call; :pending/laziness)
+    %% nothing runs until the seq is walked, so the xform's state belongs
+    %% to the process that walks it (JVM: the first element is realized at
+    %% the call; :pending/laziness)
     ?assertEqual(0, ev("(let [a (atom 0)] (sequence (map (fn [x] (swap! a inc) x)) (range 5)) @a)")).
 
 vars_while_namespace_loads_test() ->
