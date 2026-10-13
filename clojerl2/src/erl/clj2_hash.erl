@@ -17,7 +17,7 @@
 
 -export([hasheq/1, java_hash_code/1, hash_ordered/1, hash_unordered/1, mix_coll_hash/2,
          hash_combine/2, string_hash_code/1, hash_int/1, hash_long/1,
-         big_integer_hash_code/1, signed/1]).
+         big_integer_hash_code/1, signed/1, hash_unencoded_string/1]).
 
 -define(M32, 16#FFFFFFFF).
 -define(C1, 16#cc9e2d51).
@@ -166,6 +166,9 @@ hash_long(L) ->
     signed(fmix(H2, 8)).
 
 hash_unencoded_chars(Units) -> signed(chars(Units, 0, length(Units))).
+
+%% @doc Murmur3.hashUnencodedChars of a string
+hash_unencoded_string(S) -> hash_unencoded_chars(utf16(S)).
 
 chars([A, B | Rest], H1, Len) -> chars(Rest, mix_h1(H1, mix_k1(A bor (B bsl 16))), Len);
 chars([A], H1, Len) -> fmix(H1 bxor mix_k1(A), 2 * Len);

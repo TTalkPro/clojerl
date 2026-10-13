@@ -17,7 +17,8 @@
 %%%-------------------------------------------------------------------
 -module(clj2_jvm).
 
--export([static/3, field/2, method/3, new/2, instance_field/2, builder_text/1, parse_double_or_nil/1]).
+-export([static/3, field/2, method/3, new/2, instance_field/2, builder_text/1, parse_double_or_nil/1,
+         throw_new/2]).
 
 -define(LONG_MAX, 16#7FFFFFFFFFFFFFFF).
 -define(LONG_MIN, -16#8000000000000000).
@@ -113,12 +114,39 @@ static1('java.util.Objects', nonNull, [X]) -> X =/= nil;
 static1('java.util.Objects', requireNonNull, [nil | _]) -> throw_new('java.lang.NullPointerException', []);
 static1('java.util.Objects', requireNonNull, [X | _]) -> X;
 static1('clojure.lang.RT', count, [X]) -> clj2_coll:count(X);
+static1('clojure.lang.RT', M, [Name | _]) when M =:= classForName; M =:= classForNameNonLoading ->
+    class_for_name(Name);
+static1('java.lang.Class', forName, [Name | _]) -> class_for_name(Name);
+%% clojure.lang.Murmur3 and Util's hashing (clj2_hash)
+static1('clojure.lang.Murmur3', hashLong, [L]) -> clj2_hash:hash_long(L);
+static1('clojure.lang.Murmur3', hashInt, [I]) -> clj2_hash:hash_int(I);
+static1('clojure.lang.Murmur3', hashUnencodedChars, [S]) -> clj2_hash:hash_unencoded_string(to_string(S));
+static1('clojure.lang.Murmur3', mixCollHash, [H, N]) -> clj2_hash:mix_coll_hash(H, N);
+static1('clojure.lang.Murmur3', hashOrdered, [Xs]) -> clj2_hash:hash_ordered(clj2_coll:to_list(Xs));
+static1('clojure.lang.Murmur3', hashUnordered, [Xs]) -> clj2_hash:hash_unordered(clj2_coll:to_list(Xs));
+static1('clojure.lang.Util', hashCombine, [Seed, H]) -> clj2_hash:hash_combine(Seed, H);
+static1('clojure.lang.Util', hasheq, [X]) -> clj2_hash:hasheq(X);
+static1('clojure.lang.Util', equiv, [A, B]) -> clj2_coll:equals(A, B);
+%% java.net.URLEncoder/URLDecoder (application/x-www-form-urlencoded)
+static1('java.net.URLEncoder', encode, [S | Cs]) -> url_encode(to_string(S), charset_arg(Cs));
+static1('java.net.URLDecoder', decode, [S | Cs]) -> url_decode(to_string(S), charset_arg(Cs));
+%% java.util.concurrent.Executors: a pool runs each task in a process
+static1('java.util.concurrent.Executors', M, _) when M =:= newFixedThreadPool; M =:= newCachedThreadPool;
+                                                     M =:= newSingleThreadExecutor; M =:= newWorkStealingPool;
+                                                     M =:= newVirtualThreadPerTaskExecutor ->
+    {'java.util.concurrent.ExecutorService', nil, clj2_ref:atom(false)};
 static1('clojure.lang.Symbol', M, [N]) when M =:= intern; M =:= create -> clj2_rt:symbol(N);
 static1('clojure.lang.Symbol', M, [Ns, N]) when M =:= intern; M =:= create -> clj2_rt:symbol(Ns, N);
 static1('clojure.lang.Keyword', intern, [N]) -> clj2_rt:keyword(N);
 static1('clojure.lang.Keyword', intern, [Ns, N]) -> clj2_rt:keyword(Ns, N);
+static1('clojure.lang.Keyword', find, [N]) when is_binary(N) -> find_keyword(nil, N);
 static1('clojure.lang.Keyword', find, [N]) -> find_keyword(clj2_rt:namespace(N), clj2_rt:name(N));
 static1('clojure.lang.Keyword', find, [Ns, N]) -> find_keyword(Ns, N);
+%% Var/intern makes the namespace when it does not exist yet (clojure.core's
+%% intern refuses)
+static1('clojure.lang.Var', intern, [Ns, Name | Val]) ->
+    clj2_ns:ensure(Ns),
+    erlang:apply(clj2_rt_eval, intern, [Ns, Name | Val]);
 static1('clojure.lang.Var', find, [S]) ->
     Ns = case clj2_rt:namespace(S) of
              nil -> throw_new('java.lang.IllegalArgumentException', [<<"Symbol must be namespace-qualified">>]);
@@ -419,12 +447,32 @@ method({'clojure.lang.ExceptionInfo', _, _} = E, M, Args) -> exception_method(E,
 method({'java.lang.StringBuilder', _, _} = B, M, Args) -> builder_method(B, M, Args);
 method({decimal, _, _} = D, M, Args) -> decimal_method(D, M, Args);
 method({'java.util.Date', _, Ms}, getTime, []) -> Ms;
+method({Tag, _, R} = X, M, []) when is_atom(Tag), is_map(R), (M =:= '__extmap' orelse M =:= '__meta') ->
+    instance_field(X, M);
 method({var, _, {_, _}} = V, M, Args) -> var_method(V, M, Args);
+method({local_var, _, _} = L, isBound, []) -> clj2_ref:local_bound(L);
+method({local_var, _, _} = L, M, []) when M =:= deref; M =:= get -> clj2_ref:deref(L);
+method(P, toString, []) when is_pid(P) ->
+    case clj2_io:is_string_writer(P) of
+        true -> clj2_io:contents(P);
+        false -> to_string(P)
+    end;
 method(X, toString, []) -> to_string(X);
 method(X, equals, [Y]) -> clj2_coll:equals(X, Y);
 method(X, hashCode, []) -> clj2_hash:java_hash_code(X);
 method(X, getClass, []) -> clj2_class:class_of(X);
+method(K, M, []) when is_atom(K), K =/= true, K =/= false,
+                      (M =:= sym orelse M =:= getName orelse M =:= getNamespace) ->
+    case clj2_rt:is_keyword(K) of
+        true -> keyword_method(K, M);
+        false when M =:= getName -> atom_to_binary(K);                   % a class
+        false -> no_member(clj2_class:class_of(K), M, [])
+    end;
 method(C, getName, []) when is_atom(C) -> atom_to_binary(C);           % a class
+method({'java.lang.Thread', _, _} = T, M, Args) -> thread_method(T, M, Args);
+method({'java.util.concurrent.ExecutorService', _, _} = X, M, Args) -> executor_method(X, M, Args);
+method({'java.util.concurrent.FutureTask', _, _} = F, M, Args) -> task_method(F, M, Args);
+method({'java.util.Iterator', _, _} = I, M, Args) -> iterator_method(I, M, Args);
 method(C, getSimpleName, []) when is_atom(C) ->
     [Last | _] = lists:reverse(string:split(atom_to_binary(C), ".", all)), Last;
 method(N, M, []) when is_number(N), M =:= intValue; is_number(N), M =:= longValue;
@@ -512,8 +560,9 @@ string_method(_, equalsIgnoreCase, [_]) -> false;
 string_method(S, compareTo, [T]) -> compare_strings(S, T);
 string_method(S, compareToIgnoreCase, [T]) -> compare_strings(string:lowercase(S), string:lowercase(T));
 string_method(S, toCharArray, []) -> clj2_coll:vector(unicode:characters_to_list(S));
-string_method(S, getBytes, []) -> clj2_coll:vector(binary_to_list(S));
-string_method(S, getBytes, [_Charset]) -> clj2_coll:vector(binary_to_list(S));
+%% byte[] values are signed, as Java's bytes
+string_method(S, getBytes, []) -> clj2_coll:vector([signed_byte(B) || B <- binary_to_list(S)]);
+string_method(S, getBytes, [Charset]) -> clj2_coll:vector([signed_byte(B) || B <- clj2_charset:encode(S, Charset)]);
 string_method(S, chars, []) -> unicode:characters_to_list(S);
 string_method(S, repeat, [N]) -> binary:copy(S, N);
 string_method(S, intern, []) -> S;
@@ -551,6 +600,120 @@ exception_method(E, M, Args) -> method_fallback(E, M, Args).
 
 method_fallback(X, M, Args) -> no_member(clj2_class:class_of(X), M, Args).
 
+keyword_method(K, sym) ->
+    case clj2_rt:namespace(K) of
+        nil -> clj2_rt:symbol(clj2_rt:name(K));
+        Ns -> clj2_rt:symbol(Ns, clj2_rt:name(K))
+    end;
+keyword_method(K, getName) -> clj2_rt:name(K);
+keyword_method(K, getNamespace) -> clj2_rt:namespace(K).
+
+signed_byte(B) when B > 127 -> B - 256;
+signed_byte(B) -> B.
+
+%% Class/forName, RT/classForName: a class the class model knows
+class_for_name(Name) ->
+    C = binary_to_atom(to_string(Name)),
+    case clj2_class:is_class(C) of
+        true -> C;
+        false -> throw_new('java.lang.ClassNotFoundException', [to_string(Name)])
+    end.
+
+%% (String. bytes charset) and (String. bytes offset length charset)
+from_array(A, Cs) -> clj2_charset:decode(clj2_array:to_list(A), Cs).
+from_array(A, Off, N, Cs) -> clj2_charset:decode(lists:sublist(clj2_array:to_list(A), Off + 1, N), Cs).
+
+charset_arg([]) -> <<"UTF-8">>;
+charset_arg([Cs]) -> Cs.
+
+url_encode(S, Cs) ->
+    Bytes = clj2_charset:encode(S, Cs),
+    iolist_to_binary([url_byte(B) || B <- Bytes]).
+
+url_byte($\s) -> "+";
+url_byte(B) when B >= $a, B =< $z; B >= $A, B =< $Z; B >= $0, B =< $9;
+                 B =:= $.; B =:= $-; B =:= $*; B =:= $_ -> [B];
+url_byte(B) -> io_lib:format("%~2.16.0B", [B]).
+
+url_decode(S, Cs) ->
+    _ = clj2_charset:canonical(Cs),
+    clj2_charset:decode(url_bytes(binary_to_list(S)), Cs).
+
+url_bytes([$+ | R]) -> [$\s | url_bytes(R)];
+url_bytes([$%, H, L | R]) -> [list_to_integer([H, L], 16) | url_bytes(R)];
+url_bytes([C | R]) -> [C | url_bytes(R)];
+url_bytes([]) -> [].
+
+%% java.lang.Thread: start runs the fn in a new process, join waits for it
+thread_method({_, _, {F, Cell}}, start, []) ->
+    Pid = spawn(fun() -> try clj2_rt:invoke(F, []) catch _:_ -> nil end end),
+    clj2_ref:reset(Cell, Pid), nil;
+thread_method({_, _, {F, _}}, run, []) -> clj2_rt:invoke(F, []), nil;
+thread_method({_, _, {_, Cell}}, join, Args) ->
+    join(clj2_ref:deref(Cell), join_timeout(Args));
+thread_method({_, _, {_, Cell}}, isAlive, []) ->
+    case clj2_ref:deref(Cell) of nil -> false; Pid -> is_process_alive(Pid) end;
+thread_method(_, M, Args) -> no_member('java.lang.Thread', M, Args).
+
+join(nil, _) -> nil;
+join(Pid, Timeout) ->
+    Ref = erlang:monitor(process, Pid),
+    receive {'DOWN', Ref, process, Pid, _} -> nil
+    after Timeout -> erlang:demonitor(Ref, [flush]), nil
+    end.
+
+join_timeout([Ms | _]) when is_integer(Ms), Ms > 0 -> Ms;
+join_timeout(_) -> infinity.
+
+%% java.util.concurrent.ExecutorService: each task a future (clj2_ref);
+%% its .get raises ExecutionException around what the task threw
+executor_method(_, M, [F]) when M =:= submit; M =:= execute ->
+    Task = task(F),
+    case M of submit -> Task; execute -> nil end;
+executor_method(_, invokeAll, [Fs | _]) ->
+    Tasks = [task(F) || F <- clj2_coll:to_list(Fs)],
+    [catch clj2_ref:deref(Fut) || {_, _, Fut} <- Tasks],
+    clj2_coll:vector(Tasks);
+executor_method(_, invokeAny, [Fs | _]) ->
+    case clj2_coll:to_list(Fs) of
+        [] -> throw_new('java.lang.IllegalArgumentException', []);
+        L -> invoke_any([task(F) || F <- L], nil)
+    end;
+executor_method({_, _, Cell}, M, []) when M =:= shutdown; M =:= shutdownNow; M =:= close ->
+    clj2_ref:reset(Cell, true), case M of shutdownNow -> clj2_coll:vector([]); _ -> nil end;
+executor_method({_, _, Cell}, M, []) when M =:= isShutdown; M =:= isTerminated -> clj2_ref:deref(Cell);
+executor_method(_, awaitTermination, _) -> true;
+executor_method(_, M, Args) -> no_member('java.util.concurrent.ExecutorService', M, Args).
+
+task(F) -> {'java.util.concurrent.FutureTask', nil, clj2_ref:future_call(F)}.
+
+invoke_any([], Last) -> erlang:error(Last);
+invoke_any([T | Ts], _) ->
+    try task_method(T, get, [])
+    catch error:E -> invoke_any(Ts, E)
+    end.
+
+task_method({_, _, Fut}, get, _) ->
+    try clj2_ref:deref(Fut)
+    catch error:E when element(1, E) =:= 'clojure.lang.ExceptionInfo' ->
+            Msg = iolist_to_binary([atom_to_binary(clj2_class:exception_class(E)), ": ",
+                                    str(clj2_rt:ex_message(E))]),
+            throw_new('java.util.concurrent.ExecutionException', [Msg, E])
+    end;
+task_method({_, _, Fut}, isDone, []) -> clj2_ref:is_future_done(Fut);
+task_method({_, _, Fut}, isCancelled, []) -> clj2_ref:is_future_cancelled(Fut);
+task_method({_, _, Fut}, cancel, _) -> clj2_ref:future_cancel(Fut);
+task_method(_, M, Args) -> no_member('java.util.concurrent.FutureTask', M, Args).
+
+%% java.util.Iterator over a seq
+iterator_method({_, _, Cell}, hasNext, []) -> clj2_ref:deref(Cell) =/= nil;
+iterator_method({_, _, Cell}, next, []) ->
+    case clj2_ref:deref(Cell) of
+        nil -> throw_new('java.util.NoSuchElementException', []);
+        [H | T] -> clj2_ref:reset(Cell, clj2_coll:seq(T)), H
+    end;
+iterator_method(_, M, Args) -> no_member('java.util.Iterator', M, Args).
+
 find_keyword(Ns, N) ->
     try clj2_rt:existing_keyword(case Ns of nil -> nil; _ -> str(Ns) end, str(N))
     catch error:badarg -> nil
@@ -561,7 +724,7 @@ var_method({var, _, {Ns, Name}} = V, M, Args) ->
     {ok, #{module := NsMod, vars := #{Name := Info}}} = clj2_ns:info(Ns),
     Mod = maps:get(module, Info, NsMod),
     case {M, Args} of
-        {isMacro, []} -> maps:get(macro, Info, false);
+        {isMacro, []} -> maps:get(macro, Info, false) orelse clj2_coll:get(clj2_rt:meta(V), ':macro') =:= true;
         {isDynamic, []} -> maps:get(dynamic, Info, false);
         {isPublic, []} -> not maps:get(private, Info, false);
         {isBound, []} -> is_bound(V);
@@ -569,6 +732,18 @@ var_method({var, _, {Ns, Name}} = V, M, Args) ->
         {M, []} when M =:= deref; M =:= get; M =:= getRawRoot -> clj2_ref:deref(V);
         {toSymbol, []} -> clj2_rt:symbol(atom_to_binary(Ns), atom_to_binary(Name));
         {sym, []} -> Name;
+        {ns, []} -> Ns;
+        %% the :tag of its metadata, as a class (^String → java.lang.String)
+        {getTag, []} ->
+            case clj2_coll:get(clj2_rt:meta(V), ':tag') of
+                T when is_atom(T), T =/= nil ->
+                    case clj2_class:resolve(T) of {ok, C} -> C; error -> T end;
+                T -> T
+            end;
+        {setMacro, []} -> clj2_rt:merge_var_meta(V, clj2_coll:hash_map_kv([':macro', true])), nil;
+        {bindRoot, [X]} -> clj2_rt:set_var_root(V, X), nil;
+        {unbindRoot, []} -> ets:delete(clj2_var, {Mod, Name}), nil;
+        {alterRoot, [AF, AArgs]} -> clj2_rt:alter_var_root(V, AF, AArgs);
         {fn, []} ->
             F = clj2_ref:deref(V),
             case clj2_rt:is_fn(F) orelse is_atom(F) orelse is_tuple(F) of
@@ -592,17 +767,26 @@ var_method({var, _, {Ns, Name}} = V, M, Args) ->
     end.
 
 is_bound(V) ->
-    try clj2_ref:deref(V), true
+    try clj2_ref:deref(V) of
+        {'clojure.lang.Var$Unbound', _, _} -> false;
+        _ -> true
     catch error:{clj2_unbound_var, _, _} -> false
     end.
 
-has_root(Mod, Name, #{kind := indirect}) -> ets:member(clj2_var, {Mod, Name});
+has_root(Mod, Name, #{kind := K}) when K =:= indirect; K =:= cell -> ets:member(clj2_var, {Mod, Name});
 has_root(_, _, _) -> true.
 
 coll_method(X, size, []) -> clj2_coll:count(X);
 coll_method(X, count, []) -> clj2_coll:count(X);
 coll_method(X, isEmpty, []) -> clj2_coll:count(X) =:= 0;
 coll_method(X, get, [K]) -> case clj2_coll:is_vector(X) of
+                                true when is_integer(K) ->
+                                    N = clj2_coll:count(X),
+                                    (K < 0 orelse K >= N) andalso
+                                        throw_new('java.lang.IndexOutOfBoundsException',
+                                                  [iolist_to_binary(["Index ", integer_to_binary(K),
+                                                                     " out of bounds for length ", integer_to_binary(N)])]),
+                                    clj2_coll:nth(X, K);
                                 true -> clj2_coll:nth(X, K);
                                 false -> clj2_coll:get(X, K)
                             end;
@@ -621,15 +805,25 @@ coll_method(X, entrySet, []) -> clj2_coll:hash_set(clj2_coll:to_list(X));
 coll_method(X, keySet, []) -> clj2_coll:hash_set(clj2_coll:to_list(clj2_coll:keys(X)));
 coll_method(X, values, []) -> clj2_coll:to_list(clj2_coll:vals(X));
 coll_method(X, toArray, []) -> clj2_coll:vector(clj2_coll:to_list(X));
-coll_method(X, iterator, []) -> clj2_coll:seq(X);
+coll_method(X, iterator, []) -> {'java.util.Iterator', nil, clj2_ref:atom(clj2_coll:seq(X))};
 coll_method(X, M, Args) -> no_member(clj2_class:class_of(X), M, Args).
 
 index_in([], _, _) -> -1;
 index_in([E | R], K, I) -> case clj2_coll:equals(E, K) of true -> I; false -> index_in(R, K, I + 1) end.
 
 %% (.-field obj): a record's field (inside deftype methods fields are locals)
+%% a record's __extmap (the keys beyond its fields) and __meta
+instance_field({Tag, Meta, M}, F) when is_atom(Tag), is_map(M), F =:= '__extmap'; is_atom(Tag), is_map(M), F =:= '__meta' ->
+    case F of
+        '__meta' -> Meta;
+        '__extmap' ->
+            Ext = maps:without(clj2_proto:record_fields(Tag), M),
+            case map_size(Ext) of 0 -> nil; _ -> {map, nil, Ext} end
+    end;
 instance_field({Tag, _, M}, F) when is_atom(Tag), is_map(M) ->
     maps:get(list_to_atom(":" ++ atom_to_list(F)), M, nil);
+instance_field({var, _, {Ns, _}}, ns) -> Ns;
+instance_field({var, _, {_, Name}}, sym) -> Name;
 instance_field(X, F) -> no_member(clj2_class:class_of(X), F, []).
 
 %%====================================================================
@@ -668,6 +862,10 @@ construct('java.math.BigDecimal', [X, {math_context, _, _} = MC]) -> clj2_decima
 construct('java.math.MathContext', [P]) -> clj2_decimal:math_context(P, nil);
 construct('java.math.MathContext', [P, M]) -> clj2_decimal:math_context(P, M);
 construct('java.lang.String', []) -> <<>>;
+construct('java.lang.String', [{array, _, _} = A]) -> from_array(A, <<"UTF-8">>);
+construct('java.lang.String', [{array, _, _} = A, Cs]) when not is_integer(Cs) -> from_array(A, Cs);
+construct('java.lang.String', [{array, _, _} = A, Off, N]) -> from_array(A, Off, N, <<"UTF-8">>);
+construct('java.lang.String', [{array, _, _} = A, Off, N, Cs]) -> from_array(A, Off, N, Cs);
 construct('java.lang.String', [S]) -> to_string(S);
 construct('java.lang.StringBuilder', []) -> builder([]);
 construct('java.lang.StringBuilder', [N]) when is_integer(N) -> builder([]);
@@ -683,6 +881,13 @@ construct('java.util.UUID', [_Hi, _Lo]) -> clj2_string:random_uuid();
 construct('java.io.StringWriter', []) -> clj2_io:string_writer();
 construct('java.io.StringReader', [S]) -> clj2_io:string_reader(S);
 construct('java.util.Random', _) -> {'java.util.Random', nil, {}};
+construct(C, []) when C =:= 'java.util.ArrayList'; C =:= 'java.util.LinkedList' -> clj2_coll:vector([]);
+construct(C, [N]) when C =:= 'java.util.ArrayList', is_integer(N) -> clj2_coll:vector([]);
+construct(C, [Xs]) when C =:= 'java.util.ArrayList'; C =:= 'java.util.LinkedList' ->
+    clj2_coll:vector(clj2_coll:to_list(Xs));
+%% a Thread runs its fn in a process of its own when started, with no
+%% dynamic bindings (bound-fn conveys them)
+construct('java.lang.Thread', [F | _]) -> {'java.lang.Thread', nil, {F, clj2_ref:atom(nil)}};
 construct(C, Args) -> no_member(C, '<init>', Args).
 
 long_of(X) when is_integer(X) -> X;
