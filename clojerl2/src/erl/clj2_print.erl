@@ -133,6 +133,7 @@ write_builtin(X, W) ->
     clj2_io:write(W, chars(pr1(X, true))),
     nil.
 pr1(nil, _) -> <<"nil">>;
+pr1({clj2_msym, S, _}, _) -> atom_to_binary(S);
 pr1(true, _) -> <<"true">>;
 pr1(false, _) -> <<"false">>;
 pr1(A, _) when is_atom(A) -> atom_to_binary(A);               % symbols, keywords

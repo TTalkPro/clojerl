@@ -13,7 +13,7 @@
 -include("clojerl2.hrl").
 
 -export([to_data/1, from_value/1, vector_items/1, map_pairs/1, set_items/1, no_dup/1,
-         tag_value/2, record_tag/1, resolve_tags/1]).
+         tag_value/2, record_tag/1, resolve_tags/1, def_heads/0, plain_name/1]).
 
 %% @doc Reader form → runtime value (positions stripped).
 to_data({clj2_loc, _, _, Inner, Meta}) when is_map(Meta), map_size(Meta) > 0,
@@ -22,7 +22,20 @@ to_data({clj2_loc, _, _, Inner, Meta}) when is_map(Meta), map_size(Meta) > 0,
                                              orelse element(1, Inner) =:= set)) ->
     clj2_rt:with_meta(to_data(Inner), clj2_coll:hash_map_kv(lists:append([[K, V] || {K, V} <- maps:to_list(Meta)])));
 to_data(W) when ?CLJ2_IS_LOC(W) -> to_data(?CLJ2_LOC_FORM(W));
+%% (def ^:dynamic x ..) handed to a macro: symbols carry no metadata, so
+%% the name of a def-like form travels as {clj2_msym, Sym, Meta}, which the
+%% parser reads back as the name with its metadata
+to_data([H, N | Rest] = L) when ?CLJ2_IS_LOC(N) ->
+    case {strip_head(H), ?CLJ2_LOC_FORM(N), ?CLJ2_LOC_META(N)} of
+        {Head, S, M} when is_atom(S), is_map(M), map_size(M) > 0 ->
+            case lists:member(Head, def_heads()) of
+                true -> [to_data(H), {clj2_msym, S, M} | [to_data(X) || X <- Rest]];
+                false -> [to_data(X) || X <- L]
+            end;
+        _ -> [to_data(X) || X <- L]
+    end;
 to_data(L) when is_list(L) -> [to_data(X) || X <- L];
+to_data({clj2_msym, S, _}) -> S;
 to_data({vector, [], Items}) when is_list(Items) ->
     clj2_coll:vector([to_data(X) || X <- Items]);
 to_data({map, [], Pairs}) when is_list(Pairs) ->
@@ -123,13 +136,30 @@ no_dup([X | Xs]) ->
 %% realized into proper lists, inside collections too.
 from_value(L) when is_list(L) -> [from_value(X) || X <- clj2_coll:to_list(L)];
 from_value({lazy_seq, _, _} = L) -> [from_value(X) || X <- clj2_coll:to_list(L)];
-from_value({vector, _, T} = V) when is_tuple(T) ->
-    clj2_coll:vector([from_value(X) || X <- clj2_coll:vec_to_list(V)]);
-from_value({map, _, M}) when is_map(M) ->
-    clj2_coll:hash_map_kv(lists:append([[from_value(K), from_value(V)] || {K, V} <- maps:to_list(M)]));
-from_value({set, _, M}) when is_map(M) ->
-    clj2_coll:hash_set([from_value(X) || X <- maps:keys(M)]);
+%% (a collection keeps its metadata: ^:foo [x] through a macro)
+from_value({vector, Meta, T} = V) when is_tuple(T) ->
+    keep_meta(clj2_coll:vector([from_value(X) || X <- clj2_coll:vec_to_list(V)]), Meta);
+from_value({map, Meta, M}) when is_map(M) ->
+    keep_meta(clj2_coll:hash_map_kv(lists:append([[from_value(K), from_value(V)] || {K, V} <- maps:to_list(M)])), Meta);
+from_value({set, Meta, M}) when is_map(M) ->
+    keep_meta(clj2_coll:hash_set([from_value(X) || X <- maps:keys(M)]), Meta);
 from_value(X) -> X.
+
+%% @doc A def name as a plain symbol (a name with metadata travels as
+%% {clj2_msym, Sym, Meta} through macros)
+plain_name({clj2_msym, S, _}) -> S;
+plain_name(S) -> S.
+
+strip_head(H) when ?CLJ2_IS_LOC(H) -> ?CLJ2_LOC_FORM(H);
+strip_head(H) -> H.
+
+def_heads() ->
+    [def, defn, 'defn-', defmacro, defonce, defmulti,
+     'clojure.core/defn', 'clojure.core/defn-', 'clojure.core/defmacro', 'clojure.core/defonce',
+     'clojure.core/defmulti'].
+
+keep_meta(C, nil) -> C;
+keep_meta(C, Meta) -> setelement(2, C, Meta).
 
 %% Collection views over both shapes (reader or value); `false' otherwise.
 vector_items({vector, [], Items}) when is_list(Items) -> Items;

@@ -243,6 +243,7 @@ meta_const({Tag, _, _} = V) when Tag =:= vector; Tag =:= map; Tag =:= set ->
     end;
 meta_const(_) -> error.
 
+name_meta({clj2_msym, _, M}) -> M;
 name_meta(W) when ?CLJ2_IS_LOC(W) ->
     case ?CLJ2_LOC_META(W) of
         M when is_map(M) -> M;
@@ -493,6 +494,13 @@ form({tagged, [], Tag, _} = T, A, E) when is_atom(Tag) ->
     end;
 form({Unq, [], _}, A, _E) when Unq =:= unquote; Unq =:= unquote_splicing ->
     syntax(A, unquote_outside_syntax_quote);
+%% a collection value with metadata (a literal a macro got as data)
+form({Tag, M, _} = X, A, E) when (Tag =:= vector orelse Tag =:= map orelse Tag =:= set),
+                                M =/= nil, M =/= [] ->
+    case form(setelement(2, X, nil), A, E) of
+        {const, _, V} -> {const, A, clj2_rt:with_meta(V, M)};
+        Node -> {invoke, A, {sym, A, 'clj2_rt/with_meta'}, [Node, {const, A, M}]}
+    end;
 form(X, A, E) ->
     case {clj2_form:vector_items(X), clj2_form:map_pairs(X), clj2_form:set_items(X)} of
         {Items, _, _} when Items =/= false -> coll(vector, Items, X, A, E);
@@ -786,7 +794,18 @@ form_data({fnstar, [], [{arity, [], [Ps, Body]}]}, A, E) ->
 form_data({deref, [], X}, A, E) -> ['clojure.core/deref', form_data(X, A, E)];
 form_data({unquote, [], X}, A, E) -> ['clojure.core/unquote', form_data(X, A, E)];
 form_data({unquote_splicing, [], X}, A, E) -> ['clojure.core/unquote-splicing', form_data(X, A, E)];
+%% a def-like form's name keeps its metadata through a macro (clj2_form)
+form_data([H, N | Rest], A, E) when ?CLJ2_IS_LOC(N), is_atom(?CLJ2_LOC_FORM(N)), is_map(?CLJ2_LOC_META(N)),
+                                    map_size(?CLJ2_LOC_META(N)) > 0 ->
+    %% (not for read-string's data: data_form has no expander)
+    case maps:get(expand, E, undefined) =/= none andalso lists:member(unwrap(H), clj2_form:def_heads()) of
+        true -> [form_data(H, A, E), {clj2_msym, ?CLJ2_LOC_FORM(N), ?CLJ2_LOC_META(N)} | [form_data(X, A, E) || X <- Rest]];
+        false -> [form_data(X, A, E) || X <- [H, N | Rest]]
+    end;
 form_data(L, A, E) when is_list(L) -> [form_data(X, A, E) || X <- L];
+%% a def name with metadata stays one through a further macro (defn in a macro)
+form_data({clj2_msym, N, _} = S, _A, E) ->
+    case maps:get(expand, E, undefined) of none -> N; _ -> S end;
 form_data({vector, [], Items}, A, E) when is_list(Items) ->
     clj2_coll:vector([form_data(X, A, E) || X <- Items]);
 form_data({map, [], Pairs}, A, E) when is_list(Pairs) ->
@@ -1253,7 +1272,15 @@ case_form(X, Rest, A, E) ->
                end || {T, R} <- Pairs],
     All = lists:append([Cs || {cclause, _, Cs, _} <- Clauses]),
     length(lists:usort(All)) =:= length(All) orelse syntax(A, duplicate_case_test),
-    {'case', A, form(X, A, E), Clauses, Default}.
+    %% a vector constant matches an equal list too, and a list one an equal
+    %% vector (= is by elements); case matches the exact term otherwise
+    Clauses1 = [{cclause, TA, lists:usort(lists:append([seq_alts(C) || C <- Cs])), R}
+                || {cclause, TA, Cs, R} <- Clauses],
+    {'case', A, form(X, A, E), Clauses1, Default}.
+
+seq_alts({vector, _, T} = V) when is_tuple(T) -> [V, tuple_to_list(T)];
+seq_alts(L) when is_list(L), L =/= [] -> [L, clj2_coll:vector(L)];
+seq_alts(C) -> [C].
 
 %%====================================================================
 %% try
@@ -1435,6 +1462,7 @@ qsym(Ns, Name) -> list_to_atom(atom_to_list(Ns) ++ "/" ++ atom_to_list(Name)).
 %%====================================================================
 
 unwrap(W) when ?CLJ2_IS_LOC(W) -> ?CLJ2_LOC_FORM(W);
+unwrap({clj2_msym, S, _}) -> S;
 unwrap(X) -> X.
 
 anno(W) -> erl_anno:new(?CLJ2_LOC_POS(W)).
