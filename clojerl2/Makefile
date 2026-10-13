@@ -13,6 +13,7 @@
 #                   entry in test/corpus-known-failures.edn
 #   make corpus-rebaseline   rewrite test/corpus-known-failures.edn
 #   make corpus-regen        re-derive the corpus :expected from JVM Clojure
+#   make bench      embedding benchmarks (bench/clj2_bench.erl)
 #   make clean      remove build artefacts
 #
 # Requires Erlang/OTP 27+ (developed against OTP 28).
@@ -43,7 +44,7 @@ empty      :=
 space      := $(empty) $(empty)
 TEST_MODS  := $(subst $(space),$(comma),$(strip $(basename $(notdir $(TESTS)))))
 
-.PHONY: all test smoke example docs-check cts FORCE corpus certify corpus-rebaseline corpus-regen clean
+.PHONY: all test smoke example docs-check cts FORCE corpus certify corpus-rebaseline corpus-regen clean bench
 
 CORE_SRCS := $(wildcard priv/clj2/core/*)
 
@@ -118,3 +119,7 @@ cts: all
 
 clean:
 	rm -rf $(EBIN)
+
+bench: all
+	$(ERLC) -o $(EBIN) bench/clj2_bench.erl
+	erl -noshell -pa $(EBIN) -eval 'clj2_bench:run(), halt().' 2>&1 | grep -v "^=WARN\|on_load\|init_failed\|^$$"
