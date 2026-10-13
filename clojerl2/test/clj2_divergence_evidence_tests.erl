@@ -243,6 +243,13 @@ collections__map_order_test() ->
     ?assertEqual(true, ev("(= (keys {:c 3 :a 1}) (keys {:a 1 :c 3}))")),
     ?assertEqual(true, ev("(= {:c 3 :a 1 :b 2} (array-map :a 1 :b 2 :c 3))")).
 
+%% JVM: the platform feature is :clj.
+reader__platform_feature_test() ->
+    setup_ns(),
+    ?assertEqual(2, ev("#?(:clj 1 :clje 2)")),
+    ?assertEqual(<<"[]">>, ev("(pr-str [#?(:clj 1 :cljs 2)])")),
+    ?assertEqual(1, ev("(read-string {:read-cond :allow :features #{:clj}} \"#?(:clj 1 :cljs 2)\")")).
+
 host__jvm_classes_test() ->
     setup_ns(),
     %% JVM: a java.io.File

@@ -156,7 +156,11 @@
   :area :interop
   :reason "There is no JVM: interop syntax reaches host shims (clj2_jvm) that implement the commonly used members of java.lang, java.util and clojure.lang (Integer/parseInt, Math, String methods, exception constructors, StringBuilder, Var/Symbol/Keyword ...). Other classes are not available: java.io files, streams, readers and URLs, java.net, java.text and java.time/Calendar (and so format's %t), seeded java.util.Random, named charsets, Thread objects. Using one raises IllegalArgumentException (no matching method)."
   :design "designs/09 §3"
-  :alternative "Use the Clojure functions (slurp, spit, clojure.string, format without %t, rand) or the Erlang modules directly: file, filename, io, calendar, unicode, rand, erlang:system_time ((file/read_file path), (calendar/universal_time) ...)."} {:id :seqs/class-model
+  :alternative "Use the Clojure functions (slurp, spit, clojure.string, format without %t, rand) or the Erlang modules directly: file, filename, io, calendar, unicode, rand, erlang:system_time ((file/read_file path), (calendar/universal_time) ...)."} {:id :reader/platform-feature
+  :area :interop
+  :reason "The reader-conditional platform feature is :clje (as in clojerl 1.0), not :clj: #?(:clj a :clje b) reads b, and a #? with only :clj and :cljs branches reads as nothing. A .cljc library's :clj branches are JVM code (Java classes, interop), so they are skipped rather than compiled here. (read-string {:read-cond :allow :features #{:clj}} s) adds a feature when it is wanted."
+  :design "designs/01 §1.1"
+  :alternative "Give BEAM code a :clje branch (or a :default one); read-string's :features option adds features for data written for another platform."} {:id :seqs/class-model
   :area :collections
   :reason "Seqs are Erlang lists (finite, realized) or lazy seqs: class reports clojure.lang.PersistentList or clojure.lang.LazySeq where the JVM has a family of seq classes (Cons, LongRange, Range, Iterate, Repeat, Cycle, ChunkedCons, ArraySeq, APersistentMap$KeySeq ...), so (class (range 5)), instance? tests against those classes and printing of their class names differ. Seq behavior (first, rest, count, =, hash) is the same."
   :design "designs/03 §6"

@@ -41,13 +41,13 @@
   {:suite "analyze / unknown alias" :label "an unregistered alias as a value in a fn body is a compile error" :cause :interop/erlang-module-calls}
   {:suite "arrays / oob exception" :label "aget OOB class name" :cause :pending/printer}
   {:suite "bit-ops / bignum operand" :label "bit-and rejects an operand outside long range" :cause :number/beam-semantics}
-  {:suite "casts / checked narrow" :label "doubles range-check themselves, then truncate" :cause :pending/reader}
+  {:suite "casts / checked narrow" :label "doubles range-check themselves, then truncate" :cause :number/beam-semantics}
   {:suite "casts / checked narrow" :label "float range-checks against Float/MAX_VALUE" :cause :number/beam-semantics}
   {:suite "casts / checked narrow" :label "out-of-range values throw IllegalArgumentException" :cause :number/beam-semantics}
   {:suite "casts / checked narrow" :label "the throw carries the JVM message" :cause :number/beam-semantics}
   {:suite "casts / fixnum fast path" :label "byte/short/long throw IllegalArgumentException one past their bounds" :cause :number/beam-semantics}
   {:suite "casts / int overflow class" :label "int overflows on an INTEGER as ArithmeticException, on a DOUBLE as IllegalArgumentException" :cause :number/beam-semantics}
-  {:suite "casts / unchecked wrap" :label "unchecked casts wrap and sign-fold; doubles saturate" :cause :pending/reader}
+  {:suite "casts / unchecked wrap" :label "unchecked casts wrap and sign-fold; doubles saturate" :cause :number/beam-semantics}
   {:suite "charsets / malformed UTF-8" :label "a BOM survives a path read, a reader read and a byte read alike" :cause :pending/host-types}
   {:suite "charsets / malformed UTF-8" :label "a URI accessor decodes its escape runs through the same decoder" :cause :host/jvm-classes}
   {:suite "charsets / malformed UTF-8" :label "a lead past U+10FFFF is one replacement then its strays" :cause :pending/host-types}
@@ -84,22 +84,20 @@
   {:suite "chunking-model / realization granularity" :label "nth 0 over a chunked vector realizes the whole 32-block" :cause :lazy-seq/no-chunking}
   {:suite "chunking-model / unchunked realization granularity" :label "dedupe is fully lazy at construction" :cause :pending/laziness}
   {:suite "chunking-model / unchunked realization granularity" :label "mapcat is fully lazy at construction" :cause :pending/laziness}
-  {:suite "clojure 1.12 / reader" :label "a bad arg literal" :cause :pending/reader}
   {:suite "clojure.core / pmap family" :label "pmap semi-lazy — first of infinite does not hang" :cause :pending/laziness}
-  {:suite "clojure.edn / non-constituent @ ` ~" :label "the source reader is untouched — there @ ends the token and derefs" :cause :pending/reader}
-  {:suite "clojure.math" :label "IEEE-remainder rounds the quotient half-even" :cause :pending/reader}
-  {:suite "clojure.math" :label "Math/copySign, max, min and signum on -0.0 and NaN" :cause :pending/reader}
-  {:suite "clojure.math" :label "get-exponent" :cause :pending/reader}
-  {:suite "clojure.math" :label "next-* keep NaN" :cause :pending/reader}
-  {:suite "clojure.math" :label "next-after" :cause :pending/reader}
-  {:suite "clojure.math" :label "next-up and next-down" :cause :pending/reader}
+  {:suite "clojure.math" :label "IEEE-remainder rounds the quotient half-even" :cause :number/beam-semantics}
+  {:suite "clojure.math" :label "Math/copySign, max, min and signum on -0.0 and NaN" :cause :number/beam-semantics}
+  {:suite "clojure.math" :label "get-exponent" :cause :number/beam-semantics}
+  {:suite "clojure.math" :label "next-* keep NaN" :cause :number/beam-semantics}
+  {:suite "clojure.math" :label "next-after" :cause :number/beam-semantics}
+  {:suite "clojure.math" :label "next-up and next-down" :cause :number/beam-semantics}
   {:suite "clojure.math" :label "scalb" :cause :number/beam-semantics}
-  {:suite "clojure.math" :label "ulp" :cause :pending/reader}
+  {:suite "clojure.math" :label "ulp" :cause :number/beam-semantics}
   {:suite "clojure.repl / doc" :label "(doc map) prints the name, arglists, and docstring" :cause :pending/var-surface}
   {:suite "collections / first without a seq cell" :label "a directory stream seqs to paths" :cause :host/jvm-classes}
   {:suite "collections / first without a seq cell" :label "a path seqs to its components" :cause :host/jvm-classes}
   {:suite "collections / vector-of" :label "a primitive vector behaves as a vector" :cause :seqs/class-model}
-  {:suite "compare / identity" :label "NaN and the ordinary orderings are unchanged" :cause :pending/reader}
+  {:suite "compare / identity" :label "NaN and the ordinary orderings are unchanged" :cause :number/beam-semantics}
   {:suite "compile-eval / require scope" :label "a fn body cannot use the alias its own require establishes" :cause :interop/erlang-module-calls}
   {:suite "compile-eval / require scope" :label "re-aliasing to another namespace raises, nothing pre-registered it" :cause :pending/runtime-eval}
   {:suite "concurrency / ExecutorService.invokeAll" :label "a failing task is done, and its get raises ExecutionException" :cause :pending/host-types}
@@ -113,12 +111,12 @@
   {:suite "conformance / defmacro surface + syntax-quote/ns (enabling real clojure libs)" :label "unquote *ns* in template" :cause :pending/host-types}
   {:suite "conformance / destructuring" :label "rest-pattern positional elements walk the seq (a map destructures)" :cause :pending/core-bugs}
   {:suite "conformance / hamt-order" :label "zipmap 12 entries hash-iteration order" :cause :collections/map-order}
-  {:suite "conformance / hasheq" :label "hash char \\x" :cause :pending/reader}
+  {:suite "conformance / hasheq" :label "hash char \\x" :cause :char/integer}
   {:suite "conformance / native-op parity (native ops at guarded arities)" :label "native unary div" :cause :number/no-ratio-arithmetic}
-  {:suite "conformance / numbers / bits" :label "Double/doubleToLongBits and doubleToRawLongBits" :cause :pending/reader}
+  {:suite "conformance / numbers / bits" :label "Double/doubleToLongBits and doubleToRawLongBits" :cause :number/beam-semantics}
   {:suite "conformance / numbers / bits" :label "Double/longBitsToDouble round-trips" :cause :number/beam-semantics}
-  {:suite "conformance / numbers / bits" :label "Float/floatToIntBits range-checks like (float x)" :cause :pending/reader}
-  {:suite "conformance / numbers / bits" :label "Float/floatToIntBits rounds to single precision first" :cause :pending/reader}
+  {:suite "conformance / numbers / bits" :label "Float/floatToIntBits range-checks like (float x)" :cause :number/beam-semantics}
+  {:suite "conformance / numbers / bits" :label "Float/floatToIntBits rounds to single precision first" :cause :number/beam-semantics}
   {:suite "conformance / numbers / bits" :label "Float/intBitsToFloat has the float's value" :cause :pending/host-types}
   {:suite "conformance / stage3" :label "all sets hash-ordered: (seq (conj #{} 3 1 2))" :cause :collections/map-order}
   {:suite "conformance / stage3" :label "hash-map always hash-ordered" :cause :collections/map-order}
@@ -170,7 +168,7 @@
   {:suite "fn identity / non-capturing fn" :label "two evaluations of one fn form are two objects" :cause :fn/structural-identity}
   {:suite "for / :while ordering" :label ":while runs after :when in source order" :cause :pending/core-bugs}
   {:suite "for / :while sees :let" :label ":while can see preceding :let bindings" :cause :pending/core-bugs}
-  {:suite "format / %a hexadecimal float" :label "%a of NaN and the infinities" :cause :pending/reader}
+  {:suite "format / %a hexadecimal float" :label "%a of NaN and the infinities" :cause :number/beam-semantics}
   {:suite "format / %a hexadecimal float" :label "%a zero-pads after the 0x" :cause :pending/format-edge}
   {:suite "format / %a hexadecimal float" :label "a precision NORMALIZES a subnormal" :cause :pending/format-edge}
   {:suite "format / %a hexadecimal float" :label "a precision rounds half to even down" :cause :pending/format-edge}
@@ -195,11 +193,11 @@
   {:suite "format / %t date-time" :label "the hour conversions" :cause :host/jvm-classes}
   {:suite "format / argument index" :label "a width on %n is refused" :cause :pending/format-edge}
   {:suite "format / argument index" :label "index 0 is refused" :cause :pending/format-edge}
-  {:suite "format / rounding and flags" :label "%+e of Infinity" :cause :pending/reader}
-  {:suite "format / rounding and flags" :label "%.1f of -Infinity" :cause :pending/reader}
-  {:suite "format / rounding and flags" :label "%010e of NaN pads with spaces" :cause :pending/reader}
-  {:suite "format / rounding and flags" :label "%e of Infinity" :cause :pending/reader}
-  {:suite "format / rounding and flags" :label "%f of NaN" :cause :pending/reader}
+  {:suite "format / rounding and flags" :label "%+e of Infinity" :cause :number/beam-semantics}
+  {:suite "format / rounding and flags" :label "%.1f of -Infinity" :cause :number/beam-semantics}
+  {:suite "format / rounding and flags" :label "%010e of NaN pads with spaces" :cause :number/beam-semantics}
+  {:suite "format / rounding and flags" :label "%e of Infinity" :cause :number/beam-semantics}
+  {:suite "format / rounding and flags" :label "%f of NaN" :cause :number/beam-semantics}
   {:suite "format / the # alternate form" :label "+ on the unsigned radix conversions is refused" :cause :pending/format-edge}
   {:suite "format / the # alternate form" :label "zeros pad between the prefix and the digits" :cause :pending/format-edge}
   {:suite "host-interop / Symbol and Keyword statics" :label "Keyword/find answers only interned keywords" :cause :pending/host-types}
@@ -268,11 +266,11 @@
   {:suite "io / line-seq" :label "line-seq count" :cause :pending/strings-io}
   {:suite "io / line-seq" :label "line-seq empty" :cause :pending/strings-io}
   {:suite "io / line-seq" :label "line-seq is lazy seq" :cause :pending/strings-io}
-  {:suite "io / print family (overlay)" :label "pr of ##Inf is readable" :cause :pending/reader}
-  {:suite "io / print family (overlay)" :label "pr of ##NaN is readable" :cause :pending/reader}
+  {:suite "io / print family (overlay)" :label "pr of ##Inf is readable" :cause :number/beam-semantics}
+  {:suite "io / print family (overlay)" :label "pr of ##NaN is readable" :cause :number/beam-semantics}
   {:suite "io / print family (overlay)" :label "pr of a mixed coll quotes strings and chars" :cause :char/integer}
-  {:suite "io / print family (overlay)" :label "print of ##Inf is readable like pr" :cause :pending/reader}
-  {:suite "io / print family (overlay)" :label "print of ##NaN is readable like pr" :cause :pending/reader}
+  {:suite "io / print family (overlay)" :label "print of ##Inf is readable like pr" :cause :number/beam-semantics}
+  {:suite "io / print family (overlay)" :label "print of ##NaN is readable like pr" :cause :number/beam-semantics}
   {:suite "io / print family (overlay)" :label "print of a mixed coll renders strings and chars bare, numbers readable" :cause :char/integer}
   {:suite "io / print-method multimethod" :label "a direct call renders a regex like pr" :cause :pending/host-types}
   {:suite "io / print-method multimethod" :label "a direct call renders a uuid like pr" :cause :pending/host-types}
@@ -343,11 +341,11 @@
   {:suite "map / bulk build boundaries" :label "transient nil key" :cause :pending/core-bugs}
   {:suite "map / map-entry & key ordering" :label "key rejects vector" :cause :collections/map-entry-vectors}
   {:suite "map / map-entry & key ordering" :label "map-entry? vector" :cause :collections/map-entry-vectors}
-  {:suite "map / map-entry & key ordering" :label "min-key NaN first" :cause :pending/reader}
-  {:suite "map / map-entry & key ordering" :label "min-key NaN last" :cause :pending/reader}
-  {:suite "map / map-entry & key ordering" :label "min-key NaN three" :cause :pending/reader}
-  {:suite "map / map-entry & key ordering" :label "subvec NaN end" :cause :pending/reader}
-  {:suite "map / map-entry & key ordering" :label "subvec NaN start" :cause :pending/reader}
+  {:suite "map / map-entry & key ordering" :label "min-key NaN first" :cause :number/beam-semantics}
+  {:suite "map / map-entry & key ordering" :label "min-key NaN last" :cause :number/beam-semantics}
+  {:suite "map / map-entry & key ordering" :label "min-key NaN three" :cause :number/beam-semantics}
+  {:suite "map / map-entry & key ordering" :label "subvec NaN end" :cause :number/beam-semantics}
+  {:suite "map / map-entry & key ordering" :label "subvec NaN start" :cause :number/beam-semantics}
   {:suite "map / map-entry & key ordering" :label "val rejects vector" :cause :collections/map-entry-vectors}
   {:suite "map / the stored key, not the probe key" :label "a sorted map answers from its node" :cause :collections/exact-keys}
   {:suite "map / the stored key, not the probe key" :label "and a hash-collision bucket" :cause :collections/exact-keys}
@@ -421,23 +419,23 @@
   {:suite "numbers / bit-op operand contract" :label "an operand past signed 64-bit range raises" :cause :number/beam-semantics}
   {:suite "numbers / bit-op operand contract" :label "every non-numeric operand kind names its class" :cause :number/beam-semantics}
   {:suite "numbers / char in a numeric cast" :label "double and float reject a char; the integer casts take its code point" :cause :char/integer}
-  {:suite "numbers / floats & symbolic values" :label "##NaN not= itself" :cause :pending/reader}
-  {:suite "numbers / floats & symbolic values" :label "NaN? ##NaN" :cause :pending/reader}
-  {:suite "numbers / floats & symbolic values" :label "double? ##NaN" :cause :pending/reader}
-  {:suite "numbers / floats & symbolic values" :label "float? ##Inf" :cause :pending/reader}
-  {:suite "numbers / floats & symbolic values" :label "infinite? ##-Inf" :cause :pending/reader}
-  {:suite "numbers / floats & symbolic values" :label "infinite? ##Inf" :cause :pending/reader}
-  {:suite "numbers / floats & symbolic values" :label "int? ##Inf false" :cause :pending/reader}
-  {:suite "numbers / floats & symbolic values" :label "pos-int? ##Inf" :cause :pending/reader}
-  {:suite "numbers / floats & symbolic values" :label "read ##-Inf" :cause :pending/reader}
-  {:suite "numbers / floats & symbolic values" :label "read ##Inf" :cause :pending/reader}
+  {:suite "numbers / floats & symbolic values" :label "##NaN not= itself" :cause :number/beam-semantics}
+  {:suite "numbers / floats & symbolic values" :label "NaN? ##NaN" :cause :number/beam-semantics}
+  {:suite "numbers / floats & symbolic values" :label "double? ##NaN" :cause :number/beam-semantics}
+  {:suite "numbers / floats & symbolic values" :label "float? ##Inf" :cause :number/beam-semantics}
+  {:suite "numbers / floats & symbolic values" :label "infinite? ##-Inf" :cause :number/beam-semantics}
+  {:suite "numbers / floats & symbolic values" :label "infinite? ##Inf" :cause :number/beam-semantics}
+  {:suite "numbers / floats & symbolic values" :label "int? ##Inf false" :cause :number/beam-semantics}
+  {:suite "numbers / floats & symbolic values" :label "pos-int? ##Inf" :cause :number/beam-semantics}
+  {:suite "numbers / floats & symbolic values" :label "read ##-Inf" :cause :number/beam-semantics}
+  {:suite "numbers / floats & symbolic values" :label "read ##Inf" :cause :number/beam-semantics}
   {:suite "numbers / n-ary primitive arithmetic" :label "n-ary long + is a left fold: each step overflow-checks" :cause :number/beam-semantics}
-  {:suite "numbers / ops dispatch" :label "Inf times zero is NaN" :cause :pending/reader}
-  {:suite "numbers / ops dispatch" :label "NaN wins min/max" :cause :pending/reader}
+  {:suite "numbers / ops dispatch" :label "Inf times zero is NaN" :cause :number/beam-semantics}
+  {:suite "numbers / ops dispatch" :label "NaN wins min/max" :cause :number/beam-semantics}
   {:suite "numbers / ops dispatch" :label "double division by exact zero is signed Inf" :cause :number/beam-semantics}
   {:suite "numbers / ops dispatch" :label "quot over ratios truncates" :cause :number/no-ratio-arithmetic}
-  {:suite "numbers / ops dispatch" :label "quot/rem double contagion" :cause :pending/reader}
-  {:suite "numbers / ops dispatch" :label "zero over NaN is NaN" :cause :pending/reader}
+  {:suite "numbers / ops dispatch" :label "quot/rem double contagion" :cause :number/beam-semantics}
+  {:suite "numbers / ops dispatch" :label "zero over NaN is NaN" :cause :number/beam-semantics}
   {:suite "numbers / parse fns (1.11)" :label "parse-long +over max nil" :cause :number/beam-semantics}
   {:suite "numbers / parse fns (1.11)" :label "parse-long far over nil" :cause :number/beam-semantics}
   {:suite "numbers / parse fns (1.11)" :label "parse-long over max nil" :cause :number/beam-semantics}
@@ -456,11 +454,11 @@
   {:suite "numbers / primitive hint coercion" :label "an anonymous fn's arglist hint counts too" :cause :number/beam-semantics}
   {:suite "numbers / primitive hint coercion" :label "bit-clear wraps to 64 bits at the sign bit" :cause :number/beam-semantics}
   {:suite "numbers / primitive hint coercion" :label "each arity of a multi-arity fn carries its own" :cause :number/beam-semantics}
-  {:suite "numbers / printing of inf & nan" :label "inf inside coll" :cause :pending/reader}
-  {:suite "numbers / printing of inf & nan" :label "pr-str Infinity" :cause :pending/reader}
-  {:suite "numbers / printing of inf & nan" :label "str -Infinity" :cause :pending/reader}
-  {:suite "numbers / printing of inf & nan" :label "str Infinity" :cause :pending/reader}
-  {:suite "numbers / printing of inf & nan" :label "str NaN" :cause :pending/reader}
+  {:suite "numbers / printing of inf & nan" :label "inf inside coll" :cause :number/beam-semantics}
+  {:suite "numbers / printing of inf & nan" :label "pr-str Infinity" :cause :number/beam-semantics}
+  {:suite "numbers / printing of inf & nan" :label "str -Infinity" :cause :number/beam-semantics}
+  {:suite "numbers / printing of inf & nan" :label "str Infinity" :cause :number/beam-semantics}
+  {:suite "numbers / printing of inf & nan" :label "str NaN" :cause :number/beam-semantics}
   {:suite "numbers / promoting & unchecked aliases" :label "unchecked-add on ratios does not wrap to long" :cause :number/no-ratio-arithmetic}
   {:suite "numbers / promoting & unchecked aliases" :label "unchecked-add ratios summing to zero" :cause :number/no-ratio-arithmetic}
   {:suite "numbers / promoting & unchecked aliases" :label "unchecked-inc ratio" :cause :number/no-ratio-arithmetic}
@@ -471,16 +469,16 @@
   {:suite "numbers / unsigned string conversions" :label "a negative long takes the narrowest width holding it" :cause :number/beam-semantics}
   {:suite "numbers / unsigned string conversions" :label "a value needing 64 bits still gets them" :cause :number/beam-semantics}
   {:suite "permissive / empty MapEntry" :label "empty of a map entry" :cause :collections/map-entry-vectors}
-  {:suite "predicates / compare, type, any? (stage 3)" :label "int? Inf false" :cause :pending/reader}
-  {:suite "predicates / compare, type, any? (stage 3)" :label "integer? Inf false" :cause :pending/reader}
-  {:suite "predicates / compare, type, any? (stage 3)" :label "integer? NaN false" :cause :pending/reader}
+  {:suite "predicates / compare, type, any? (stage 3)" :label "int? Inf false" :cause :number/beam-semantics}
+  {:suite "predicates / compare, type, any? (stage 3)" :label "integer? Inf false" :cause :number/beam-semantics}
+  {:suite "predicates / compare, type, any? (stage 3)" :label "integer? NaN false" :cause :number/beam-semantics}
   {:suite "predicates / compare, type, any? (stage 3)" :label "type of record" :cause :pending/records}
   {:suite "predicates / identical?" :label "reference identity, not value equality" :cause :values/no-identity}
   {:suite "predicates / map? & coll? strictness" :label "coll? record" :cause :pending/records}
   {:suite "predicates / map? & coll? strictness" :label "map? record" :cause :pending/records}
   {:suite "predicates / overlay-migrated" :label "NaN? on nan" :cause :number/beam-semantics}
   {:suite "predicates / tagged-value" :label "chunked-seq? true for a vector seq" :cause :lazy-seq/no-chunking}
-  {:suite "printer / str vs print" :label "infinity inside a collection prints readably in str" :cause :pending/reader}
+  {:suite "printer / str vs print" :label "infinity inside a collection prints readably in str" :cause :number/beam-semantics}
   {:suite "printing / *print-readably*" :label "it applies at every nesting level" :cause :char/integer}
   {:suite "printing / *print-readably*" :label "nil makes pr print a string bare, like print" :cause :char/integer}
   {:suite "printing / doubles" :label "a subnormal prints the two digits nearest its value" :cause :pending/printer}
@@ -505,56 +503,28 @@
   {:suite "quoted-literal constants" :label "a literal with a LOCAL element still constructs per call" :cause :values/no-identity}
   {:suite "quoted-literal constants" :label "reader meta on a quoted symbol survives hoisting" :cause :symbol/no-metadata}
   {:suite "quoted-literal constants" :label "with-meta on a shared constant copies, never mutates the site" :cause :symbol/no-metadata}
-  {:suite "read-string / opts arity" :label "reader conditionals read through the opts arity" :cause :pending/reader}
   {:suite "reader / anonymous fn literal" :label "a ^double return hint survives #() too" :cause :number/beam-semantics}
   {:suite "reader / anonymous fn literal" :label "a ^long return hint survives #()" :cause :number/beam-semantics}
-  {:suite "reader / default data readers" :label "#inst is in default-data-readers" :cause :pending/reader}
-  {:suite "reader / default-data-reader-fn" :label "consulted for an unregistered tag" :cause :pending/reader}
-  {:suite "reader / delimiters" :label "a mismatched close reports, it does not hang" :cause :pending/reader}
-  {:suite "reader / delimiters" :label "mismatched bracket" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "a bigint suffix follows a grouped literal" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "a radix literal groups its digits" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "a ratio groups either side" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "a run of underscores is one separator" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "a separator against the decimal point is an invalid number" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "a separator against the exponent marker is an invalid number" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "a separator against the hex marker is an invalid number" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "a separator survives a leading sign" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "a trailing separator is an invalid number" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "both sides of a decimal point group" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "hex groups by nibble" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "mantissa and exponent group independently" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "octal keeps its leading zero" :cause :pending/reader}
-  {:suite "reader / digit separators" :label "underscores group a long decimal" :cause :pending/reader}
-  {:suite "reader / discard, symbolic values, conditionals (spec 2.3)" :label "##-Inf" :cause :pending/reader}
-  {:suite "reader / discard, symbolic values, conditionals (spec 2.3)" :label "##Inf" :cause :pending/reader}
-  {:suite "reader / discard, symbolic values, conditionals (spec 2.3)" :label "##NaN is NaN?" :cause :pending/reader}
-  {:suite "reader / discard, symbolic values, conditionals (spec 2.3)" :label "##NaN not self-equal" :cause :pending/reader}
-  {:suite "reader / dispatch & sugar" :label "reader cond :jolt" :cause :pending/reader}
-  {:suite "reader / dispatch & sugar" :label "reader cond no match" :cause :pending/reader}
-  {:suite "reader / dispatch & sugar" :label "reader cond splice no match" :cause :pending/reader}
-  {:suite "reader / dispatch & sugar" :label "reader conditional" :cause :pending/reader}
-  {:suite "reader / hex N suffix" :label "0xFFN reads as integer 255" :cause :pending/reader}
+  {:suite "reader / discard, symbolic values, conditionals (spec 2.3)" :label "##-Inf" :cause :number/beam-semantics}
+  {:suite "reader / discard, symbolic values, conditionals (spec 2.3)" :label "##Inf" :cause :number/beam-semantics}
+  {:suite "reader / discard, symbolic values, conditionals (spec 2.3)" :label "##NaN is NaN?" :cause :number/beam-semantics}
+  {:suite "reader / discard, symbolic values, conditionals (spec 2.3)" :label "##NaN not self-equal" :cause :number/beam-semantics}
+  {:suite "reader / dispatch & sugar" :label "reader cond :jolt" :cause :reader/platform-feature}
+  {:suite "reader / dispatch & sugar" :label "reader cond no match" :cause :reader/platform-feature}
+  {:suite "reader / dispatch & sugar" :label "reader cond splice no match" :cause :reader/platform-feature}
+  {:suite "reader / dispatch & sugar" :label "reader conditional" :cause :reader/platform-feature}
   {:suite "reader / metadata" :label "a set in metadata is read as a value, not a tagged form" :cause :pending/printer}
   {:suite "reader / metadata" :label "metadata on an empty list is preserved" :cause :pending/printer}
   {:suite "reader / metadata ^" :label "meta on quoted sym" :cause :symbol/no-metadata}
-  {:suite "reader / octal literals" :label "octal string escape is one char" :cause :pending/reader}
-  {:suite "reader / record literal" :label "#ns.Type{} constructs record in read-string" :cause :pending/reader}
-  {:suite "reader / record vector ctor" :label "#ns.Type[] constructs record from vector" :cause :pending/reader}
-  {:suite "reader / scalar literals" :label "symbolic Infinity" :cause :pending/reader}
-  {:suite "reader / scalar literals" :label "symbolic NaN" :cause :pending/reader}
-  {:suite "reader / strict tokens" :label "the core reader rejects invalid numbers and duplicate keys too" :cause :pending/reader}
-  {:suite "reader / surrogate in string" :label "\\ud800 in string throws Invalid character constant" :cause :pending/reader}
-  {:suite "reader-model / read-eval" :label "#= evaluates under read-string" :cause :pending/reader}
+  {:suite "reader / octal literals" :label "octal string escape is one char" :cause :char/integer}
+  {:suite "reader / scalar literals" :label "symbolic Infinity" :cause :number/beam-semantics}
+  {:suite "reader / scalar literals" :label "symbolic NaN" :cause :number/beam-semantics}
+  {:suite "reader / surrogate in string" :label "\\ud800 in string throws Invalid character constant" :cause :char/integer}
   {:suite "records / ISeq deftype" :label "a deftype that is its own seq walks through its first and next" :cause :pending/host-types}
   {:suite "records / class constructor" :label "a record class also constructs from fields, __meta and __extmap" :cause :fn/arity-at-compile-time}
   {:suite "records / class constructor" :label "a record exposes __extmap and __meta as fields" :cause :pending/records}
   {:suite "records / ctor-arity" :label "positional ctor throws on 1 arg for 2-field record" :cause :fn/arity-at-compile-time}
   {:suite "records / deftype is not a map" :label "a bare deftype is neither map? nor record?, a defrecord is both" :cause :pending/records}
-  {:suite "records / literal data" :label "a data list of strings is a list, not a call" :cause :pending/reader}
-  {:suite "records / literal data" :label "a list value is data, not code" :cause :pending/reader}
-  {:suite "records / literal data" :label "a symbol value is the symbol, not its binding" :cause :pending/reader}
-  {:suite "records / literal data" :label "nested record literal still constructs" :cause :pending/reader}
   {:suite "records / representation" :label "keys are declared then extension order" :cause :collections/map-order}
   {:suite "records / representation" :label "map-> keeps extension keys" :cause :collections/map-order}
   {:suite "records / representation" :label "seq yields field map-entries" :cause :collections/map-order}
@@ -692,12 +662,11 @@
   {:suite "syntax-quote / ~@ is lazy" :label "a spliced lazy seq is not realized by building the template, only by walking to it" :cause :pending/laziness}
   {:suite "syntax-quote / ~@ is lazy" :label "a top-level do evaluates the forms ahead of a splice before the splice is realized" :cause :pending/runtime-eval}
   {:suite "syntax-quote / ~@ is lazy" :label "taking from a long splice realizes one chunk, not the splice" :cause :lazy-seq/no-chunking}
-  {:suite "tagged literals / value equality" :label "duplicate literal keys throw at read (same form twice)" :cause :pending/reader}
-  {:suite "take / non-integer count" :label "a count past the long range takes everything, and a lazy drop drops everything" :cause :pending/reader}
-  {:suite "take / non-integer count" :label "a lazy drop of a count past the long range still realizes its source" :cause :pending/reader}
-  {:suite "take / non-integer count" :label "a positive count takes ceil(n) elements, as the JVM counts down with dec" :cause :pending/reader}
-  {:suite "take / non-integer count" :label "drop steps ceil(n) times too, lazy or vector-backed" :cause :pending/reader}
-  {:suite "take / non-integer count" :label "dropping a count past the long range from a vector is out of range, as IDrop casts it" :cause :pending/reader}
+  {:suite "take / non-integer count" :label "a count past the long range takes everything, and a lazy drop drops everything" :cause :number/beam-semantics}
+  {:suite "take / non-integer count" :label "a lazy drop of a count past the long range still realizes its source" :cause :number/beam-semantics}
+  {:suite "take / non-integer count" :label "a positive count takes ceil(n) elements, as the JVM counts down with dec" :cause :number/beam-semantics}
+  {:suite "take / non-integer count" :label "drop steps ceil(n) times too, lazy or vector-backed" :cause :number/beam-semantics}
+  {:suite "take / non-integer count" :label "dropping a count past the long range from a vector is out of range, as IDrop casts it" :cause :number/beam-semantics}
   {:suite "take / non-integer count" :label "repeatedly, split-at and drop-last count the same way" :cause :number/no-ratio-arithmetic}
   {:suite "time / default zone" :label "SimpleDateFormat honors setTimeZone, names and offsets included" :cause :host/jvm-classes}
   {:suite "time / default zone" :label "SimpleDateFormat parses in the zone it was given" :cause :host/jvm-classes}
