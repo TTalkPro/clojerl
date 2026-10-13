@@ -96,6 +96,8 @@ to_list({vector, _, T}) when is_tuple(T) -> tuple_to_list(T);
 to_list({Tag, _, {_, _, _}} = S) when Tag =:= sorted_map; Tag =:= sorted_set -> clj2_sorted:to_list(S);
 to_list({set, _, M}) -> maps:keys(M);
 to_list({map, _, M}) -> [vector([K, V]) || {K, V} <- maps:to_list(M)];
+%% a native Erlang map is a Clojure map too (designs/10: host data in place)
+to_list(M) when is_map(M) -> [vector([K, V]) || {K, V} <- maps:to_list(M)];
 to_list({Tag, _, M}) when is_atom(Tag), is_map(M) -> [vector([K, V]) || {K, V} <- maps:to_list(M)];
 to_list({array, _, _} = A) -> clj2_array:to_list(A);
 to_list({Tag, _, _} = X) when is_atom(Tag) ->
@@ -152,6 +154,7 @@ concat_step([P | Ps]) ->
     end.
 
 is_hash_map({map, _, M}) when is_map(M) -> true;
+is_hash_map(M) when is_map(M) -> true;
 is_hash_map(_) -> false.
 
 %% @doc A defrecord value (map? and record? are true of it)
@@ -228,6 +231,7 @@ count(L) when is_list(L) -> length(to_list(L));
 count({lazy_seq, _, _} = L) -> length(to_list(L));
 count({vector, _, T}) -> tuple_size(T);
 count({map, _, M}) -> map_size(M);
+count(M) when is_map(M) -> map_size(M);
 count({set, _, M}) -> map_size(M);
 count(B) when is_binary(B) -> string:length(B);
 count({Tag, _, M}) when is_atom(Tag), is_map(M) -> map_size(M);
@@ -306,9 +310,14 @@ get({Tag, _, {_, _, _}} = S, K, NotFound) when Tag =:= sorted_map; Tag =:= sorte
         sorted_set -> case clj2_sorted:contains(S, K) of true -> K; false -> NotFound end
     end;
 get({map, _, M}, K, NotFound) -> maps:get(nk(K), M, NotFound);
+get(M, K, NotFound) when is_map(M) -> maps:get(K, M, NotFound);
 %% a string by index: its code point
 get(B, I, NotFound) when is_binary(B), is_integer(I), I >= 0 -> nth(B, I, NotFound);
 get({array, _, _} = Arr, I, NotFound) when is_integer(I) -> nth(Arr, I, NotFound);
+%% a list by index too: JSON arrays from a host are Erlang lists, and
+%% (get-in body ["messages" 0 "content"]) is how a rule reads them
+%% (JVM: nil; known divergence :collections/list-index-get)
+get(L, I, NotFound) when is_list(L), is_integer(I), I >= 0 -> nth(L, I, NotFound);
 get({set, _, M}, K, NotFound) ->
     case is_map_key(nk(K), M) of
         true -> nk(K);
@@ -324,6 +333,7 @@ get(_, _, NotFound) -> NotFound.
 
 assoc(nil, K, V) -> {map, nil, #{K => V}};
 assoc({map, Meta, M}, K, V) -> {map, Meta, M#{nk(K) => V}};
+assoc(M, K, V) when is_map(M) -> M#{K => V};
 assoc({sorted_map, _, {_, _, _}} = S, K, V) -> clj2_sorted:assoc(S, K, V);
 assoc({vector, Meta, T}, I, V) when is_integer(I), I >= 0, I < tuple_size(T) ->
     {vector, Meta, setelement(I + 1, T, V)};
@@ -340,6 +350,7 @@ assoc(X, _, _) ->
 
 dissoc(nil, _) -> nil;
 dissoc({map, Meta, M}, K) -> {map, Meta, maps:remove(nk(K), M)};
+dissoc(M, K) when is_map(M) -> maps:remove(K, M);
 dissoc({sorted_map, _, {_, _, _}} = S, K) -> clj2_sorted:dissoc(S, K);
 %% a record: an extension key goes, the record stays; a declared field
 %% gone makes it a plain map (as on the JVM)
@@ -364,6 +375,12 @@ conj({vector, Meta, T}, X) -> {vector, Meta, erlang:append_element(T, X)};
 conj({set, Meta, M}, X) -> {set, Meta, M#{nk(X) => nil}};
 conj({Tag, _, {_, _, _}} = S, X) when Tag =:= sorted_map; Tag =:= sorted_set -> clj2_sorted:conj(S, X);
 conj({map, Meta, M}, {vector, _, {K, V}}) -> {map, Meta, M#{nk(K) => V}};
+conj({map, Meta, M}, M2) when is_map(M2) -> {map, Meta, maps:merge(M, M2)};
+conj(M, {vector, _, {K, V}}) when is_map(M) -> M#{K => V};
+conj(M, {map, _, M2}) when is_map(M) -> maps:merge(M, M2);
+conj(M, M2) when is_map(M), is_map(M2) -> maps:merge(M, M2);
+conj(M, nil) when is_map(M) -> M;
+conj(M, X) when is_map(M) -> conj_entries(M, X);
 conj({map, Meta, M}, {map, _, M2}) -> {map, Meta, maps:merge(M, M2)};
 conj({map, _, _} = M, nil) -> M;
 conj({map, _, _}, {vector, _, _}) ->
@@ -403,6 +420,7 @@ conj_entries(M, X) ->
 contains({transient, _, C}, K) -> contains(C, K);
 contains({Tag, _, {_, _, _}} = S, K) when Tag =:= sorted_map; Tag =:= sorted_set -> clj2_sorted:contains(S, K);
 contains({map, _, M}, K) -> is_map_key(nk(K), M);
+contains(M, K) when is_map(M) -> is_map_key(K, M);
 contains({set, _, M}, K) -> is_map_key(nk(K), M);
 contains({vector, _, T}, I) when is_integer(I) -> I >= 0 andalso I < tuple_size(T);
 contains({Tag, _, M}, K) when is_atom(Tag), is_map(M) -> is_map_key(K, M);
@@ -420,12 +438,14 @@ contains(X, _) ->
                                  hash_map_kv([':type', ':IllegalArgumentException']), nil)).
 
 keys({map, _, M}) -> seq(maps:keys(M));
+keys(M) when is_map(M) -> seq(maps:keys(M));
 keys({sorted_map, _, {_, _, _}} = S) -> clj2_sorted:keys(S);
 keys({Tag, _, M}) when is_atom(Tag), is_map(M) -> seq(maps:keys(M));
 keys(nil) -> nil;
 keys(X) -> seq([entry_part(E, 1) || E <- to_list(X)]).                % a seq of map entries
 
 vals({map, _, M}) -> seq(maps:values(M));
+vals(M) when is_map(M) -> seq(maps:values(M));
 vals({sorted_map, _, {_, _, _}} = S) -> clj2_sorted:vals(S);
 vals({Tag, _, M}) when is_atom(Tag), is_map(M) -> seq(maps:values(M));
 vals(nil) -> nil;
@@ -460,6 +480,12 @@ subvec({vector, _, T}, S0, E0) ->
 equals(A, B) when A =:= B -> true;
 %% BigDecimals are equal by value (1.0M and 1.00M), as compareTo
 equals({decimal, _, _} = A, {decimal, _, _} = B) -> clj2_decimal:equals(A, B);
+%% a native Erlang map equals a Clojure map with the same entries
+equals(A, B) when is_map(A); is_map(B) ->
+    case {raw_map(A), raw_map(B)} of
+        {MA, MB} when is_map(MA), is_map(MB) -> equals({map, nil, MA}, {map, nil, MB});
+        _ -> false
+    end;
 equals({map, _, A}, {map, _, B}) when map_size(A) =:= map_size(B) ->
     lists:all(fun({K, V}) -> is_map_key(K, B) andalso equals(V, maps:get(K, B)) end,
               maps:to_list(A));
@@ -494,6 +520,10 @@ is_sequential({vector, _, T}) when is_tuple(T) -> true;
 is_sequential({Tag, _, T} = X) when is_atom(Tag), is_tuple(T) ->
     clj2_proto:is_type_value(X) andalso clj2_class:is_instance('clojure.lang.Sequential', X);
 is_sequential(_) -> false.
+
+raw_map(M) when is_map(M) -> M;
+raw_map({map, _, M}) when is_map(M) -> M;
+raw_map(_) -> none.
 
 seq_equals([], []) -> true;
 seq_equals([X | Xs], [Y | Ys]) -> equals(X, Y) andalso seq_equals(Xs, Ys);
