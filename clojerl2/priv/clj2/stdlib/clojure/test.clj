@@ -4,7 +4,7 @@
 ;;   Eclipse Public License 1.0; this file keeps that notice.
 ;;
 ;;   Shaped after jolt's stdlib/clojure/test.clj (EPL-1.0), adapted to
-;;   clojerl2 (clojerl2-022): a registry instead of var scanning, atoms
+;;   clojerl2 (clojerl2-022): a registry instead of var scanning, cells
 ;;   instead of refs, the namespace captured when deftest expands.
 
 (ns clojure.test
@@ -25,7 +25,7 @@
   set-test then define nothing."
   true)
 (def ^:dynamic *stack-trace-depth* nil)   ; accepted, there are no stack traces to cap
-(def ^:dynamic *report-counters* nil)     ; an atom over the counters, bound per run
+(def ^:dynamic *report-counters* nil)     ; a cell over the counters, bound per run
 (def *initial-report-counters* {:test 0, :pass 0, :fail 0, :error 0})
 (def ^:dynamic *testing-vars* (list))     ; the vars under test, innermost first
 (def ^:dynamic *testing-contexts* (list)) ; the testing strings, innermost first
@@ -38,19 +38,20 @@
 
 ;; deftest records each test here: [{:ns sym :name sym :fn thunk}], in
 ;; definition order; a redefinition replaces its entry in place.
-(def ^:private registry (atom []))
-(def ^:private once-fixtures (atom {}))   ; ns symbol -> [fixture fns]
-(def ^:private each-fixtures (atom {}))
+(def ^:private registry (clj2_ref/cell []))
+(def ^:private once-fixtures (clj2_ref/cell {}))   ; ns symbol -> [fixture fns]
+(def ^:private each-fixtures (clj2_ref/cell {}))
 
 (defn register-test!
   "Record the test thunk f as ns-sym/name, replacing an entry already
   registered under that name (a reloaded test runs once)."
   [ns-sym name f]
-  (swap! registry
+  (clj2_ref/swap registry
          (fn [r]
            (let [entry {:ns ns-sym :name name :fn f}
                  i (first (keep-indexed (fn [i t] (when (and (= name (:name t)) (= ns-sym (:ns t))) i)) r))]
-             (if i (assoc r i entry) (conj r entry)))))
+             (if i (assoc r i entry) (conj r entry))))
+         nil)
   nil)
 
 ;;;; ------------------------------------------------------------------
@@ -83,7 +84,7 @@
   "Increments the named counter in *report-counters*, when bound."
   [name]
   (when *report-counters*
-    (swap! *report-counters* update name (fnil inc 0))))
+    (clj2_ref/swap *report-counters* update (list name (fnil inc 0)))))
 
 (defmulti report
   "The reporting multimethod: dispatches on the :type of the report map
@@ -394,8 +395,8 @@
   "(use-fixtures) with the namespace given: fixtures are per namespace."
   [ns-sym fixture-type & fns]
   (cond
-    (= fixture-type :once) (swap! once-fixtures assoc ns-sym (vec fns))
-    (= fixture-type :each) (swap! each-fixtures assoc ns-sym (vec fns))
+    (= fixture-type :once) (clj2_ref/swap once-fixtures assoc (list ns-sym (vec fns)))
+    (= fixture-type :each) (clj2_ref/swap each-fixtures assoc (list ns-sym (vec fns)))
     :else (throw (IllegalArgumentException. (str "Unknown fixture type: " fixture-type)))))
 
 (defmacro use-fixtures
@@ -496,7 +497,7 @@
   Returns a map of counters."
   [ns]
   (let [ns-sym (if (symbol? ns) ns (ns-name ns))]
-    (binding [*report-counters* (atom *initial-report-counters*)]
+    (binding [*report-counters* (clj2_ref/cell *initial-report-counters*)]
       (do-report {:type :begin-test-ns, :ns ns-sym})
       (if-let [hook (ns-hook ns-sym)]
         ((var-get hook))

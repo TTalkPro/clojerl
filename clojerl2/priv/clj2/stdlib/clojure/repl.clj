@@ -16,7 +16,7 @@
   "Given a string representation of a fn class,
   as in a stack trace element, returns a readable version."
   [fn-name]
-  (clojure.lang.Compiler/demunge fn-name))
+  (-> (str fn-name) (clj2_string/replace "$" "/" (quote all)) (clj2_string/replace "_" "-" (quote all))))
 
 (def ^:private special-doc-map
   '{. {:url "java_interop#dot"
@@ -142,7 +142,7 @@ str-or-pattern."
   [str-or-pattern]
   (let [matches? (if (instance? java.util.regex.Pattern str-or-pattern)
                    #(re-find str-or-pattern (str %))
-                   #(.contains (str %) (str str-or-pattern)))]
+                   #(clj2_string/includes (str %) (str str-or-pattern)))]
     (sort (mapcat (fn [ns]
                     (let [ns-name (str ns)]
                       (map #(symbol ns-name (str %))

@@ -5,7 +5,7 @@
 ;;   Eclipse Public License 1.0 (licenses/EPL-1.0.txt).
 
 ;; clojure.pprint — a column-aware pretty printer and a Common Lisp compatible
-;; cl-format. The writer accumulates into a StringBuilder; pprint/write/cl-format
+;; cl-format. The writer accumulates into a string buffer (sb-new); pprint/write/cl-format
 ;; bind *out* (this ns's own dynamic binding) to a pretty-writer over it and emit
 ;; the result through clojure.core/print, so with-out-str captures it.
 ;;
@@ -13,7 +13,7 @@
 ;; that route through (-write *out* ...).
 (ns clojure.pprint
   (:refer-clojure :exclude [deftype print pr prn])
-  (:require [clojure.walk]))
+  (:require [clojure.walk] [clojure.string]))
 
 ;; clojerl2: a character is its code point (:char/integer), so (str \a) is
 ;; "97": text built from characters goes through cstr, which makes each
@@ -33,7 +33,7 @@
 (defmacro setf
   "Set the value of field sym in *out*'s field atom."
   [sym new-val]
-  `(swap! (.-fields ~'this) assoc ~sym ~new-val))
+  `(clj2_ref/swap (.-fields ~'this) assoc (list ~sym ~new-val)))
 
 (defmacro deftype
   "Builds a defrecord plus make-X / X? helpers (a tagged record used as a
@@ -159,7 +159,7 @@
   (cond
     (number? c) c
     (char? c) (int c)
-    (and (string? c) (= (count c) 1)) (int (.charAt c 0))
+    (and (string? c) (= (count c) 1)) (int (nth c 0))
     :else (throw (Exception. "Argument to char must be a character or number"))))
 
 (defn- map-passing-context [func initial-context lis]
@@ -221,7 +221,7 @@
   (-write [w x])
   (-pflush [w]))
 
-;; Any other base is a java.io.Writer (a StringWriter, a file writer, a
+;; Any other base is a writer (an io device, a string writer, a
 ;; PrintWriter, *out*, a proxy), written the way the JVM's column writer writes
 ;; its base: a string through write(String), a char as write(int), and flushed
 ;; with its own flush. Without this (pprint x w) and (cl-format w …) threw for
@@ -245,7 +245,7 @@
   (sym (deref (.-fields this))))
 
 (defn- set-field [this sym new-val]
-  (swap! (.-fields this) assoc sym new-val))
+  (clj2_ref/swap (.-fields this) assoc (list sym new-val)))
 
 (defn- get-column [this]
   (get-field this :cur))
@@ -261,12 +261,17 @@
     (set-field this :cur (inc (get-field this :cur))))
   (-write (get-field this :base) c))
 
-;; the base sink: accumulates into a StringBuilder. Columns are tracked by the
+;; a string buffer: the strings written so far, in this process
+(defn- sb-new [] (clj2_ref/volatile []))
+(defn- sb-append [sb s] (clj2_ref/vreset sb (conj (deref sb) s)))
+(defn- sb-str [sb] (apply str (deref sb)))
+
+;; the base sink: accumulates into a string buffer. Columns are tracked by the
 ;; column-writer that wraps it; this just appends.
 (defrecord StringBufferWriter [sb]
   IPrettyWriter
   (-write [_ x]
-    (.append sb (if (integer? x) (clj2_string/codepoint_str x) x))
+    (sb-append sb (if (integer? x) (clj2_string/codepoint_str x) x))
     nil)
   (-pflush [_] nil)
   IPrettyFlush
@@ -278,7 +283,7 @@
     (cond
       (string? x)
       (let [s x
-            nl (.lastIndexOf s "\n")]
+            nl (or (clojure.string/last-index-of s "\n") -1)]
         (if (neg? nl)
           (set-field this :cur (+ (get-field this :cur) (count s)))
           (do
@@ -295,7 +300,7 @@
 (defn- column-writer
   ([writer] (column-writer writer *default-page-width*))
   ([writer max-columns]
-   (->ColumnWriter (atom {:max max-columns :cur 0 :line 0 :base writer}))))
+   (->ColumnWriter (clj2_ref/cell {:max max-columns :cur 0 :line 0 :base writer}))))
 
 ;;======================================================================
 ;; pretty writer
@@ -349,8 +354,8 @@
     (when-let [prefix (:prefix lb)]
       (-write (getf :base) prefix))
     (let [col (get-column (getf :base))]
-      (reset! (:start-col lb) col)
-      (reset! (:indent lb) col))))
+      (clj2_ref/reset (:start-col lb) col)
+      (clj2_ref/reset (:indent lb) col))))
 
 (defmethod write-token :end-block-t [this token]
   (when-let [cb (getf :logical-block-callback)] (cb :end))
@@ -359,7 +364,7 @@
 
 (defmethod write-token :indent-t [this token]
   (let [lb (:logical-block token)]
-    (reset! (:indent lb)
+    (clj2_ref/reset (:indent lb)
             (+ (:offset token)
                (condp = (:relative-to token)
                  :block @(:start-col lb)
@@ -445,12 +450,12 @@
     section))
 
 (defn- update-nl-state [lb]
-  (reset! (:intra-block-nl lb) true)
-  (reset! (:done-nl lb) true)
+  (clj2_ref/reset (:intra-block-nl lb) true)
+  (clj2_ref/reset (:done-nl lb) true)
   (loop [lb (:parent lb)]
     (if lb
-      (do (reset! (:done-nl lb) true)
-          (reset! (:intra-block-nl lb) true)
+      (do (clj2_ref/reset (:done-nl lb) true)
+          (clj2_ref/reset (:intra-block-nl lb) true)
           (recur (:parent lb))))))
 
 (defn- emit-nl [this nl]
@@ -584,10 +589,10 @@
       (write-white-space this))))
 
 (defn- pretty-writer [writer max-columns miser-width]
-  (let [lb (->logical-block nil nil (atom 0) (atom 0) (atom false) (atom false)
+  (let [lb (->logical-block nil nil (clj2_ref/cell 0) (clj2_ref/cell 0) (clj2_ref/cell false) (clj2_ref/cell false)
                             nil nil nil nil)]
     (->PrettyWriter
-      (atom {:pretty-writer true
+      (clj2_ref/cell {:pretty-writer true
              :base (column-writer writer max-columns)
              :logical-blocks lb
              :sections nil
@@ -601,8 +606,8 @@
 
 (defn- start-block
   [this prefix per-line-prefix suffix]
-  (let [lb (->logical-block (getf :logical-blocks) nil (atom 0) (atom 0)
-                            (atom false) (atom false)
+  (let [lb (->logical-block (getf :logical-blocks) nil (clj2_ref/cell 0) (clj2_ref/cell 0)
+                            (clj2_ref/cell false) (clj2_ref/cell false)
                             prefix per-line-prefix suffix nil)]
     (setf :logical-blocks lb)
     (if (= (getf :mode) :writing)
@@ -612,8 +617,8 @@
         (if prefix
           (-write (getf :base) prefix))
         (let [col (get-column (getf :base))]
-          (reset! (:start-col lb) col)
-          (reset! (:indent lb) col)))
+          (clj2_ref/reset (:start-col lb) col)
+          (clj2_ref/reset (:indent lb) col)))
       (let [oldpos (getf :pos)
             newpos (+ oldpos (if prefix (count prefix) 0))]
         (setf :pos newpos)
@@ -644,7 +649,7 @@
     (if (= (getf :mode) :writing)
       (do
         (write-white-space this)
-        (reset! (:indent lb)
+        (clj2_ref/reset (:indent lb)
                 (+ offset (condp = relative-to
                             :block @(:start-col lb)
                             :current (get-column (getf :base))))))
@@ -729,7 +734,7 @@
               clojure.core/*print-readably* (get options :readably clojure.core/*print-readably*)
               clojure.pprint/*print-right-margin* (get options :right-margin clojure.pprint/*print-right-margin*)
               clojure.pprint/*print-suppress-namespaces* (get options :suppress-namespaces clojure.pprint/*print-suppress-namespaces*)]
-      (let [sb (StringBuilder.)
+      (let [sb (sb-new)
             optval (if (contains? options :stream)
                      (:stream options)
                      true)
@@ -742,9 +747,9 @@
           (binding [*out* base-writer]
             (pr object)))
         (if (true? optval)
-          (clojure.core/print (str sb)))
+          (clojure.core/print (sb-str sb)))
         (if (nil? optval)
-          (str sb))))))
+          (sb-str sb))))))
 
 (defn pprint
   "Pretty print object. With one arg, prints to *out* (captured by with-out-str).
@@ -752,10 +757,10 @@
   ([object]
    ;; clojerl2: core print writes to *out*, so the result goes out after
    ;; the binding (inside it, it would land back in sb)
-   (let [sb (StringBuilder.)]
+   (let [sb (sb-new)]
      (binding [*out* (->StringBufferWriter sb)]
        (pprint object *out*))
-     (clojure.core/print (str sb))))
+     (clojure.core/print (sb-str sb))))
   ([object writer]
    (with-pretty-writer writer
      (binding [*print-pretty* true]
@@ -917,7 +922,7 @@
 (defn- integral? [x]
   (cond
     (integer? x) true
-    (float? x) (= x (Math/floor x))
+    (float? x) (== x (erlang/floor x))
     :else false))
 
 (defn- remainders [base val]
@@ -981,9 +986,9 @@
   (if (ratio? x) (double x) x))
 
 (defn- float-parts-base [f]
-  (let [s (.toLowerCase (.toString f))
-        exploc (.indexOf s (int \e))
-        dotloc (.indexOf s (int \.))]
+  (let [s (clojure.string/lower-case (str f))
+        exploc (or (clojure.string/index-of s "e") -1)
+        dotloc (or (clojure.string/index-of s ".") -1)]
     (if (neg? exploc)
       (if (neg? dotloc)
         [s (str (dec (count s)))]
@@ -1000,7 +1005,7 @@
         e (if (and (pos? (count e)) (= (nth e 0) \+)) (subs e 1) e)]
     (if (empty? m2)
       ["0" 0]
-      [m2 (- (Long/parseLong e) delta)])))
+      [m2 (- (erlang/binary_to_integer e) delta)])))
 
 (defn- inc-s [s]
   (let [len-1 (dec (count s))]
@@ -1102,14 +1107,14 @@
 
 (defn- dollar-float [params navigator offsets]
   (let [[arg navigator] (next-arg navigator)
-        [mantissa exp] (float-parts (Math/abs (convert-ratio arg)))
+        [mantissa exp] (float-parts (abs (convert-ratio arg)))
         d (:d params)
         n (:n params)
         w (:w params)
         add-sign (or (:at params) (neg? arg))
         [rounded-mantissa scaled-exp expanded] (round-str mantissa exp d nil)
         fixed-repr (get-fixed rounded-mantissa (if expanded (inc scaled-exp) scaled-exp) d)
-        full-repr (str (apply cstr (repeat (- n (.indexOf fixed-repr (int \.))) \0)) fixed-repr)
+        full-repr (str (apply cstr (repeat (- n (or (clojure.string/index-of fixed-repr ".") -1)) \0)) fixed-repr)
         full-len (+ (count full-repr) (if add-sign 1 0))]
     (print (str
              (if (and (:colon params) add-sign) (if (neg? arg) \- \+))
@@ -1203,7 +1208,7 @@
 
 ;;======================================================================
 ;; ~( ~) case conversion. The JVM streams through a proxy Writer; jolt accumulates
-;; into a StringBuilder, so we capture the clause output then apply the transform.
+;; into a string buffer, so we capture the clause output then apply the transform.
 ;;======================================================================
 
 (defn- str-downcase [s] (clojure.string/lower-case s))
@@ -1227,10 +1232,10 @@
 
 (defn- modify-case [transform params navigator offsets]
   (let [clause (first (:clauses params))
-        sb (StringBuilder.)]
+        sb (sb-new)]
     (binding [*out* (->StringBufferWriter sb)]
       (execute-sub-format clause navigator (:base-args params)))
-    (print (transform (str sb)))
+    (print (transform (sb-str sb)))
     navigator))
 
 ;; Check to see if a result is an abort (~^) construct
@@ -1391,10 +1396,10 @@
     (if (empty? clauses)
       [acc navigator]
       (let [clause (first clauses)
-            [iter-result result-str] (let [sb (StringBuilder.)]
+            [iter-result result-str] (let [sb (sb-new)]
                                        (binding [*out* (->StringBufferWriter sb)]
                                          [(execute-sub-format clause navigator base-navigator)
-                                          (str sb)]))]
+                                          (sb-str sb)]))]
         (if (= :up-arrow (first iter-result))
           [acc (second iter-result)]
           (recur (next clauses) (conj acc result-str) iter-result))))))
@@ -1816,7 +1821,7 @@
      (and (= (count p) 1) (contains? #{\v \V} (nth p 0))) :parameter-from-args
      (and (= (count p) 1) (= \# (nth p 0))) :remaining-arg-count
      (and (= (count p) 2) (= \' (nth p 0))) (nth p 1)
-     true (Long/parseLong p))
+     true (erlang/binary_to_integer p))
    offset])
 
 (def ^{:private true} flag-defs {\: :colon, \@ :at})
@@ -2011,7 +2016,7 @@
           (fn [[s offset]]
             (if (empty? s)
               [nil s]
-              (let [tilde (.indexOf s "~")]
+              (let [tilde (or (clojure.string/index-of s "~") -1)]
                 (cond
                   (neg? tilde) [(compile-raw-string s offset) ["" (+ offset (count s))]]
                   (zero? tilde) (compile-directive (subs s 1) (inc offset))
@@ -2036,7 +2041,7 @@
    ;; straight into it as on the JVM: buffering it separately loses the column
    ;; and hands pretty directives (~:@_) a writer with no logical blocks.
    ;; Elsewhere *out* is a host port, so the text is buffered and printed.
-   (let [sb (StringBuilder.)
+   (let [sb (sb-new)
          stream (if (and (true? stream) (pretty-writer? *out*)) *out* stream)
          real-stream (if (or (not stream) (true? stream))
                        (->StringBufferWriter sb)
@@ -2054,8 +2059,8 @@
            (if-not (identical? real-stream wrapped-stream)
              (-pflush wrapped-stream)))))
      (cond
-         (not stream) (str sb)
-         (true? stream) (clojure.core/print (str sb))
+         (not stream) (sb-str sb)
+         (true? stream) (clojure.core/print (sb-str sb))
          :else nil)))
   ([format args]
    (map-passing-context
