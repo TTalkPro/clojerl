@@ -27,15 +27,14 @@ clojerl2 还在开发中。下面是诚实的现状,不是路线图。
 - var 的运行时改值:表达式里的 `def`、同一文件里重复的顶层 `def`、`alter-var-root`、`with-redefs`/`with-redefs-fn`(包括别的命名空间里的 var)、var 的 watch 与 validator、对动态 var 的 `set!`、`locking`;clojure.core 的 fn 不能改值(见 differences.md);
 - 多方法与层次:`defmulti`/`defmethod`、`derive`/`isa?`/`prefer-method`,支持自定义层次;
 - 字符串与 IO:正则(Erlang 的 re/PCRE,`re-find`/`re-seq`/`re-matches`…)、`clojure.string`、`format`/`printf`(java.util.Formatter 语法)、`*out*`/`*in*`/`*err*` 重定向、`with-out-str`/`with-in-str`、`slurp`/`spit`、UUID;
+- `deftype`/`defrecord`/`defprotocol`/`extend-type`/`extend-protocol` 也可以写在表达式里;deftype 的可变字段(`^:unsynchronized-mutable`/`^:volatile-mutable` + `set!`);
 - 宿主类:`Thread`(`.start`/`.join`)、`Executors` 线程池(`submit`/`invokeAll`/`invokeAny`)、命名字符集(`(String. bytes "windows-1252")`、`.getBytes`、`URLEncoder`/`URLDecoder`,UTF-8 坏字节按 JVM 替换)、`Murmur3`/`Util` 哈希、Keyword 方法、`Class/forName`;`deftype`/`defrecord` 可以声明 JVM 接口(`clojure.lang.IReduceInit`、`ISeq` ……),扩展到接口的协议能分派到它们,实现 `ISeq` 的类型可以当 seq 用;
 - BigDecimal:`1.5M` 字面量、算术、`with-precision`、`bigdec`、`format` 与常用的 `java.math.BigDecimal` 方法;
 - 字符串是 UTF-8,中文可直接使用。
 
-**还没有的**(括号里是 corpus 中因此失败的条目数,见 [corpus 基线](../notes/corpus-baseline.md);corpus 通过 4314 / 4841):
-- 编译器尚不接受的形式:`defrecord`/`extend-protocol` 写在表达式里、宏在编译期读取同一文件里 var 的运行时元数据(3);deftype 可变字段的 `set!`(1)
-- 列表的元数据在 `conj`/`pop`/`into` 后不保留(3)
-- 惰性求值的时机:带 transducer 的 `sequence` 不在调用时实现首元素、宏展开结果里 `~@` 的惰性(2)
-- 另有 17 条是 corpus 生成环境的问题(期望值来自 jolt 特有的写法或 JVM 上没有导入的类),不是功能缺失
+**还没有的**(括号里是 corpus 中因此失败的条目数,见 [corpus 基线](../notes/corpus-baseline.md);corpus 通过 4320 / 4841):
+- 一个文件作为一个单元编译、之后才运行带来的时序差别:宏在编译期读不到同一文件里 var 的运行时元数据、宏展开出的 `do` 里前面的 `def` 在 `~@` 实现之前还没执行(1 + 1)
+- 另有 14 条是 corpus 生成环境的问题(期望值来自 jolt 特有的写法、JVM 上没有导入的类或重生成时超时),不是功能缺失
 
 **clojure-test-suite**:[jank-lang/clojure-test-suite](https://github.com/jank-lang/clojure-test-suite)(`vendor/clojure-test-suite`,子模块)全量跑在 CI 里(`make cts`),247 个命名空间,断言通过 5743 / 失败 233 / 错误 388,逐命名空间的失败数登记在 `test/cts-known-failures.txt`,变好变坏都会让 CI 变红。
 

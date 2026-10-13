@@ -34,3 +34,12 @@
 
 - 本机门控:eunit 664 全过;corpus 4228 → **4314**/4841(89.1%),0 新失败、0 过期;CTS 5733 → **5743**(失败 233、错误 388,基线已重写)。登记差异 33 条。
 - 剩余 `:pending`:corpus-environment 17(期望值来自 jolt 或 JVM 上没导入的类)、metadata 3(列表元数据经 `conj`/`pop`/`into` 不保留:带元数据的列表在这里是惰性序列)、compiler 3、laziness 2、special-forms 1(deftype 可变字段)。
+
+## 后续(同日)
+
+- corpus 环境:提到 `*ns*` 的条目在 `user` 里跑(JVM 在 user 的 REPL 里求值);期望 `:throws` 时,JVM Clojure 也没有的符号的编译错误算作抛出(用 `priv/clj2/jvm-docs.eterm` 判断;JVM 有而这里没有的仍算缺口)。
+- `extend-type`/`extend-protocol` 写在表达式里改写为运行时的 `extend`;`deftype`/`defrecord`/`defprotocol` 写在表达式里时定义提升到当前顶层形式之前(与表达式里的 `def` 同一机制),表达式的值是类 / 协议名。
+- deftype 的可变字段:构造时放进 cell,方法体里的读与 `set!` 改写为读写 cell(`quote` 内不改,语法引用里只改 `~` 部分)。
+- `empty` 作用于 record 抛 UnsupportedOperationException。
+- 改登记:列表元数据经 `conj`/`pop`/`into` 的 3 条 → `:seqs/class-model`(`(list 1)` 与 `(cons 1 [2])` 在这里都是 Erlang 列表,无法区分);带 transducer 的 `sequence` 不立即实现首元素 → `:lazy-seq/per-process-realization`(说明已补充)。
+- 结果:eunit 665 全过;corpus **4320**/4841(89.2%);CTS 5743 / 233 / 388。剩余 `:pending`:corpus-environment 14、compiler 1、laziness 1(都源于文件整体编译后才运行的模型)。回归测试 `expression_type_forms_test`。

@@ -259,7 +259,7 @@ clojerl2 的定位是 BEAM 上的 Clojure 方言(designs/00 D1)。凡是 BEAM �
 ### `:lazy-seq/per-process-realization` 按进程记忆化
 
 - **JVM**:一个惰性序列只实现一次,不管哪个线程去遍历。
-- **clojerl2**:记忆存在进程字典里,另一个进程遍历同一个惰性序列时会再实现一遍。纯函数的结果相同,带副作用的 thunk 会在每个进程各执行一次。可以用 `clj2_lazy:set_memo/1` 切换到 ETS,做到跨进程只实现一次。
+- **clojerl2**:记忆存在进程字典里,另一个进程遍历同一个惰性序列时会再实现一遍。纯函数的结果相同,带副作用的 thunk 会在每个进程各执行一次。可以用 `clj2_lazy:set_memo/1` 切换到 ETS,做到跨进程只实现一次。同样的原因,`(sequence xf coll)` 在被遍历之前什么都不实现(JVM 在调用时就实现首元素):transducer 的状态(volatile)属于遍历它的进程。
 - **替代写法**:副作用不要放进惰性序列里(副作用用 `doseq`/`run!`);交给其他进程之前先实现掉(`doall`、`vec`)。
 - 依据:designs/03 §5.3。
 
