@@ -97,6 +97,10 @@ clojerl2:基于 nanopass 的 Clojure on ERTS 全新实现。设计文档见 [des
 | [clojerl2-047](tasks/clojerl2-047-versioned-reload.md) | 版本化热替换与回收 | 044 | 已完成 |
 | [clojerl2-048](tasks/clojerl2-048-benchmarks.md) | 性能基准:调用开销、map 操作、热替换 | 045, 047 | 已完成 |
 | [clojerl2-049](tasks/clojerl2-049-embedding-docs.md) | 嵌入文档与规则引擎示例 | 044–048 | 已完成 |
+| [clojerl2-050](tasks/clojerl2-050-erlang-concurrency.md) | 并发与状态改用 Erlang 进程(删除 atom、volatile、agent、future、promise、ref) | 049 | 已完成 |
+| [clojerl2-051](tasks/clojerl2-051-receive.md) | 带模式匹配的 receive | 050 | 已完成 |
+| [clojerl2-052](tasks/clojerl2-052-native-data.md) | map 改为原生 Erlang map,向量交给 Erlang 时自动变 list | 045, 051 | 已完成 |
+| [clojerl2-053](tasks/clojerl2-053-jvm-removal.md) | 删除 Java 类垫片与 Java 数组,只留语言自身用到的互操作;`#inst` 改为 Erlang 时间 | 050, 052 | 已完成 |
 
 ## 关键路径
 
