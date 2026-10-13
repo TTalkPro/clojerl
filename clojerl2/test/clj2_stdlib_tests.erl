@@ -261,6 +261,17 @@ nested_redefinition_and_name_meta_test() ->
                  plain(ev("[(:private (meta #'nm-p1)) (:doc (meta #'nm-p2)) (:private (meta #'nm-p3)) (:private (meta #'nm-p4))]"))).
 
 
+%% clojerl2-042 follow-up: type and extension forms inside expressions,
+%% mutable deftype fields
+expression_type_forms_test() ->
+    setup(),
+    ev("(defprotocol EtP (etp [x]))"),
+    ?assertEqual([false, ':s'], plain(ev("(let [a (satisfies? EtP \"s\")] (extend-protocol EtP String (etp [x] :s)) [a (etp \"q\")])"))),
+    ?assertEqual(2, ev("(let [_ (defrecord EtR [a b])] (:b (->EtR 1 2)))")),
+    ev("(defprotocol EtCnt (et-inc! [c]) (et-cur [c]))"),
+    ev("(deftype EtCounter [^:volatile-mutable n] EtCnt (et-inc! [c] (set! n (inc n)) c) (et-cur [c] n))"),
+    ?assertEqual(2, ev("(let [c (EtCounter. 0)] (et-inc! c) (et-inc! c) (et-cur c))")).
+
 %% clojerl2-042: the remaining pending categories - read/read+string,
 %% for, cond->, definline, print-method, *print-meta*, #error, local vars,
 %% Var methods, JVM docstrings, eduction, format, atom options, records

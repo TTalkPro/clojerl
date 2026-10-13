@@ -147,7 +147,9 @@ protocols_test_() ->
                       end,
                 ?assertEqual({driver, {unresolved_protocol, 'Nope'}},
                              Err("(ns t.e) (extend-type nil Nope (m [_] 1))")),
-                ?assertEqual({syntax, {not_at_top_level, 'extend-type'}},
+                %% inside an expression extend-type is a run-time extend: the
+                %% protocol is then an ordinary symbol to resolve
+                ?assertEqual({resolve, {unresolved_symbol, 'P'}},
                              Err("(ns t.e) (def x (fn* [] (extend-type nil P (m [_] 1))))")),
                 ?assertEqual({syntax, {variadic_protocol_method, m}},
                              Err("(ns t.e) (defprotocol P (m [this & more]))"))
