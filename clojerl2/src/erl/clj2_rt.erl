@@ -9,7 +9,7 @@
 
 -export([transient/1, is_transient/1, persistent/1]).
 -export([meta/1, with_meta/2, is_var/1, merge_var_meta/2, defn_meta/3]).
--export([invoke/2, var_fn/3, var_value/3, var/2, is_ratio/1, numerator/1, denominator/1, existing_keyword/2]).
+-export([invoke/2, call_loading/3, fn_const/1, var_fn/3, var_value/3, var/2, is_ratio/1, numerator/1, denominator/1, existing_keyword/2]).
 
 %% layer-0 primitives for clojure.core (00-kernel)
 -export([str/1, keyword/1, keyword/2, symbol/1, symbol/2, name/1, namespace/1,
@@ -23,7 +23,7 @@
 -export([def_root/2, invoke_root/4, set_var_root/2, assign_root/3, alter_var_root/3, var_root/1, table_root/1,
          set_var_validator/2, var_validator/1, update_var_watches/2]).
 -export([reduced/1, is_reduced/1, unreduced/1, compare/2, sort/2, format/2,
-         ex_info/3, throwable/2, no_matching_clause/1, is_ex_info/1, ex_message/1, ex_data/1, ex_cause/1, subs/3]).
+         ex_info/3, exception_str/1, throwable/2, no_matching_clause/1, is_ex_info/1, ex_message/1, ex_data/1, ex_cause/1, subs/3]).
 
 %% @doc Call a Clojure fn value with an argument list.
 invoke(F, Args) when is_function(F, length(Args)) ->
@@ -81,9 +81,34 @@ var_value(M, Name, Info) ->
         _ -> loaded_var_value(M, Name, Info)
     end.
 
-loaded_var_value(M, Name, #{kind := fn} = Info) -> var_fn(M, Name, Info);
+%% the same value compiled code takes in value position (M:'__fn__'/1),
+%% so (identical? > (var-get #'>)) holds
+loaded_var_value(M, Name, #{kind := fn} = Info) ->
+    case erlang:function_exported(M, '__fn__', 1) of
+        true -> try M:'__fn__'(Name) catch error:function_clause -> var_fn(M, Name, Info) end;
+        false -> var_fn(M, Name, Info)
+    end;
 loaded_var_value(M, Name, #{kind := cell}) -> clj2_var:root(M, Name);
 loaded_var_value(M, Name, _Info) -> M:Name().
+
+%% @doc A fn value a macro spliced into code (clj2_p_parse)
+fn_const(Key) -> persistent_term:get({clj2_fn_const, Key}).
+
+%% @doc M:Name(Args...) from a deftype/extend method of M's namespace:
+%% while M's init runs (the method called at load time) M's exports are
+%% undef, and the fn comes from M's local '__var__'/1 (var_value/3)
+call_loading(M, Name, Args) ->
+    case get({clj2_loading, M}) of
+        F when is_function(F, 1) -> erlang:apply(arity_fun(F(Name), length(Args)), Args);
+        _ -> erlang:apply(M, Name, Args)
+    end.
+
+arity_fun(F, N) when is_function(F, N) -> F;
+arity_fun({clj2_fn, Fixed, Var}, N) ->
+    case Fixed of
+        #{N := F} -> F;
+        _ -> element(2, Var)
+    end.
 
 %% Clojure: no extra arguments → the rest param is nil.
 rest([]) -> nil;
@@ -104,6 +129,8 @@ str1(I) when is_integer(I) -> integer_to_binary(I);
 str1(F) when is_float(F) -> clj2_print:float_str(F);
 str1({Tag, _, S}) when (Tag =:= regex orelse Tag =:= uuid), is_binary(S) -> S;
 str1({'java.lang.StringBuilder', _, _} = B) -> clj2_jvm:builder_text(B);
+%% Throwable.toString: "class: message"; an ExceptionInfo adds its data
+str1({'clojure.lang.ExceptionInfo', _, _} = E) -> exception_str(E);
 %% a deftype or defrecord with its own toString
 str1({Tag, _, _} = X) when is_atom(Tag) ->
     case clj2_proto:object_method(X, toString) of
@@ -111,6 +138,16 @@ str1({Tag, _, _} = X) when is_atom(Tag) ->
         error -> clj2_print:pr_str(X)
     end;
 str1(X) -> clj2_print:pr_str(X).                         % collections, records, ...
+
+%% @doc An exception as str (and Throwable.toString) shows it
+exception_str(E) ->
+    Class = atom_to_binary(clj2_class:exception_class(E)),
+    case {ex_message(E), Class} of
+        {nil, _} -> Class;
+        {M, <<"clojure.lang.ExceptionInfo">>} ->
+            iolist_to_binary([Class, ": ", M, " ", clj2_print:pr_str(ex_data(E))]);
+        {M, _} -> iolist_to_binary([Class, ": ", M])
+    end.
 
 is_keyword(X) -> is_atom(X) andalso X =/= nil andalso X =/= true andalso X =/= false
                      andalso X =/= ':' andalso X =/= '' andalso hd(atom_to_list(X)) =:= $:.
@@ -591,9 +628,12 @@ meta({Tag, M, _}) when Tag =:= vector; Tag =:= map; Tag =:= set; Tag =:= lazy_se
                        Tag =:= fnmeta; Tag =:= sorted_map; Tag =:= sorted_set -> M;
 meta({Tag, M, D}) when is_atom(Tag), is_map(D) -> M;          % records
 meta({var, _, {Ns, Name}}) -> var_meta(Ns, Name);
+meta({Tag, _, _} = R) when Tag =:= atom; Tag =:= agent -> clj2_ref:ref_meta(R);
 meta(_) -> nil.
 
-with_meta({Tag, _, D}, M) when Tag =:= vector; Tag =:= map; Tag =:= set; Tag =:= lazy_seq;
+%% a lazy seq is realized (seq) when it is given metadata, as on the JVM
+with_meta({lazy_seq, _, _} = L, M) -> _ = clj2_lazy:seq(L), {lazy_seq, M, element(3, L)};
+with_meta({Tag, _, D}, M) when Tag =:= vector; Tag =:= map; Tag =:= set;
                                Tag =:= sorted_map; Tag =:= sorted_set ->
     {Tag, M, D};
 with_meta({fnmeta, _, F}, M) -> {fnmeta, M, F};
@@ -621,8 +661,47 @@ var_meta(Ns, Name) ->
                        end,
             Extra = maps:get(meta, I, #{}),
             M0 = clj2_coll:hash_map_kv(Base ++ Opt ++ Arglists),
-            {map, nil, maps:merge(element(3, M0), Extra)};
+            {map, nil, jvm_doc(Ns, Name, maps:merge(element(3, M0), Extra))};
         _ -> nil
+    end.
+
+%% A var of a namespace JVM Clojure has too (clojure.core, clojure.string
+%% ...) without a docstring or real arglists of its own takes the JVM's
+%% (priv/clj2/jvm-docs.eterm, tools/gen-jvm-docs.clj)
+jvm_doc(Ns, Name, M) ->
+    case maps:get({Ns, Name}, jvm_docs(), none) of
+        none -> M;
+        {Doc, Arglists} ->
+            M1 = case M of
+                     #{':doc' := _} -> M;
+                     _ when Doc =/= nil -> M#{':doc' => Doc};
+                     _ -> M
+                 end,
+            Placeholder = case M1 of
+                              #{':arglists' := As} ->
+                                  lists:all(fun(V) -> lists:all(fun(P) -> P =:= '_' end, clj2_coll:to_list(V)) end,
+                                            clj2_coll:to_list(As));
+                              _ -> true
+                          end,
+            case Placeholder andalso Arglists =/= nil of
+                true ->
+                    {ok, F, _, _} = clj2_reader:read(Arglists),
+                    M1#{':arglists' => clj2_form:to_data(F)};
+                false -> M1
+            end
+    end.
+
+jvm_docs() ->
+    case persistent_term:get({?MODULE, jvm_docs}, undefined) of
+        undefined ->
+            File = filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "clj2", "jvm-docs.eterm"]),
+            T = case file:consult(File) of
+                    {ok, Terms} -> maps:from_list([{{Ns, binary_to_atom(N)}, {D, A}} || {Ns, N, D, A} <- Terms]);
+                    _ -> #{}
+                end,
+            persistent_term:put({?MODULE, jvm_docs}, T),
+            T;
+        T -> T
     end.
 
 %% @doc defn's metadata map: {:doc doc} then the attr-map, then
@@ -632,9 +711,17 @@ defn_meta(Doc, Attr, Sigs) ->
     M1 = case Attr of {map, _, A} -> maps:merge(M0, A); _ -> M0 end,
     M2 = case M1 of
              #{':arglists' := _} -> M1;
-             _ -> M1#{':arglists' => [quote, clj2_coll:to_list(Sigs)]}
+             _ -> M1#{':arglists' => [quote, [elide_env(S) || S <- clj2_coll:to_list(Sigs)]]}
          end,
     {map, nil, M2}.
+
+%% a leading &form &env (a fn written as a macro's) is not in :arglists
+elide_env({vector, _, _} = V) ->
+    case clj2_coll:vec_to_list(V) of
+        ['&form', '&env' | Ps] -> clj2_coll:vector(Ps);
+        _ -> V
+    end;
+elide_env(S) -> S.
 
 %% @doc Merge evaluated metadata into a var's (def with expression values)
 merge_var_meta({var, _, {Ns, Name}} = V, {map, _, M}) ->
@@ -722,6 +809,12 @@ to_table(Ns, Name, I) ->
 %% @doc (alter-var-root v f & args): the root becomes (apply f root args).
 %% The value moves into the var table first, so the old value f gets is
 %% the fn itself, not a call through the var (which it may wrap).
+alter_var_root({local_var, _, {_, Cell}} = L, F, Args) ->
+    Old = case clj2_ref:deref(Cell) of '$clj2_unbound' -> nil; R -> R end,
+    New = invoke(F, [Old | clj2_coll:to_list(Args)]),
+    clj2_ref:reset(Cell, New),
+    _ = L,
+    New;
 alter_var_root(V, F, Args) ->
     set_var_root(V, invoke(F, [table_root(V) | clj2_coll:to_list(Args)])).
 
