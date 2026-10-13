@@ -92,7 +92,13 @@ compile_ns_modules(Src, Opts) ->
     try
         {Tops, Ctx} = expand_ns(Src, Opts#{segment_key => Key}),
         #{ns := Ns} = Ctx,
-        M = clj2_ns:module(Ns),
+        %% versioned (clj2:load/2): each load a module of its own,
+        %% <ns>$v<N>, so a call still running an old version never
+        %% blocks the next load (designs/10)
+        M = case maps:get(versioned, Opts, false) of
+                true -> version_module(Ns);
+                false -> clj2_ns:module(Ns)
+            end,
         {Extends, NsTops} = lists:partition(fun(T) -> element(1, T) =:= extend end, Tops),
         {Forms, St} = compile_tops(NsTops, Ns, M, #{}, true, Ctx, Opts),
         NsVars = maps:map(fun(_, I) -> I#{module => M} end, maps:get(vars, St)),
@@ -102,6 +108,10 @@ compile_ns_modules(Src, Opts) ->
         drop_segments(erase(Key)),
         clj2_rt_eval:restore_ns(Saved)
     end.
+
+version_module(Ns) ->
+    N = erlang:unique_integer([positive, monotonic]),
+    list_to_atom(atom_to_list(clj2_ns:module(Ns)) ++ "$v" ++ integer_to_list(N)).
 
 beams(Ns, Units, CompileOpts) ->
     Results = [{Mod, compile_forms(Forms, CompileOpts)} || {Mod, Forms} <- Units],
