@@ -87,3 +87,14 @@
 (defmethod print-method :default [x writer] (clj2_print/write_builtin x writer))
 (def print-dup (clj2_multi/new 'clojure.core 'print-dup (fn [x writer] (clj2_class/type_of x)) :default nil))
 (defmethod print-dup :default [x writer] (print-method x writer))
+
+;; Clojure values <-> plain Erlang terms, for a host (clj2_data):
+;; (clj->erl x) vectors, sets and seqs become lists, maps Erlang maps,
+;; keywords binaries; (clj->erl x {:nil :null}) also nil -> null.
+;; (erl->clj x {:keys :keyword :null :nil :lists :vector}) the other way.
+(defn clj->erl
+  ([x] (clj2_data/to_erl x))
+  ([x opts] (clj2_data/to_erl x (clj2_data/clj_opts opts))))
+(defn erl->clj
+  ([x] (clj2_data/from_erl x))
+  ([x opts] (clj2_data/from_erl x (clj2_data/clj_opts opts))))
