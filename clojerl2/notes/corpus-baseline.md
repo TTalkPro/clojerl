@@ -3,7 +3,7 @@
 语料:`test/corpus.edn`(jolt `test/chez/corpus.edn` @ 6c2685e,EPL-2.0;`:expected` 经 `make corpus-regen` 以 JVM Clojure 1.12.5 重新生成),只计 `:portability :common` 条目。
 生成:`make corpus`;门控:`make certify`(对照 `test/corpus-known-failures.edn`)。判定见 `src/erl/clj2_corpus.erl`。
 
-**通过 4320 / 4841(89.2%)**
+**通过 4318 / 4841(89.2%)**
 
 ## 按 core 分层
 
@@ -11,8 +11,8 @@
 
 | 层 | 通过 | 条目 | 通过率 |
 |---|---|---|---|
-| 00-kernel | 1780 | 1895 | 94% |
-| 01-core | 2237 | 2539 | 88% |
+| 00-kernel | 1779 | 1895 | 94% |
+| 01-core | 2236 | 2539 | 88% |
 | 02-protocols | 137 | 211 | 65% |
 | 03-print | 162 | 192 | 84% |
 | 04-repl | 4 | 4 | 100% |
@@ -26,7 +26,7 @@
 | seq | 275 | 276 | 100% |
 | reader | 196 | 211 | 93% |
 | predicates | 181 | 188 | 96% |
-| map | 164 | 182 | 90% |
+| map | 163 | 182 | 90% |
 | regex | 143 | 150 | 95% |
 | format | 116 | 140 | 83% |
 | clojure.core | 135 | 135 | 100% |
@@ -38,7 +38,7 @@
 | host-interop | 78 | 97 | 80% |
 | sorted | 86 | 90 | 96% |
 | interop | 75 | 90 | 83% |
-| set | 66 | 80 | 83% |
+| set | 65 | 80 | 81% |
 | metadata | 67 | 75 | 89% |
 | functions | 70 | 70 | 100% |
 | exceptions | 65 | 66 | 98% |
@@ -170,8 +170,8 @@
 | `:seqs/class-model` | 49 |
 | `:refs/no-stm` | 38 |
 | `:collections/map-order` | 36 |
+| `:collections/exact-keys` | 24 |
 | `:lazy-seq/no-chunking` | 24 |
-| `:collections/exact-keys` | 22 |
 | `:symbol/no-metadata` | 14 |
 | `:pending/corpus-environment` | 14 |
 | `:regex/erlang-semantics` | 12 |
@@ -201,8 +201,8 @@
 
 | 类别 | 条目 |
 |---|---|
-| wrong value | 255 |
-| threw (unexpected) | 197 |
+| wrong value | 260 |
+| threw (unexpected) | 194 |
 | compile: unresolved symbol | 41 |
 | expected a throw | 10 |
 | compile: link | 7 |

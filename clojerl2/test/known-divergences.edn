@@ -146,7 +146,7 @@
   :alternative "Keep comparators free of side effects; do not count their calls."}
  {:id :collections/exact-keys
   :area :collections
-  :reason "Hash maps and sets are Erlang maps keyed by the exact term: two keys that are = but differ in representation (a list and a vector with the same elements) or in metadata are different keys, so (get {[1 2] :a} '(1 2)) is nil and assoc of such a key adds an entry instead of replacing the stored one. Keys that are numbers, strings, keywords, symbols or collections of one kind behave as on the JVM."
+  :reason "Hash maps and sets are Erlang maps keyed by the exact term: two keys that are = but differ in representation (a list and a vector with the same elements) or in metadata are different keys, so (get {[1 2] :a} '(1 2)) is nil and assoc of such a key adds an entry instead of replacing the stored one. Keys that are numbers, strings, keywords, symbols or collections of one kind behave as on the JVM. A key's metadata takes no part (^:foo [:a 1] and [:a 1] are the same key, as on the JVM): a collection key or set element is stored without its metadata, so the stored key is not identical? to a key that carried some."
   :design "designs/03 §1.3"
   :alternative "Use one kind of collection for composite keys (vectors, say) and do not rely on metadata on map keys or set members; (vec k) normalizes a key that may arrive as a seq."} {:id :collections/map-order
   :area :collections

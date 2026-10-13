@@ -256,6 +256,7 @@
   {:suite "map / the stored key, not the probe key" :label "a sorted map answers from its node" :cause :collections/exact-keys}
   {:suite "map / the stored key, not the probe key" :label "and a hash-collision bucket" :cause :collections/exact-keys}
   {:suite "map / the stored key, not the probe key" :label "and does past the array-map threshold, in the trie" :cause :collections/exact-keys}
+  {:suite "map / the stored key, not the probe key" :label "assoc of a new value keeps the stored key" :cause :collections/exact-keys}
   {:suite "map / the stored key, not the probe key" :label "find's entry carries the map's own key" :cause :collections/exact-keys}
   {:suite "map / the stored key, not the probe key" :label "select-keys carries the source map's keys over" :cause :collections/exact-keys}
   {:suite "map / the stored key, not the probe key" :label "which find reads through as well" :cause :collections/exact-keys}
@@ -516,6 +517,7 @@
   {:suite "set / lookup returns the stored element" :label "into and set build through that same conj" :cause :collections/exact-keys}
   {:suite "set / lookup returns the stored element" :label "persistent! carries the stored element out" :cause :collections/exact-keys}
   {:suite "set / lookup returns the stored element" :label "persistent! keeps conj!'s split — seq gives the first, get the second" :cause :collections/exact-keys}
+  {:suite "set / lookup returns the stored element" :label "the element is identical? to the one that went in" :cause :collections/exact-keys}
   {:suite "set / lookup returns the stored element" :label "the not-found arity does too" :cause :collections/exact-keys}
   {:suite "sorted / equality is representation-agnostic" :label "sorted-map as map key" :cause :collections/exact-keys}
   {:suite "sorted / equality is representation-agnostic" :label "sorted-set as map key" :cause :collections/exact-keys}
