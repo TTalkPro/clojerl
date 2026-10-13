@@ -32,6 +32,7 @@ read_string(Opts, S) when is_binary(S) ->
             Type = case Msg of
                        <<"Invalid number", _/binary>> -> ':NumberFormatException';
                        <<"Divide by zero">> -> ':ArithmeticException';
+                       <<"Duplicate key", _/binary>> -> ':IllegalArgumentException';
                        _ -> ':RuntimeException'
                    end,
             fail(Type, Msg)

@@ -762,7 +762,7 @@ errors_test_() ->
     , ?_test(err({<<"#(%+)">>,          {1, 4}}))    %% %foo rejected
     , ?_test(err({<<"(#">>,             {1, 3}}))    %% EOF in a dispatch
     , ?_test(err({<<"#tag">>,           {1, 5}}))    %% EOF after a tag
-    , ?_test(err({<<"#=">>,             {1, 2}}))    %% #= is not supported
+    , ?_test(err({<<"#=">>,             {1, 3}}))    %% EOF after #=
     , ?_test(err({<<"##Bogus">>,        {1, 3}}))
     , ?_test(err({<<":">>,              {1, 2}}))    %% keyword without a name
     , ?_test(err({<<"::">>,             {1, 3}}))

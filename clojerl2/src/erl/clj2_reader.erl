@@ -550,7 +550,7 @@ read_arg(St0) ->
             arg_sym(-1, advance(St1));
         {ok, D} when ?IS_DIGIT(D) ->
             {N, St2} = scan_int_digits(St1, 0),
-            case N < 1 of
+            case N < 1 orelse D =:= $0 of
                 true -> mk_err(St1, bad_arg_literal(N));
                 false -> arg_sym(N, St2)
             end;
@@ -559,14 +559,11 @@ read_arg(St0) ->
         {ok, _} ->
             %% `%foo', `%+' ... rejected, exactly like JVM Clojure and
             %% clojerl 1.0 (which fail to parse the digits).
-            {Token, _St2} = scan_token(St1, []),
-            mk_err(St1, <<"invalid % literal: %", (to_bin_safe(Token))/binary,
-                          " (expected %, %& or %1..%N)">>)
+            mk_err(St1, bad_arg_literal(x))
     end.
 
-bad_arg_literal(N) ->
-    <<"invalid % literal: %", (integer_to_binary(N))/binary,
-      " (expected %, %& or %1..%9)">>.
+%% IllegalStateException on the JVM (clj2_rt_eval:read_error/1)
+bad_arg_literal(_) -> <<"arg literal must be %, %& or %integer">>.
 
 arg_sym(N, #st{args = [Frame | Rest]} = St) ->
     {Frame1, Sym} = frame_arg(Frame, N),
@@ -636,7 +633,32 @@ read_map(St0) ->
     St1 = advance(St0),
     case collect(St1, $}, fun read_map_item/1) of
         {error, _, _} = Error -> Error;
-        {ok, Pairs, St2} -> {ok, {map, [], Pairs}, St2}
+        {ok, Pairs, St2} ->
+            case dup_form([K || {K, _} <- Pairs]) of
+                none -> {ok, {map, [], Pairs}, St2};
+                {dup, K} -> mk_err(St0, <<"Duplicate key: ", K/binary>>)
+            end
+    end.
+
+%% the key as the message shows it: keywords, symbols, numbers and
+%% strings as they are written; anything else as an Erlang term
+form_str(A) when is_atom(A) -> atom_to_binary(A);
+form_str(N) when is_integer(N) -> integer_to_binary(N);
+form_str(B) when is_binary(B) -> <<$", B/binary, $">>;
+form_str(L) when is_list(L) ->
+    iolist_to_binary(["(", lists:join(" ", [form_str(X) || X <- L]), ")"]);
+form_str({vector, [], Items}) -> iolist_to_binary(["[", lists:join(" ", [form_str(X) || X <- Items]), "]"]);
+form_str(X) -> unicode:characters_to_binary(io_lib:format("~tp", [X])).
+
+%% two equal literal forms among a map's keys or a set's items (the JVM
+%% reader rejects {:a 1 :a 2} and #{1 1}) → {dup, Printed} | none
+dup_form(Forms) -> dup_form1([strip(F) || F <- Forms], #{}).
+
+dup_form1([], _) -> none;
+dup_form1([F | Fs], Seen) ->
+    case Seen of
+        #{F := _} -> {dup, form_str(F)};
+        _ -> dup_form1(Fs, Seen#{F => true})
     end.
 
 %% An item of a collection: one form, or the forms a `#?@' splices in.
@@ -704,8 +726,7 @@ collect(St0, Close, ItemFun) ->
         {ok, Close} ->
             {ok, [], advance(St)};
         {ok, Other} when Other =:= $); Other =:= $]; Other =:= $} ->
-            mk_err(St, <<"unmatched delimiter: ", Other/utf8,
-                          " (expected ", Close/utf8, ")">>);
+            mk_err(St, <<"Unmatched delimiter: ", Other/utf8>>);
         _ ->
             case ItemFun(St) of
                 {error, _, _} = Error -> Error;
@@ -1015,7 +1036,11 @@ read_token_form(St) ->
     case number_start(St) of
         true ->
             {Token, St1} = scan_token(St, []),
-            case interpret_number(Token, St) of
+            Number = case St#st.edn andalso lists:member($_, Token) of
+                         true -> mk_err(St, <<>>);
+                         false -> interpret_number(Token, St)
+                     end,
+            case Number of
                 {error, _, _} when St#st.edn ->
                     Bin = to_bin_safe(Token),
                     case re:run(Bin, "^[+-]?[0-9]+/0+$") of
@@ -1101,30 +1126,36 @@ interpret_number(Token, St) ->
 match_number(Bin) ->
     case first_match(Bin, patterns()) of
         {Tag, Captures} -> build_number(Tag, Captures, Bin);
-        nomatch -> {error, <<"invalid number: ", Bin/binary>>}
+        nomatch -> {error, <<"Invalid number: ", Bin/binary>>}
     end.
 
+%% Digits may be grouped by underscores between two digits (1_000_000,
+%% 0xFF_FF, 36rR_Z, 1_0e1_0); not next to a sign, point, marker or suffix.
+%% D is a group of decimal digits, H of hex, O of octal ...
 patterns() ->
-    [{ratio,    "^([+-]?[0-9]+)/([0-9]+)$"}
-    ,{bigradix, "^([+-]?)([0-9]+)[rR]([0-9A-Za-z]+)[Nn]$"}
-    ,{octint,   "^([+-]?)0([0-7]+)[Nn]?$"}         % before bigint: 017N is 15N
-    ,{badoct,   "^[+-]?0[0-9]+[Nn]?$"}
-    ,{bigint,   "^([+-]?[0-9]+)[Nn]$"}
-    ,{bigdec,   "^([+-]?(?:[0-9]+\\.[0-9]*|\\.[0-9]+|[0-9]+)(?:[eE][+-]?[0-9]+)?)[Mm]$"}
-    ,{hex,      "^([+-]?)[0][xX]([0-9a-fA-F]+)$"}
-    ,{oct,      "^([+-]?)[0][oO]([0-7]+)$"}
-    ,{bin,      "^([+-]?)[0][bB]([01]+)$"}
-    ,{radix,    "^([+-]?)([0-9]+)[rR]([0-9A-Za-z]+)$"}
-    ,{float,    "^([+-]?(?:[0-9]+\\.[0-9]*|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?)$"}
-    ,{exp,      "^([+-]?)([0-9]+)[eE]([+-]?[0-9]+)$"}
-    ,{int,      "^([+-]?[0-9]+)$"}
+    D = g("[0-9]"), H = g("[0-9a-fA-F]"), O = g("[0-7]"), B = g("[01]"), R = g("[0-9A-Za-z]"),
+    [{ratio,    "^([+-]?" ++ D ++ ")/(" ++ D ++ ")$"}
+    ,{bigradix, "^([+-]?)(" ++ D ++ ")[rR](" ++ R ++ ")[Nn]$"}
+    ,{octint,   "^([+-]?)0_*(" ++ O ++ ")[Nn]?$"}  % before bigint: 017N is 15N
+    ,{badoct,   "^[+-]?0_*" ++ D ++ "[Nn]?$"}
+    ,{bigint,   "^([+-]?" ++ D ++ ")[Nn]$"}
+    ,{bigdec,   "^([+-]?(?:" ++ D ++ "\\.(?:" ++ D ++ ")?|\\." ++ D ++ "|" ++ D ++ ")(?:[eE][+-]?" ++ D ++ ")?)[Mm]$"}
+    ,{hex,      "^([+-]?)[0][xX](" ++ H ++ ")[Nn]?$"}
+    ,{oct,      "^([+-]?)[0][oO](" ++ O ++ ")[Nn]?$"}
+    ,{bin,      "^([+-]?)[0][bB](" ++ B ++ ")[Nn]?$"}
+    ,{radix,    "^([+-]?)(" ++ D ++ ")[rR](" ++ R ++ ")$"}
+    ,{float,    "^([+-]?(?:" ++ D ++ "\\.(?:" ++ D ++ ")?|\\." ++ D ++ ")(?:[eE][+-]?" ++ D ++ ")?)$"}
+    ,{exp,      "^([+-]?)(" ++ D ++ ")[eE]([+-]?" ++ D ++ ")$"}
+    ,{int,      "^([+-]?" ++ D ++ ")$"}
     ].
+
+g(Class) -> Class ++ "+(?:_+" ++ Class ++ "+)*".
 
 first_match(Bin, [{Tag, Re} | Rest]) ->
     %% `list' captures are already character lists, which is what the
-    %% number builders below expect.
+    %% number builders below expect; group separators are dropped
     case re:run(Bin, Re, [{capture, all_but_first, list}]) of
-        {match, Captures} -> {Tag, Captures};
+        {match, Captures} -> {Tag, [[C || C <- Cap, C =/= $_] || Cap <- Captures]};
         nomatch -> first_match(Bin, Rest)
     end;
 first_match(_Bin, []) ->
@@ -1261,8 +1292,14 @@ read_dispatch(St0) ->
                     St0#st.edn andalso put(clj2_edn_discards, [Discarded | discards()]),
                     {skip, St3}
             end;
-        {ok, C} when C =:= $=; C =:= $^ ->
-            mk_err(St1, <<"unsupported dispatch macro: #", C/utf8>>);
+        %% #=(...) is evaluated where the form becomes data or code
+        {ok, $=} ->
+            St2 = advance(St1),
+            case one_form(St2) of
+                eof -> mk_err(St2, <<"EOF while reading form after #=">>);
+                {error, _, _} = Error -> Error;
+                {ok, Form, St3} -> {ok, {read_eval, [], strip(Form)}, St3}
+            end;
         {ok, C} when ?IS_TERMINATING(C) ->
             mk_err(St1, <<"invalid dispatch macro: #", C/utf8>>);
         {ok, _} ->
@@ -1336,7 +1373,11 @@ read_set(St0) ->
     St1 = advance(St0),
     case collect(St1, $}, fun read_item/1) of
         {error, _, _} = Error -> Error;
-        {ok, Items, St2} -> {ok, {set, [], Items}, St2}
+        {ok, Items, St2} ->
+            case dup_form(Items) of
+                none -> {ok, {set, [], Items}, St2};
+                {dup, K} -> mk_err(St0, <<"Duplicate key: ", K/binary>>)
+            end
     end.
 
 read_regex(St0) ->
