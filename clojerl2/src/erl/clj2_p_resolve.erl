@@ -260,7 +260,14 @@ invoke_global(A, S, H, Args, Env, L, St) ->
     case global(A, S, St, call) of
         {erlang, M, F} ->
             {Args1, St1} = exprs(Args, Env, L, St),
+            %% (Rec/create m): a record class's static factory, map->Rec
+            RecCreate = case F =:= create andalso length(Args1) =:= 1 andalso type_var(M, St) =/= error of
+                            true -> global(A, list_to_atom("map->" ++ atom_to_list(M)), St);
+                            false -> {none}
+                        end,
             case {jvm_class(M), atom_to_list(F)} of
+                _ when element(1, RecCreate) =:= var ->
+                    {{invoke, A, element(2, RecCreate), Args1}, St1};
                 {{ok, _}, "." ++ Method} when Args1 =/= [] ->
                     %% (Class/.method obj args), Clojure 1.12: an instance member
                     [Obj | Rest] = Args1,

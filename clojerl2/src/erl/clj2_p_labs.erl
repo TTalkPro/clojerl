@@ -145,7 +145,10 @@ impl_unit(Tops, A0, St = #{module := M, impl_of := {Proto, Tag}}) ->
     {Funs, St1} = lists:mapfoldl(fun({method, A, Name, {fn, _, nil, Clauses}}, S) ->
                                          var_functions(A, Name, Clauses, S)
                                  end, St, Tops),
-    Loaded = {eremote, A0, clj2_proto, loaded, [{elit, A0, Proto}, {elit, A0, Tag}, {elit, A0, M}]},
+    Loaded = case maps:get(inline, St, false) of
+                 true -> {eremote, A0, clj2_proto, loaded, [{elit, A0, Proto}, {elit, A0, Tag}, {elit, A0, M}, {elit, A0, inline}]};
+                 false -> {eremote, A0, clj2_proto, loaded, [{elit, A0, Proto}, {elit, A0, Tag}, {elit, A0, M}]}
+             end,
     Init = {efunction, A0, '__ns_init__', 0, [{eclause, A0, [], [], [Loaded]}]},
     {module_body(lists:append(Funs), Init, A0), St1}.
 
@@ -298,6 +301,11 @@ expr({call_var, A, M, Name, Args}, St = #{module := Unit}) ->
     {As, St1} = lists:mapfoldl(fun expr/2, St, Args),
     case M =:= Unit of
         true -> {{ecall, A, Name, As}, St1};
+        %% a deftype/extend method calling a fn of its namespace may run
+        %% while that namespace's init does (a type built at load time):
+        %% M's exports are undef until then (clj2_rt:call_loading/3)
+        false when As =/= [], map_get(unit, St) =:= impl ->
+            {{eremote, A, clj2_rt, call_loading, [{elit, A, M}, {elit, A, Name}, {elist, A, As}]}, St1};
         false -> {{eremote, A, M, Name, As}, St1}
     end;
 expr({fn_var, A, M, Name, _Fixed, _Min}, St = #{module := Unit}) when M =/= Unit ->
